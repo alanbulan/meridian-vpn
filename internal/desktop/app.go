@@ -18,6 +18,14 @@ type adapterCheck struct {
 }
 
 type App struct {
+ passwordStore passwordStore
+ credentialIntent *credentialIntent
+ credentialOperation *credentialOperation
+ credentialLoaded *credentialSnapshot
+ credentialReusable bool
+ credentialNotice string
+ credentialNoticeScope *credentialSnapshot
+ credentialWarning string
 	Startup                *autostart.Manager
 	StartupStatus          autostart.Status
 	StartupError           string
@@ -71,6 +79,7 @@ func New(path string) *App { return NewWithAdapter(path, defaultAdapter()) }
 func NewWithAdapter(path string, adapter core.Adapter) *App {
 	a := &App{authRequests: make(chan *authRequest, 1), Store: core.Store{Path: path}, Page: "Overview", Adapter: adapter, Engine: core.NewEngine(adapter)}
 	var err error
+	a.initializeCredentialStore()
 	a.initializeStartup()
 	a.configureAuth(adapter)
 	a.Config, err = a.Store.Load()
@@ -91,6 +100,7 @@ func (a *App) commit(cfg core.Config) bool {
 		a.Notice = "Could not save configuration: " + err.Error()
 		return false
 	}
+	if a.Config.SelectedID != cfg.SelectedID { a.clearCredentials() }
 	a.Config = cfg
 	a.Notice = ""
 	return true
@@ -113,6 +123,7 @@ func (a *App) navigate(page string) {
 	a.clearCredentials()
 }
 func (a *App) clearCredentials() {
+ a.clearCredentialWorkflow()
 	a.Password = ""
 	a.KeyPassword = ""
 	a.IPsecPSK = ""
@@ -351,6 +362,7 @@ func (a *App) View(c *ui.Context) {
 	a.pollRecheck()
 	a.pollSwitch()
 	a.pollAuth()
+ a.pollCredentials()
 	a.pollReauthentication(time.Now())
 	a.applyTheme(c)
 	t := c.Theme()
@@ -360,7 +372,7 @@ func (a *App) View(c *ui.Context) {
 	if !a.reauthAt.IsZero() {
 		c.After(time.Second)
 	}
-	if a.Checking {
+	if a.Checking || a.credentialOperation != nil {
 		c.After(100 * time.Millisecond)
 	}
 	ui.Column(c).Fill().Background(t.Background).Children(func() {
@@ -387,6 +399,10 @@ func (a *App) View(c *ui.Context) {
 				}
 				ui.Scroll(c).Fill().MinHeight(0).Children(func() {
 					ui.Column(c).FillWidth().Gap(18).Children(func() {
+    if a.credentialWarning != "" {
+     ui.Text(c,a.credentialWarning).FillWidth().FontSize(12).TextColor(t.Danger)
+     if ui.Button(c.Key("dismiss-keyring-warning"),a.tr("Dismiss keyring warning")).Clicked(){a.credentialWarning=""}
+    }
 						if a.authCurrent != nil {
 							a.authForm(c)
 						} else if a.ConnectPanel {
@@ -410,7 +426,7 @@ func (a *App) View(c *ui.Context) {
 			})
 		})
 	})
-	if a.Checking {
+	if a.Checking || a.credentialOperation != nil {
 		c.After(100 * time.Millisecond)
 	} else if a.busy() {
 		c.After(time.Second)
@@ -817,6 +833,7 @@ func (a *App) connectForm(c *ui.Context) {
 		}
 		a.label(c, "Session password")
 		ui.TextInput(c.Key("session-password"), &a.Password).Password().FillWidth()
+ a.credentialControls(c)
 		ui.Checkbox(c.Key("authorize-network"), &a.Authorized, a.tr("Authorize network changes"))
 		p := a.selected()
 		needsProxyConsent := p != nil && p.ProxyURL != ""
@@ -824,7 +841,7 @@ func (a *App) connectForm(c *ui.Context) {
 			ui.Checkbox(c.Key("proxy-consent"), &a.ProxyConsent, a.tr("Allow proxy to use system authentication for this connection"))
 		}
 		ui.Row(c).Gap(10).Children(func() {
-			if ui.PrimaryButton(c.Key("confirm-connect"), a.tr("Connect")).Disabled(!a.Authorized || !a.canConnect(a.selected()) || needsProxyConsent && !a.ProxyConsent).Clicked() {
+			if ui.PrimaryButton(c.Key("confirm-connect"), a.tr("Connect")).Disabled(a.credentialOperation != nil || a.credentialIntent != nil || !a.Authorized || !a.canConnect(a.selected()) || needsProxyConsent && !a.ProxyConsent).Clicked() {
 				if p := a.selected(); p != nil {
 					sessionProfile := *p
 					sessionProfile.AllowProxySystemAuth = a.ProxyConsent

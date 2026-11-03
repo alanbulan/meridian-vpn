@@ -1,8 +1,10 @@
-# Opt-in Secret Service foundation (not enabled)
+# Opt-in Secret Service provider (development)
 
-This package is **not connected to the desktop or CLI**. It is not a completed
-remember-password feature or a claim of production readiness. No real keyring
-operation has been run during its development.
+The development desktop now exposes explicitly confirmed password operations;
+see [desktop integration](../desktop/CREDENTIALS.md). Startup and connection still
+perform no automatic keyring I/O; the CLI is unchanged. This is not a claim of
+production readiness. Provider integration tests used only synthetic credentials
+inside disposable CI containers, never a user's keyring.
 
 ## Design
 
@@ -76,10 +78,11 @@ performs automatic unlock; direct godbus gives explicit control of these steps.
 
 ## Validation status and release gates
 
-The environment's `/usr/bin/go` is not a Go toolchain; no Go compiler or gofmt
-was available. Tests and cross-compilation have **not run**. Dependency checksum
-verification and `go mod tidy` must run in an authorized Go/CI environment before
-review approval; do not claim this checkpoint is build-verified.
+The local editing environment's `/usr/bin/go` is not a Go toolchain. Earlier
+provider revisions passed development CI, including module verification,
+three-platform builds, race tests and isolated GNOME Keyring integration. New
+desktop edits require their own exact-commit CI and native GUI acceptance; an
+older provider pass is not evidence that the new UI integration has passed.
 
 Unit fixtures are injected, in-memory buses only. They cover consent before I/O,
 exact endpoint binding, input ownership/wiping, error redaction, cancellation,
@@ -103,7 +106,8 @@ Before enabling this feature:
 5. Get a threat-model/security review of plain sessions, provider trust, memory
    copies, D-Bus allocation bounds, duplicate races, and uncertain write outcomes.
 
-Until these gates pass, the existing application remains memory-only.
+The desktop defaults to memory-only input; persistent operations require an
+explicit per-operation confirmation. The release gates above remain applicable.
 
 
 ## Versioned text envelope and GNOME compatibility
@@ -121,8 +125,7 @@ Base64 is encoding, not encryption. The OS provider retains responsibility for
 storage protection, and a malicious same-UID provider can rewrite this envelope.
 
 The distinct `login-password-base64-v2` attribute namespace does not read, migrate
-or delete old `login-password-v1` records. This package remains unconnected to the
-application, so no live-user migration is authorized or performed. The 4096-byte
+or delete old `login-password-v1` records. No live-user migration is authorized or performed by the desktop integration. The 4096-byte
 password limit is unchanged; only the bounded stored encoding has additional
 space for its version, digest and base64 expansion.
 

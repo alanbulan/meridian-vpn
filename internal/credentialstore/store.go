@@ -1,5 +1,5 @@
-// Package credentialstore provides an opt-in system credential store. It is not
-// connected to the UI: constructing a Store does not contact a keyring.
+// Package credentialstore provides an opt-in system credential store.
+// Constructing a Store does not contact a keyring.
 package credentialstore
 
 import (

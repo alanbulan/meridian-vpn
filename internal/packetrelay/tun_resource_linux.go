@@ -46,6 +46,7 @@ type TUNResource struct {
 	closed   bool
 	closeErr error
 	relay    *TUNRelay // permanent one-shot ownership, retained after stop
+	kernel   *tunKernelPin // optional read-only namespace evidence, same cleanup owner
 }
 
 // The alternate device exists only for package tests. Production always opens
@@ -187,6 +188,9 @@ func (r *TUNResource) Close() error {
 func (r *TUNResource) closeLocked() error {
 	if !r.closed {
 		r.closed = true
+		if err := r.kernel.close(); err != nil {
+			r.closeErr = errors.Join(r.closeErr, ErrCleanup, err)
+		}
 		if r.device != nil {
 			if err := r.device.close(); err != nil {
 				r.closeErr = errors.Join(r.closeErr, ErrCleanup, err)

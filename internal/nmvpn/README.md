@@ -356,3 +356,16 @@ D-Bus synthetic-NM receipt. Core cross-package orchestration uses private test
 seams, not a real TUN/native/NM end-to-end acceptance claim. Applied/global policy,
 independent network absence, actual host namespace/device association and authorized
 real-kernel/gateway acceptance remain open deployment gates.
+
+## Read-only kernel observation boundary
+
+The retained local association can now carry the original TUN's descriptor-derived
+namespace pin and sequential rtnetlink link metadata. See the packetrelay
+[namespace/link contract](../packetrelay/README.md#descriptor-namespace-and-link-observations).
+This is not actual NM-device ownership, initial host-namespace identity, exclusive
+HostAuthority/HostBinding, applied/global/dispatcher policy, Ready or independent
+network-absence proof. The core wrapper deliberately preserves historical local
+provenance without refreshing native/NM liveness. The normal application remains
+disabled for this experimental path. Tests inject all TUN, namespace and netlink
+operations; no real-kernel acceptance has run. The previous product gates remain
+open rather than being marked complete by mock or CI evidence.

@@ -244,3 +244,53 @@ association behind its still-mandatory independent HostBinding gate. A matching
 name is not actual NM device ownership, host-namespace proof, a lease, readiness,
 applied-policy verification or host absence. Observations remain sequential and
 can become stale immediately; no new automatic application path is enabled.
+
+## Descriptor namespace and link observations
+
+`TUNResource.ObserveKernelLink` pins the original TUN's current network namespace
+using read-only `TUNGETDEVNETNS`. It validates nsfs type, regular inode identity,
+CLOEXEC and `NS_GET_NSTYPE`; no namespace pathname supplied by a caller is accepted.
+The ioctl requires CAP_NET_ADMIN in the device namespace's owning user namespace.
+Unsupported or denied access fails without fallback, adoption or privilege change.
+The original resource retains the namespace FD, including when validation fails,
+and closes it exactly once along with its own TUN cleanup. Temporary namespace
+handles and sockets close once; cleanup uncertainty remains sticky through Close.
+
+The read-only rtnetlink observer locks its OS thread and checks that the thread's
+namespace matches the descriptor-derived pin before and after opening the socket,
+and after replies. It never calls setns, changes a link, dumps all devices, or
+uses a different namespace as fallback. Bounded nonblocking GETLINK requests use
+only the retained name. Kernel-source, sequence/port, lengths, flags, nesting and
+required TUN fields are checked; duplicate singleton fields, unexpected modes,
+explicit owner/group or multiqueue counts fail. Unknown nested lists are validated
+structurally without treating repeated list items as duplicate singleton fields.
+Only the small exported projection is compared; omitted policy is not verified.
+
+Fresh descriptor name/mode and namespace reads bracket repeated link observations.
+The first observed ifindex must remain the same on subsequent calls. This is
+sequential consistency only: names and ifindexes can be reused, and rename-away-
+and-back races remain. The namespace pin does not prevent moving the TUN. It does
+not identify the initial host namespace, establish device-generation identity,
+prove NM owns the device, or provide host exclusivity, applied policy, readiness
+or network absence. Historical initial metadata remains available after failure
+or close. A begun failed observation permanently invalidates this observer but
+does not close the TUN or transfer cleanup ownership. An invalid initial context
+or invalid object is rejected before acquiring a pin.
+
+The relay and core wrappers retain these same limits. They do not start forwarding,
+refresh native/NM liveness, implement HostAuthority/HostBinding, or enable a normal
+application path. The existing independent HostBinding is still needed before
+preparing the local-generation binding. Kernel errors and uncertain cleanup remain
+observable, and existing owners must perform their usual Stop/Wait cleanup.
+
+All namespace/TUN/netlink operations in tests are injected. Parser fixtures are
+hand-built from reviewed Linux ABI source; they are not captured live-kernel
+responses. This executor denied a read-only NETLINK_ROUTE socket with EPERM. That
+operation was not retried, and no alternative route or elevated privilege was
+used. No real TUN/kernel acceptance is claimed. CI checks offline behavior, race
+safety, formatting and cross-compilation only. Authorized real-kernel, host policy
+and gateway acceptance remain deployment gates.
+
+Sources: Linux v6.18 [TUN driver and TUNGETDEVNETNS](https://github.com/torvalds/linux/blob/v6.18/drivers/net/tun.c),
+[namespace FD implementation](https://github.com/torvalds/linux/blob/v6.18/fs/nsfs.c),
+and [rtnetlink ABI](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/if_link.h).

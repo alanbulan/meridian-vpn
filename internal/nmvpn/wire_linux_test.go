@@ -261,11 +261,11 @@ func nmFixture(t *testing.T) *nmWireFixture {
 	var err error
 	f.bus, err = OpenPinnedBus(f.ctx, nmRawConn(t, f.socket), f.pin)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("fixture pinned bus bootstrap:", err)
 	}
 	t.Cleanup(func() { _ = f.bus.Close() })
 	if err = f.bus.ClaimPluginName(f.ctx); err != nil {
-		t.Fatal(err)
+		t.Fatal("fixture plugin-name claim:", err)
 	}
 	f.offer, f.policy = configFixture()
 	f.binding = Binding{Identity: Identity{BootID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", BusID: f.pin.BusID, Owner: f.pin.Owner, UUID: wireUUID, ActivePath: string(wireActive), Session: f.offer.Session, Interface: f.offer.Interface}, ConnectionPath: wireSettings, PluginOwner: f.bus.UniqueName()}
@@ -673,5 +673,28 @@ func TestNMVPNWireUncertainLocalStopForbidsPublication(t *testing.T) {
 	}
 	if p.ProveAbsent(f.ctx, f.binding.Identity) == nil {
 		t.Fatal("local stop alone proved network absence")
+	}
+}
+
+// A synchronous bus round trip guarantees that the earlier NameAcquired signal
+// has been processed by godbus's reader. No sleep, retry, system bus or network
+// mutation is used to reproduce the pinned dependency's duplicate-name shape.
+func TestNMVPNWireHelloNameTracking(t *testing.T) {
+	conn := nmWireConn(t, nmPrivateBus(t))
+	var busID string
+	if err := conn.BusObject().Call("org.freedesktop.DBus.GetId", 0).Store(&busID); err != nil {
+		t.Fatal(err)
+	}
+	names := conn.Names()
+	if len(names) != 2 || names[0] != names[1] {
+		t.Fatal("pinned godbus Hello/NameAcquired duplicate shape not exercised")
+	}
+	unique, err := uniqueHelloName(names)
+	if err != nil {
+		t.Fatal("valid library duplicate was rejected:", err)
+	}
+	var owner string
+	if err = conn.BusObject().Call("org.freedesktop.DBus.GetNameOwner", 0, unique).Store(&owner); err != nil || owner != unique {
+		t.Fatal("selected name is not this connection's bus identity")
 	}
 }

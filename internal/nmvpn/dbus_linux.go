@@ -92,17 +92,13 @@ func OpenPinnedBus(ctx context.Context, raw *net.UnixConn, pin BusPin) (*PinnedB
 		if err := b.conn.Hello(); err != nil {
 			return errPeer
 		}
-		for _, name := range b.conn.Names() {
-			if ownerPattern.MatchString(name) {
-				if b.unique != "" {
-					return errPeer
-				}
-				b.unique = name
-			}
-		}
-		if b.unique == "" {
+		// Hello's reply and the reader's NameAcquired bookkeeping may both
+		// list the SAME unique name. That is not two distinct identities.
+		unique, err := uniqueHelloName(b.conn.Names())
+		if err != nil {
 			return errPeer
 		}
+		b.unique = unique
 		for _, name := range []string{NMName, PluginService} {
 			if err := b.conn.AddMatchSignalContext(ctx, dbus.WithMatchSender("org.freedesktop.DBus"), dbus.WithMatchObjectPath("/org/freedesktop/DBus"), dbus.WithMatchInterface("org.freedesktop.DBus"), dbus.WithMatchMember("NameOwnerChanged"), dbus.WithMatchArg(0, name)); err != nil {
 				return errPeer
@@ -114,6 +110,24 @@ func OpenPinnedBus(ctx context.Context, raw *net.UnixConn, pin BusPin) (*PinnedB
 		return fail()
 	}
 	return b, nil
+}
+
+// godbus v5.2.4 keeps Hello's unique name separately from asynchronously
+// received NameAcquired names. Names() prepends the former without deduplicating
+// the latter, so a fresh connection can report [":1.2", ":1.2"]. The documented
+// first element is authoritative; before any RequestName all other entries must
+// be exactly that same value. Never accept another unique or well-known name.
+// https://github.com/godbus/dbus/blob/v5.2.4/conn.go
+func uniqueHelloName(names []string) (string, error) {
+	if len(names) == 0 || !validPluginOwner(names[0]) {
+		return "", errPeer
+	}
+	for _, name := range names[1:] {
+		if name != names[0] {
+			return "", errPeer
+		}
+	}
+	return names[0], nil
 }
 
 // observe must remain synchronous, nonblocking and free of method calls/locks.

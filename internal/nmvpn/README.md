@@ -101,6 +101,13 @@ must come from trusted provisioning; checking a caller-provided pin alone does
 not establish trusted endpoint provenance. Production requires the real system
 bus and UID 0 for both its process and NM, not fixture UIDs.
 
+The fresh Hello identity accepts only one distinct validated unique name.
+The pinned godbus version can list the same name twice when its asynchronous
+NameAcquired bookkeeping runs before Names() is read. Identical repetitions are
+accepted; any different unique or well-known name is rejected. A private-bus
+round-trip regression deterministically exercises the duplicate shape without
+sleeping, retrying bootstrap, or weakening the subsequent UID/bus/owner pins.
+
 The wrapper monitors NM and plugin name ownership synchronously in the incoming
 message interceptor, before dispatching later replies. Loss/replacement or
 release-and-reacquisition permanently invalidates it. Directed publication uses

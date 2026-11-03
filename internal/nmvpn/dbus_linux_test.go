@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,5 +111,19 @@ func TestPinnedBusOrderedInvalidationAndDirectedHeaders(t *testing.T) {
 func TestPinnedBusRejectsNilSocket(t *testing.T) {
 	if b, err := OpenPinnedBus(context.Background(), nil, BusPin{BusUID: uint32(os.Geteuid())}); err == nil || b != nil {
 		t.Fatal("nil socket accepted")
+	}
+}
+
+func TestPinnedBusHelloDuplicateUniqueName(t *testing.T) {
+	for _, names := range [][]string{{":1.2"}, {":1.2", ":1.2"}, {":1.2", ":1.2", ":1.2"}} {
+		name, err := uniqueHelloName(names)
+		if err != nil || name != ":1.2" {
+			t.Fatal("identical Hello/NameAcquired identity rejected")
+		}
+	}
+	for _, names := range [][]string{nil, {}, {""}, {"not-a-unique-name"}, {":1.2", ":1.3"}, {":1.2", ""}, {"", ":1.2"}, {":1.2", PluginService}, {PluginService, ":1.2"}, {":1.2\n"}, {":1." + strings.Repeat("2", 65)}} {
+		if name, err := uniqueHelloName(names); err == nil || name != "" {
+			t.Fatal("conflicting or malformed Hello identity accepted")
+		}
 	}
 }

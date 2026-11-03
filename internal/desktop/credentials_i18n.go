@@ -1,0 +1,38 @@
+package desktop
+
+func init(){
+ for source,translation:=range map[string]string{
+  "Dismiss keyring warning":"关闭密钥环警告",
+  "Review and dismiss the keyring warning before another password operation.":"请先检查并关闭密钥环警告，再进行其他密码操作。",
+  "System password storage (optional)":"系统密码存储（可选）",
+  "System password storage is available on Linux only.":"系统密码存储目前仅支持 Linux。",
+  "Requires a named account and a non-interactive HTTPS password profile without certificates or an authentication group.":"仅支持已填写用户名、使用 HTTPS 且无证书、认证组或交互式认证的密码配置。",
+  "Save / replace password":"保存 / 替换密码",
+  "Load saved password":"读取已保存密码",
+  "Delete saved password":"删除已保存密码",
+  "Confirm this exact profile, gateway and account:":"请确认以下确切配置、网关和账号：",
+  "Confirm save / replace":"确认保存 / 替换",
+  "Confirm load only":"确认仅填入密码",
+  "Confirm delete saved password":"确认删除已保存密码",
+  "Cancel password request":"取消密码操作请求",
+  "Save this reusable password across logins in the system keyring, replacing its previous value. Never save a one-time code.":"将可重复使用的密码持久保存在系统密钥环中，并替换原值。请勿保存一次性验证码。",
+  "This is a reusable password, not a one-time code":"这是可重复使用的密码，不是一次性验证码",
+  "Replace this password field with the saved value. This does not connect or authorize network changes.":"用已保存的密码替换当前输入框。此操作不会连接或授权更改网络。",
+  "Delete this saved password from the system keyring and clear this password field.":"从系统密钥环删除此密码，并清空当前密码输入框。",
+  "Waiting for the system keyring; no connection will be started.":"正在等待系统密钥环；不会启动连接。",
+  "Cancel keyring operation":"取消密钥环操作",
+  "Keyring change canceled; the result may be unknown. Check the keyring before retrying.":"已取消密钥环操作，但更改结果可能不确定。重试前请检查密钥环。",
+  "Keyring read canceled or timed out. No password was applied.":"密钥环读取已取消或超时，未填入密码。",
+  "Password saved in the system keyring. No connection was started.":"密码已保存在系统密钥环中，未启动连接。",
+  "Saved password is not compatible with this password field.":"已保存的密码不适用于此密码输入框。",
+  "Password loaded into this field only. Authorize and press Connect separately.":"密码已填入输入框。连接仍需单独授权并点击“连接”。",
+  "Saved password deleted and this password field cleared.":"已删除保存的密码，并清空当前密码输入框。",
+  "System keyring is locked. Unlock it yourself, then request this operation again.":"系统密钥环已锁定。请自行解锁，然后重新请求此操作。",
+  "System keyring is locked; a change may already have occurred. Check it before retrying.":"系统密钥环已锁定，但更改可能已发生。重试前请自行检查。",
+  "No saved password exists for this exact profile, gateway and account.":"此配置、网关和账号没有匹配的已保存密码。",
+  "Multiple saved passwords match. Resolve them in the system keyring; no password was selected.":"匹配到多个已保存密码，未选择任何一项。请在系统密钥环中处理。",
+  "System keyring needs user interaction. Manage it yourself; no prompt was accepted.":"系统密钥环需要人工操作。请自行处理，未替您接受任何提示。",
+  "Keyring change could not be confirmed. Check the keyring before retrying.":"无法确认密钥环更改结果，重试前请自行检查。",
+  "System keyring is unavailable. No password was applied.":"系统密钥环不可用，未填入密码。",
+ }{zh[source]=translation}
+}

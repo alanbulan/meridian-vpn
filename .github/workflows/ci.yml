@@ -53,6 +53,7 @@ jobs:
           go env GOOS GOARCH
           go mod download
           go mod verify
+          go mod tidy -diff
       - name: Unit tests (not live VPN acceptance)
         run: |
           mkdir -p reports
@@ -177,5 +178,258 @@ jobs:
         with:
           name: loopback-${{ matrix.suite }}-evidence
           path: reports/loopback-${{ matrix.suite }}/
+          if-no-files-found: warn
+          retention-days: 7
+
+  credential-wire:
+    name: Linux / isolated Secret Service wire fixtures
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 procps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run synthetic private-bus fixtures as isolated user
+        run: |
+          useradd --create-home --shell /bin/bash meridian-wire-ci
+          chown -R meridian-wire-ci:meridian-wire-ci "$GITHUB_WORKSPACE"
+          runuser -u meridian-wire-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
+            GOPATH=/home/meridian-wire-ci/go GOCACHE=/home/meridian-wire-ci/.cache/go-build \
+            bash integration/credentialstore/run-wire-tests.sh
+      - name: Verify all wire cases actually passed
+        run: |
+          python3 scripts/ci-summary.py reports/credential-wire/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-wire/tests.jsonl').read_text().splitlines()]
+          expected = {'TestCredentialWireLifecycleAndStates', 'TestCredentialWireDuplicateAndUnknownObject', 'TestCredentialWireCancellation', 'TestCredentialWireOwnerReplacement'}
+          passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
+          assert expected <= passed, 'missing passing wire cases'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'
+          PY
+      - name: Clean only this disposable fixture user after timeout or failure
+        if: always()
+        run: |
+          if id meridian-wire-ci >/dev/null 2>&1; then
+            uid="$(id -u meridian-wire-ci)"
+            # This UID is created for this job only, never a host/login user.
+            pkill -KILL -u "$uid" || test "$?" -eq 1
+            find /tmp -maxdepth 1 -type d -uid "$uid" -name 'meridian-secret-wire-*' -exec rm -rf -- {} +
+          fi
+          # Runner teardown destroys this entire container if the job is killed.
+      - name: Upload synthetic wire test evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-wire-evidence
+          path: reports/credential-wire/
+          if-no-files-found: warn
+          retention-days: 7
+
+  credential-gnome:
+    name: Linux / isolated GNOME Keyring lifecycle
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon gnome-keyring python3 procps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run synthetic private-bus fixtures as isolated user
+        run: |
+          useradd --create-home --shell /bin/bash meridian-gnome-ci
+          chown -R meridian-gnome-ci:meridian-gnome-ci "$GITHUB_WORKSPACE"
+          runuser -u meridian-gnome-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
+            GITHUB_ACTIONS=true MERIDIAN_GNOME_CONTAINER_TESTS=1 \
+            GOPATH=/home/meridian-gnome-ci/go GOCACHE=/home/meridian-gnome-ci/.cache/go-build \
+            bash integration/credentialstore/run-gnome-tests.sh
+      - name: Verify real provider case actually passed
+        run: |
+          python3 scripts/ci-summary.py reports/credential-gnome/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-gnome/tests.jsonl').read_text().splitlines()]
+          expected = {'TestCredentialGNOMERealLifecycle'}
+          passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
+          assert expected <= passed, 'missing passing real provider case'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'real provider case skipped or failed'
+          PY
+      - name: Clean only this disposable fixture user after timeout or failure
+        if: always()
+        run: |
+          if id meridian-gnome-ci >/dev/null 2>&1; then
+            uid="$(id -u meridian-gnome-ci)"
+            # This UID is created for this job only, never a host/login user.
+            pkill -KILL -u "$uid" || test "$?" -eq 1
+            find /tmp -maxdepth 1 -type d -uid "$uid" \( -name 'meridian-secret-wire-*' -o -name 'meridian-gnome-*' \) -exec rm -rf -- {} +
+          fi
+          # Runner teardown destroys this entire container if the job is killed.
+      - name: Upload synthetic wire test evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-gnome-evidence
+          path: reports/credential-gnome/
+          if-no-files-found: warn
+          retention-days: 7
+
+  credential-production:
+    name: Linux / isolated production Secret Service entry
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon gnome-keyring python3 procps util-linux coreutils libc-bin
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run synthetic private-bus fixtures as isolated user
+        run: |
+          useradd --create-home --shell /bin/bash meridian-production-ci
+          chown -R meridian-production-ci:meridian-production-ci "$GITHUB_WORKSPACE"
+          mkdir -p reports/credential-production
+          set -o pipefail
+          GITHUB_ACTIONS=true MERIDIAN_PRODUCTION_CONTAINER_TESTS=1 \
+            bash integration/credentialstore/run-production-tests.sh meridian-production-ci \
+            | tee reports/credential-production/tests.jsonl
+      - name: Verify real provider case actually passed
+        run: |
+          python3 scripts/ci-summary.py reports/credential-production/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-production/tests.jsonl').read_text().splitlines()]
+          expected = {'TestCredentialProductionEntry'}
+          passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
+          assert expected <= passed, 'missing passing real provider case'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'real provider case skipped or failed'
+          PY
+      - name: Clean only this disposable fixture user after timeout or failure
+        if: always()
+        run: |
+          if id meridian-production-ci >/dev/null 2>&1; then
+            uid="$(id -u meridian-production-ci)"
+            # This UID is created for this job only, never a host/login user.
+            pkill -KILL -u "$uid" || test "$?" -eq 1
+            find /tmp -maxdepth 1 -type d -uid "$uid" \( -name 'meridian-secret-wire-*' -o -name 'meridian-gnome-*' \) -exec rm -rf -- {} +
+          fi
+          # Never recursively delete /run/user: bootstrap owns inode-checked rmdir only.
+          # Runner teardown destroys this entire container if the job is killed.
+      - name: Upload synthetic wire test evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-production-evidence
+          path: reports/credential-production/
+          if-no-files-found: warn
+          retention-days: 7
+
+  credential-crossuid:
+    name: Linux / isolated cross-UID rejection fixtures
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 procps util-linux coreutils libc-bin
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare immutable fixture source before running either fixture UID
+        run: |
+          test "$(id -u)" -eq 0
+          test ! -L /opt
+          test "$(stat -c '%u:%a' /opt)" = '0:755'
+          mkdir -m 0755 /opt/meridian-crossuid-source
+          tar --exclude='./.git' -cf - . | tar -x --no-same-owner -C /opt/meridian-crossuid-source
+          chmod -R go-w /opt/meridian-crossuid-source
+          useradd --create-home --user-group --shell /bin/bash meridian-cross-a
+          useradd --create-home --user-group --shell /bin/bash meridian-cross-b
+      - name: Run root supervisor and two unprivileged synthetic fixtures
+        run: |
+          mkdir -p reports/credential-crossuid
+          set -o pipefail
+          GITHUB_ACTIONS=true MERIDIAN_CROSS_UID_TESTS=1 \
+            bash /opt/meridian-crossuid-source/integration/credentialstore/run-crossuid-tests.sh meridian-cross-a meridian-cross-b \
+            | go tool test2json -t -p mygo-vpn/internal/credentialstore \
+            | tee reports/credential-crossuid/tests.jsonl
+      - name: Verify supervisor actually passed without skips
+        run: |
+          python3 scripts/ci-summary.py reports/credential-crossuid/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-crossuid/tests.jsonl').read_text().splitlines()]
+          assert any(r.get('Test') == 'TestCredentialCrossUIDSupervisor' and r.get('Action') == 'pass' for r in rows), 'missing passing supervisor'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'cross-UID fixture skipped or failed'
+          PY
+      - name: Stop only dedicated fixture users on failure or timeout
+        if: always()
+        run: |
+          for user in meridian-cross-a meridian-cross-b; do
+            if id "$user" >/dev/null 2>&1; then
+              pkill -KILL -u "$(id -u "$user")" || test "$?" -eq 1
+            fi
+          done
+          # Never recurse through /run/user. Precise cleanup belongs to the
+          # root supervisor; whole-container teardown removes abnormal leftovers.
+      - name: Upload synthetic test results only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-crossuid-evidence
+          path: reports/credential-crossuid/
           if-no-files-found: warn
           retention-days: 7

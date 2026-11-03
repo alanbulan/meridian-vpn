@@ -81,6 +81,7 @@ func main() {
 			}
 			if a.TrayAvailable && a.Config.Settings.MinimizeToTray {
 				e.PreventDefault()
+				a.PrepareToHide()
 				a.Window.Hide()
 			} else {
 				e.PreventDefault()

@@ -76,3 +76,11 @@ manual native rendering and cancel/close/scroll checks, and an authorized
 synthetic desktop end-to-end test before claiming release readiness. Source-level
 UI tester coverage is not a visual acceptance pass. See the provider README for
 plain-session, memory-copy, hostile-decoder and cross-process-race limitations.
+
+Password confirmations temporarily replace unrelated session input controls,
+rather than being stacked below them. Cancel restores the existing input without
+contacting the provider. Exact target fields remain visible in the scrollable
+form; they are not abbreviated. Minimum-window tests retain the original bounds,
+include English and Chinese, and exercise scrolling to confirm/cancel controls
+with a long synthetic profile name. Native font/rendering acceptance is still
+required; headless geometry tests are not a pixel-level UI review.

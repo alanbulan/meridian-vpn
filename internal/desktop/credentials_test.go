@@ -140,15 +140,20 @@ func TestPasswordNoticeIsBoundAndUnknownWriteWarningSurvivesNavigation(t *testin
 }
 
 func TestPasswordControlsFitMinimumApplicationWidth(t *testing.T){
- a,m,_:=passwordTestApp(t);a.Password="synthetic";v:=ui.NewTester(a.View,880,580)
+ for _,language:=range []string{"en","zh"}{t.Run(language,func(t *testing.T){
+ a,m,_:=passwordTestApp(t);a.Config.Settings.Language=language;a.Password="synthetic";v:=ui.NewTester(a.View,880,580)
  for _,label:=range []string{"Save / replace password","Load saved password","Delete saved password"}{
-  r,ok:=v.Find(label);if !ok || r.X<0 || r.W<=0 || r.X+r.W>880{t.Fatalf("password button exceeds minimum viewport: %s",label)}
+  r,ok:=v.Find(a.tr(label));if !ok || r.X<0 || r.W<=0 || r.X+r.W>880{t.Fatalf("password button exceeds minimum viewport: %s found=%t rect=%+v",label,ok,r)}
  }
  a.requestCredentialAction(credentialstore.UsePassword);v.Frame()
  for _,label:=range []string{"Confirm load only","Cancel password request","https://vpn.example","alice"}{
-  r,ok:=v.Find(label);if !ok || r.X<0 || r.W<=0 || r.X+r.W>880{t.Fatalf("password confirmation exceeds minimum viewport: %s",label)}
+  r,ok:=v.Find(a.tr(label));if !ok || r.X<0 || r.W<=0 || r.X+r.W>880{t.Fatalf("password confirmation exceeds minimum viewport: %s found=%t rect=%+v",label,ok,r)}
  }
+ if v.HasText(a.tr("Session password")) || v.HasText(a.tr("Authorize network changes")){t.Fatal("confirmation did not replace unrelated session inputs")}
+ if err:=v.Click(a.tr("Cancel password request"));err!=nil{t.Fatal(err)};v.Frame()
+ if a.credentialIntent!=nil || a.Password!="synthetic" || !v.HasText(a.tr("Session password")){t.Fatal("cancel did not restore the unchanged session form")}
  noPasswordCall(t,m)
+ })}
 }
 
 type hidePasswordSession struct{ switchSession; stops atomic.Int32 }
@@ -168,4 +173,28 @@ func TestHidingPasswordFormNeverStopsActiveTunnel(t *testing.T){
  if a.Password!="" || a.KeyPassword!="" || a.IPsecPSK!="" || a.Authorized || a.ProxyConsent || a.ConnectPanel{t.Fatal("tray hide retained session inputs")}
  if a.Engine.Snapshot().State!=core.Connected || session.stops.Load()!=0{t.Fatal("tray hide stopped active tunnel")}
  noPasswordCall(t,m)
+}
+
+// A long, synthetic display name forces scrolling without hiding or truncating
+// the operation's exact identity. Every action must still offer a usable cancel.
+func TestPasswordConfirmationsRemainReachableByScrolling(t *testing.T){
+ for _,language:=range []string{"en","zh"}{
+  for _,action:=range []credentialstore.Consent{credentialstore.SavePassword,credentialstore.UsePassword,credentialstore.DeletePassword}{
+   t.Run(language+"/"+string(rune('0'+action)),func(t *testing.T){
+    a,m,_:=passwordTestApp(t);a.Config.Settings.Language=language;a.Password="synthetic"
+    a.Config.Profiles[0].Name=strings.Repeat("Synthetic profile name ",40)
+    a.requestCredentialAction(action);v:=ui.NewTester(a.View,880,580)
+    v.Scroll(650,300,0,10000);v.Frame()
+    confirm:="Confirm load only"
+    if action==credentialstore.SavePassword{confirm="Confirm save / replace"}
+    if action==credentialstore.DeletePassword{confirm="Confirm delete saved password"}
+    for _,label:=range []string{confirm,"Cancel password request"}{
+     r,ok:=v.Find(a.tr(label));if !ok || r.X<0 || r.W<=0 || r.H<=0 || r.X+r.W>880 || r.Y<0 || r.Y+r.H>580{t.Fatalf("scrolled confirmation is unreachable: %s found=%t rect=%+v",label,ok,r)}
+    }
+    if err:=v.Click(a.tr("Cancel password request"));err!=nil{t.Fatal(err)};v.Frame()
+    if a.credentialIntent!=nil || a.Password!="synthetic"{t.Fatal("scrolled cancel did not preserve the session input")}
+    noPasswordCall(t,m)
+   })
+  }
+ }
 }

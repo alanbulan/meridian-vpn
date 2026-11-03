@@ -816,6 +816,12 @@ func (a *App) connectForm(c *ui.Context) {
 	t := c.Theme()
 	ui.Column(c).FillWidth().Padding(22).Gap(14).Background(t.Surface).Border(1, t.Border).Radius(14).Children(func() {
 		ui.Text(c, a.tr("Session authentication")).FontSize(16).Bold()
+		// Give the exact-target confirmation its own view instead of stacking
+		// it below unrelated session inputs. Cancel restores those inputs.
+		if a.credentialIntent != nil || a.credentialOperation != nil {
+			a.credentialControls(c)
+			return
+		}
 		if selected := a.selected(); selected != nil {
 			choices := append([]string{selected.Gateway}, selected.AdditionalGateways...)
 			if len(choices) > 1 {

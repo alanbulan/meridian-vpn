@@ -185,10 +185,12 @@ func(a *App)credentialControls(c *ui.Context){
   if intent:=a.credentialIntent;intent!=nil{
    r:=intent.snapshot.reference
    a.label(c,"Confirm this exact profile, gateway and account:")
-   if p:=a.selected();p!=nil{ui.Text(c,p.Name).FillWidth().FontSize(12)}
-   ui.Text(c,r.ProfileID+" · "+r.Protocol).FillWidth().FontSize(12)
-   ui.Text(c,r.Gateway).FillWidth().FontSize(12)
-   ui.Text(c,r.Account).FillWidth().FontSize(12)
+   ui.Column(c).FillWidth().Gap(2).Children(func(){
+    if p:=a.selected();p!=nil{ui.Text(c,p.Name).FillWidth().FontSize(12)}
+    ui.Text(c,r.ProfileID+" · "+r.Protocol).FillWidth().FontSize(12)
+    ui.Text(c,r.Gateway).FillWidth().FontSize(12)
+    ui.Text(c,r.Account).FillWidth().FontSize(12)
+   })
    label:="Confirm load only"
    switch intent.action{
    case credentialstore.SavePassword:

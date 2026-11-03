@@ -39,7 +39,7 @@ type BusPin struct {
 // credentials, auto-starts a service, reconnects, or exposes the underlying Conn.
 // The incoming interceptor invalidates in the reader before replies are released.
 // The outgoing interceptor adds a fixed destination to the two permitted signals.
-// This deliberately depends on audited godbus v5.2.2 interceptor/Emit behavior.
+// This deliberately depends on audited godbus v5.2.4 interceptor/Emit behavior.
 type PinnedBus struct {
 	mu           sync.Mutex
 	raw          *net.UnixConn
@@ -265,7 +265,7 @@ func (b *PinnedBus) Close() error {
 
 // No method lets callers select another destination, emit arbitrary members or
 // supply a sender. Emit returns encoding/transport failures; raw SendWithContext
-// on a signal does NOT in godbus v5.2.2. A successful Emit is still not NM receipt.
+// on a signal does NOT in godbus v5.2.4. A successful Emit is still not NM receipt.
 func (b *PinnedBus) emit(ctx context.Context, member string, values map[string]dbus.Variant) error {
 	if ctx.Err() != nil || b.invalid.Load() || (member != "Config" && member != "Ip4Config") {
 		return errPeer

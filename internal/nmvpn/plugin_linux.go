@@ -42,20 +42,20 @@ func validPluginPlan(p PluginPlan) bool {
 // exact connection that emits Config. One bus owns one Plugin and one Connect.
 // Connect acceptance is only a bounded handoff, not launch or network readiness.
 type Plugin struct {
-	mu           sync.Mutex
-	bus          *PinnedBus
-	plan         PluginPlan
-	ctx          context.Context
-	cancel       context.CancelFunc
-	done         chan struct{}
-	requests     chan *Activation
-	activation   atomic.Pointer[Activation]
-	disconnected atomic.Bool
-	disconnectCh chan struct{}
+	mu             sync.Mutex
+	bus            *PinnedBus
+	plan           PluginPlan
+	ctx            context.Context
+	cancel         context.CancelFunc
+	done           chan struct{}
+	requests       chan *Activation
+	activation     atomic.Pointer[Activation]
+	disconnected   atomic.Bool
+	disconnectCh   chan struct{}
 	managerClaimed atomic.Bool
-	published    atomic.Uint32
-	state        uint32
-	consumed     bool
+	published      atomic.Uint32
+	state          uint32
+	consumed       bool
 }
 
 // Activation is opaque authenticated Connect evidence. Secrets are separated

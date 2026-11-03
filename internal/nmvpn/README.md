@@ -105,7 +105,7 @@ The wrapper monitors NM and plugin name ownership synchronously in the incoming
 message interceptor, before dispatching later replies. Loss/replacement or
 release-and-reacquisition permanently invalidates it. Directed publication uses
 `Emit` with a fixed destination injected before encoding. This avoids godbus
-v5.2.2's raw signal `SendWithContext`, which does not reliably surface cancellation
+v5.2.4's raw signal `SendWithContext`, which does not reliably surface cancellation
 and transport errors. No forged sender is supplied. The actual plugin unique
 name must be the same connection NM contacted for that activation.
 
@@ -116,6 +116,13 @@ writer. There are no detached timeout writers or retries of an uncertain signal
 or DeactivateConnection. A delivered signal cannot be retracted by cancellation;
 local send success is neither NM acknowledgement nor networking readback. The
 bound assumes Broker methods honor context; mutex contention is not included.
+
+The pinned dependency is godbus v5.2.4. A full private-bus run exposed v5.2.2's
+uncaught header-padding read panic during concurrent connection closure. The
+official fix returns an ordinary read error and is retained in v5.2.4; raw-socket
+first cancellation remains necessary to unblock a saturated writer. A deterministic
+truncated-padding regression protects this boundary in addition to the real
+private-bus owner-loss fixtures. See [upstream fix #437](https://github.com/godbus/dbus/pull/437).
 
 `ValidateProfile` accepts a narrow typed network grammar, including empty
 modern/legacy network arrays. The incoming handler separately validates and
@@ -155,7 +162,7 @@ MERIDIAN_NMVPN_WIRE_TESTS=1 bash integration/nmvpn/run-wire-tests.sh
 - [D-Bus specification](https://dbus.freedesktop.org/doc/dbus-specification.html), especially GetId, unique names and directed signals.
 - [Go JSON field folding](https://go.dev/src/encoding/json/fold.go), motivating exact canonical journal keys before decoding into structs.
 
-- [Pinned godbus connection implementation](https://github.com/godbus/dbus/blob/v5.2.2/conn.go) and [Emit implementation](https://github.com/godbus/dbus/blob/v5.2.2/export.go), including interceptor ordering and output/Close locks.
+- [Pinned godbus connection implementation](https://github.com/godbus/dbus/blob/v5.2.4/conn.go) and [Emit implementation](https://github.com/godbus/dbus/blob/v5.2.4/export.go), including interceptor ordering and output/Close locks.
 - [NM Settings.GetSettings contract](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Settings.Connection.html)
 
 
@@ -220,7 +227,7 @@ gates. Mock bridge tests do not establish those proofs.
 
 Additional primary sources: [NM service implementation](https://github.com/NetworkManager/NetworkManager/blob/a0f2961616e2ca50ebf8eeecde2900b00150ec4e/src/libnm-client-impl/nm-vpn-service-plugin.c),
 [NM activation and secret flow](https://github.com/NetworkManager/NetworkManager/blob/a0f2961616e2ca50ebf8eeecde2900b00150ec4e/src/core/vpn/nm-vpn-connection.c),
-and [godbus export dispatch](https://github.com/godbus/dbus/blob/v5.2.2/export.go).
+and [godbus export dispatch](https://github.com/godbus/dbus/blob/v5.2.4/export.go).
 
 ## Concrete manager transaction and durable containment
 

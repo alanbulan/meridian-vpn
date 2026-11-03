@@ -254,6 +254,9 @@ func (l UniVPNExecLauncher) Launch(ctx context.Context, path string, args []stri
 	if err = startUniVPNContained(ctx, cmd, l.Isolation, cmd.Start); err != nil {
 		return nil, err
 	}
+	// Retain the original process identity before any caller can begin Wait.
+	// Failure only disables optional observations; it must not lose this child.
+	p.observation = pinUniVPNOriginalProcess(p)
 	if sessionRead != nil {
 		reader := sessionRead
 		p.sessionReader = reader
@@ -285,11 +288,13 @@ type uniVPNExecProcess struct {
 	packet           packetrelay.PacketIO
 	packetMu         sync.Mutex
 	sessionID        string
+	observation      *uniVPNProcessObservation
 }
 
 func (p *uniVPNExecProcess) Wait() error {
 	err := errors.Join(p.cmd.Wait(), p.launchCleanupErr)
 	close(p.exited)
+	err = errors.Join(err, p.observation.close())
 	p.packetMu.Lock()
 	packet := p.packet
 	p.packet = nil

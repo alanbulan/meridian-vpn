@@ -73,6 +73,9 @@ type ActivationManager struct {
 	started bool
 	record  ActivationRecord
 	profile map[string]map[string]dbus.Variant
+
+	// Protected by mu; a copied receipt cannot repeat the observation attempt.
+	hostObservationClaimed bool
 }
 
 // ActivationReceipt is unforgeable outside this package. It proves only the

@@ -294,3 +294,13 @@ enablement. The only exercised D-Bus service is synthetic NM on a private bus.
 Primary references: [Settings.AddConnection2](https://www.networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Settings.html),
 [ActivateConnection](https://www.networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.html),
 and [AddConnection2 flags](https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/nm-dbus-types.html).
+
+## Read-only host prerequisites
+
+The [host-observation precursor](HOST-OBSERVATION.md) adds receipt-bound initial
+NM state observations, retained trusted file pins, and original native-process
+identity observations. These are deliberately not HostAuthority/HostBinding
+implementations. An NM property, root UID, executable hash or matching namespace
+identifier never grants exclusive host-network ownership, readiness or cleanup
+authority. Applied/global/dispatcher policy and actual TUN/relay handles remain
+independent missing requirements; normal application enablement is unchanged.

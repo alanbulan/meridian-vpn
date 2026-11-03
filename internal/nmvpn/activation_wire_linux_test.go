@@ -60,6 +60,8 @@ type activationWireManager struct {
 	handlerDone             chan struct{}
 	malformed               string
 	afterAdd                func()
+	connectTransform        func(map[string]map[string]dbus.Variant) map[string]map[string]dbus.Variant
+	settingsTransform       func(map[string]map[string]dbus.Variant) map[string]map[string]dbus.Variant
 }
 
 func (s *activationWireManager) AddConnection2(sender dbus.Sender, profile map[string]map[string]dbus.Variant, flags uint32, args map[string]dbus.Variant) (dbus.ObjectPath, map[string]dbus.Variant, *dbus.Error) {
@@ -119,10 +121,18 @@ func (s *activationWireManager) ActivateConnection(sender dbus.Sender, settings,
 		}
 	}
 	s.f.service.mu.Unlock()
+	if s.connectTransform != nil {
+		profile = s.connectTransform(profile)
+	}
 	profile["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": nmPluginWirePassword})
 	if call := s.f.call(s.f.service.conn, PluginInterface+".Connect", profile); call.Err != nil {
 		s.bad = true
 		return "", &dbus.Error{Name: "org.freedesktop.DBus.Error.Failed"}
+	}
+	if s.settingsTransform != nil {
+		s.f.service.mu.Lock()
+		s.f.service.profile = s.settingsTransform(s.f.service.profile)
+		s.f.service.mu.Unlock()
 	}
 	if s.blockActivate != nil {
 		defer close(s.handlerDone)
@@ -225,7 +235,7 @@ func TestNMVPNWireManagerActivationUncertainNeverReplays(t *testing.T) {
 	}
 }
 func TestNMVPNWireManagerReceiptRejectsBootAndNonceMismatch(t *testing.T) {
-	for _, kind := range []string{"boot", "profile", "activation", "normalized", "journal"} {
+	for _, kind := range []string{"boot", "profile", "activation", "interface", "journal"} {
 		t.Run(kind, func(t *testing.T) {
 			f, j, _, m := activationWireFixture(t)
 			receipt, err := m.Start(f.ctx, nmSafeSettings())
@@ -245,9 +255,9 @@ func TestNMVPNWireManagerReceiptRejectsBootAndNonceMismatch(t *testing.T) {
 				f.service.mu.Unlock()
 			case "activation":
 				a = &Activation{}
-			case "normalized":
+			case "interface":
 				f.service.mu.Lock()
-				f.service.profile["connection"]["timestamp"] = dbus.MakeVariant(uint64(1))
+				f.service.profile["connection"]["interface-name"] = dbus.MakeVariant(f.plan.Interface)
 				f.service.mu.Unlock()
 			case "journal":
 				j.mu.Lock()

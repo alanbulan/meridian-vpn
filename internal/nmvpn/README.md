@@ -251,9 +251,12 @@ The opaque receipt's `Correlate` verifies the exact authenticated Activation,
 nonce, immutable profile, current settings envelope, boot/bus/unique owners and
 the direct returned active object's reference to the direct returned settings
 object. Its Binding output has an empty native Session; the separate native
-owner creates that generation. Equality is deliberately strict: NM-added defaults,
-timestamps or other normalization are currently rejected even if otherwise safe.
-Synthetic echo fixtures do not establish compatibility with real NM normalization.
+owner creates that generation. Both network snapshots pass the full strict grammar
+before comparison. Only a closed list of typed defaults, empty collections and
+NM bookkeeping fields may differ; unknown or policy-changing values still fail.
+In particular absent DNS options are not equivalent to present-empty DNS options,
+and interface binding, autoconnect, profile label and credential-envelope values
+stay bound. See [profile equivalence](PROFILE-NORMALIZATION.md) for the exact list.
 Activation's inbound Connect may arrive before
 ActivateConnection replies, so the manager must not hold the bus serialization
 lock while waiting for that method. A bounded, joined cancellation callback
@@ -275,6 +278,13 @@ is durable restart containment, **not** automatic restart/reboot recovery or
 network cleanup. Manual inspection and a future separately authenticated recovery
 authority remain required. A newly started process cannot recover the former
 Plugin unique owner, opaque Activation or host resource handles from identifiers.
+
+The isolated wire workflow also uses the official libnm library to normalize a
+credential-free SimpleConnection in memory and serializes its actual typed output.
+Those generated values are used independently in synthetic Connect and GetSettings
+calls. No NM.Client or system-bus connection is created. This proves the exercised
+client-library serialization shapes, not a real NM daemon's applied profile,
+manager-only legacy serialization, host policy or gateway compatibility.
 
 This manager supplies only the manager-side transaction proof. It does not
 implement UniVPNNMHostAuthority/HostBinding, acquire TUN or relay handles, inspect

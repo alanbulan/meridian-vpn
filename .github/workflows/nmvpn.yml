@@ -68,7 +68,7 @@ jobs:
       - name: Install official disposable fixture dependencies
         run: |
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 procps build-essential
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 python3-gi gir1.2-nm-1.0 procps build-essential
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -93,6 +93,7 @@ jobs:
           expected = {'TestNMVPNWireDirectedLifecycle', 'TestNMVPNWirePinRejections', 'TestNMVPNWireBindingAndProfile', 'TestNMVPNWirePayloadAndOrder', 'TestNMVPNWireOwnerLossAndCancellation', 'TestNMVPNWireAbsenceRequiresBothProofs', 'TestNMVPNWireBlockedAuthCancellation', 'TestNMVPNWireOwnerLossStopsOnlyLocalGeneration', 'TestNMVPNWireUncertainLocalStopForbidsPublication'}
           expected |= {'TestNMVPNWirePluginDisconnectDuringCredentialHandoff', 'TestNMVPNWirePluginHandshakeAndOneShotSecrets', 'TestNMVPNWirePluginDisconnectObserverRejectsMalformed', 'TestNMVPNWirePluginPendingDisconnectAndOwnerLoss', 'TestNMVPNWirePluginRequiresLivePublicationVerifier', 'TestNMVPNWirePluginImmutableSanitizedSnapshot', 'TestNMVPNWirePluginDirectedLifecycle', 'TestNMVPNWirePluginDisconnectReceiveOrder', 'TestNMVPNWirePluginConcurrentSecretUseAndFailure', 'TestNMVPNWirePluginProfileEnvelopeRejections', 'TestNMVPNWirePluginRejectsUnauthenticatedAndMalformedCalls'}
           expected |= {'TestNMVPNWireManagerActivationUncertainNeverReplays', 'TestNMVPNWireManagerActivationWireReceipt', 'TestNMVPNWireManagerRecoveryNeverMutates', 'TestNMVPNWireManagerMalformedRepliesAndPinLoss', 'TestNMVPNWireManagerReceiptRejectsBootAndNonceMismatch', 'TestNMVPNWireManagerLostReplyCancellation', 'TestNMVPNWireManagerPreservesUnexpectedJournal'}
+          expected |= {'TestNMVPNWireManagerLibnmNormalization', 'TestNMVPNWireManagerNormalizationTampering'}
           passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
           assert expected <= passed, 'a required wire case did not pass'
           assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'

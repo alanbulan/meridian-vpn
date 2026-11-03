@@ -18,4 +18,6 @@ reports=reports/nmvpn-wire
 mkdir -p "$reports"
 dbus-daemon --version > "$reports/dbus-version.txt"
 go version > "$reports/go-version.txt"
+python3 integration/nmvpn/export-profile-fixture.py "$reports/libnm-profile.json"
+export MERIDIAN_NMVPN_PROFILE_FIXTURE="$root/$reports/libnm-profile.json"
 go test -race -count=1 -timeout=120s -tags nmvpnintegration -run '^TestNMVPNWire' -json ./internal/nmvpn | tee "$reports/tests.jsonl"

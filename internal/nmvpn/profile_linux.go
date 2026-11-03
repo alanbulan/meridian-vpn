@@ -66,8 +66,9 @@ func ValidateProfile(settings map[string]map[string]dbus.Variant, id Identity) e
 		}
 	}
 	if proxy, ok := settings["proxy"]; ok {
-		// NM's actual proxy.method wire type is int32, not uint32.
-		if v, ok := proxy["method"]; !ok || !profileEqual(v, int32(0)) {
+		// NM may omit the default method from an empty proxy setting.
+		// Its actual wire type, when present, is int32, not uint32.
+		if v, ok := proxy["method"]; ok && !profileEqual(v, int32(0)) {
 			return bad
 		}
 	}

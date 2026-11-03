@@ -175,8 +175,8 @@ func TestValidateProfileRejectsMalformedVariantsAndIdentity(t *testing.T) {
 		t.Fatal("accepted nil profile")
 	}
 	s["proxy"] = map[string]dbus.Variant{}
-	if ValidateProfile(s, id) == nil {
-		t.Fatal("accepted proxy without method")
+	if ValidateProfile(s, id) != nil {
+		t.Fatal("rejected empty proxy default")
 	}
 }
 

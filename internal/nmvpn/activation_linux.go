@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"reflect"
 	"sync"
 	"time"
 
@@ -177,7 +176,7 @@ func (m *ActivationManager) Start(ctx context.Context, network map[string]map[st
 		return nil, m.quarantine()
 	}
 	m.profile = cloneSafeProfile(network)
-	// Normalize the optional empty envelope before strict captured-profile checks.
+	// Normalize the optional empty envelope before captured-profile checks.
 	delete(m.profile["vpn"], "data")
 	delete(m.profile["vpn"], "secrets")
 	m.profile["connection"]["autoconnect"] = dbus.MakeVariant(false)
@@ -260,7 +259,7 @@ func (r *ActivationReceipt) Correlate(ctx context.Context, activation *Activatio
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	fail := func() (Binding, error) { return Binding{}, m.quarantine() }
-	if ctx == nil || (m.record.Phase != "activated" && m.record.Phase != "correlated") || activation == nil || activation.plugin != m.plugin || activation.CheckLive(ctx) != nil || activation.Nonce() != m.record.Nonce || !reflect.DeepEqual(activation.profile, m.profile) || (r.activation != nil && r.activation != activation) || m.check(ctx) != nil {
+	if ctx == nil || (m.record.Phase != "activated" && m.record.Phase != "correlated") || activation == nil || activation.plugin != m.plugin || activation.CheckLive(ctx) != nil || activation.Nonce() != m.record.Nonce || !equivalentProfiles(m.profile, activation.profile, Identity{UUID: m.record.UUID, Interface: m.record.Interface}) || (r.activation != nil && r.activation != activation) || m.check(ctx) != nil {
 		return fail()
 	}
 	err := m.bus.run(ctx, func(ctx context.Context) error {
@@ -273,7 +272,7 @@ func (r *ActivationReceipt) Correlate(ctx context.Context, activation *Activatio
 			return errPeer
 		}
 		network, password, err := incomingProfile(current, m.plugin.plan)
-		if err != nil || password != "" || !reflect.DeepEqual(network, m.profile) {
+		if err != nil || password != "" || !equivalentProfiles(m.profile, network, Identity{UUID: m.record.UUID, Interface: m.record.Interface}) {
 			return errPeer
 		}
 		return m.bus.check(ctx, true)

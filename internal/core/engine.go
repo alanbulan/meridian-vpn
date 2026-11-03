@@ -30,6 +30,7 @@ type LogEntry struct {
 }
 type Snapshot struct {
 	State                string
+	Failure              FailureKind
 	Message              string
 	Logs                 []LogEntry
 	VirtualIP            string
@@ -43,6 +44,8 @@ type Snapshot struct {
 // DNS policy. Process creation or untrusted log output is never readiness.
 // Done signals session termination, not a user-requested disconnect. Stop must
 // confirm cleanup before returning nil, including after Done has fired.
+// Ready and Done each publish at most one result; any terminal result must be
+// published before Stop returns. Channels may remain open after that result.
 type Session interface {
 	Ready() <-chan error
 	Done() <-chan error
@@ -92,6 +95,7 @@ type Engine struct {
 	mu             sync.Mutex
 	adapter        Adapter
 	state, message string
+	failure        FailureKind
 	logs           []LogEntry
 	cancel         context.CancelFunc
 	session        Session
@@ -114,7 +118,7 @@ func (e *Engine) add(level, msg string) {
 }
 func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
-	snapshot := Snapshot{State: e.state, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
+	snapshot := Snapshot{State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
 	session := e.session
 	e.mu.Unlock()
 	if snapshot.State == Connected {
@@ -161,14 +165,16 @@ func (e *Engine) ConnectWithCredentials(p Profile, credentials Credentials, auth
 	}
 	cap := e.adapter.Capability()
 	if !cap.Available {
-		e.message = cap.Message
+		e.failure = FailureBackendUnavailable
+		e.message = NewConnectionError(FailureBackendUnavailable).Error()
 		e.add("warning", "Connection blocked: required backend capability is unavailable.")
-		return errors.New(cap.Message)
+		return NewConnectionError(FailureBackendUnavailable)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.cancel = cancel
 	e.generation++
 	generation := e.generation
+	e.failure = FailureNone
 	e.state = Connecting
 	e.message = "Waiting for verified tunnel readiness"
 	e.add("info", "Connection requested; credentials are not logged or persisted.")
@@ -203,21 +209,22 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	if err != nil || nilInterface(session) {
 		if !nilInterface(session) {
 			e.beginCleanup()
-			if cleanupErr := session.Stop(); cleanupErr != nil {
-				e.complete(CleanupFailed, (&CleanupError{}).Error())
+			cleanupErr := session.Stop()
+			pendingCleanup := pendingCleanupFailure(session)
+			if cleanupErr != nil || pendingCleanup {
+				e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
 				return
 			}
 		}
-		var cleanup *CleanupError
-		if errors.As(err, &cleanup) {
-			e.complete(CleanupFailed, cleanup.Error())
+		if classifyFailure(err, FailureStart) == FailureCleanup {
+			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
 			return
 		}
 		e.mu.Lock()
 		if ctx.Err() != nil {
-			e.completeLocked(Disconnected, "No VPN tunnel is active")
+			e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
 		} else {
-			e.completeLocked(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.")
+			e.completeLocked(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.", classifyFailure(err, FailureStart))
 		}
 		e.mu.Unlock()
 		return
@@ -225,48 +232,51 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	e.mu.Lock()
 	e.session = session
 	e.mu.Unlock()
-	stop := func(failureMessage string) {
+	stop := func(failureMessage string, failure FailureKind) {
 		e.beginCleanup()
-		if err := session.Stop(); err != nil {
-			e.complete(CleanupFailed, (&CleanupError{}).Error())
+		// Stop may complete while cancellation races with a queued terminal
+		// notification. Observe both channels after cleanup so select ordering
+		// cannot erase an already-reported cleanup uncertainty.
+		stopErr := session.Stop()
+		pendingCleanup := pendingCleanupFailure(session)
+		if stopErr != nil || failure == FailureCleanup || pendingCleanup {
+			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
 		} else {
 			// Serialize the cancellation check with Disconnect so a user request
 			// racing with cleanup cannot be overwritten by a failure result.
 			e.mu.Lock()
 			if ctx.Err() == nil && failureMessage != "" {
-				e.completeLocked(Failed, failureMessage)
+				e.completeLocked(Failed, failureMessage, failure)
 			} else {
-				e.completeLocked(Disconnected, "No VPN tunnel is active")
+				e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
 			}
 			e.mu.Unlock()
 		}
 	}
 	select {
 	case <-ctx.Done():
-		stop("")
+		stop("", FailureNone)
 		return
 	case err, ok := <-session.Ready():
 		if !ok || err != nil {
-			stop("Tunnel ended without verified readiness")
+			stop("Tunnel ended without verified readiness", classifyFailure(err, FailureReadiness))
 			return
 		}
 	case err := <-session.Done():
-		var ce *CleanupError
-		if errors.As(err, &ce) {
-			e.complete(CleanupFailed, ce.Error())
+		if classifyFailure(err, FailureUnknown) == FailureCleanup {
+			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
 		} else {
-			stop("Tunnel ended without verified readiness")
+			stop("Tunnel ended without verified readiness", classifyFailure(err, FailureReadiness))
 		}
 		return
 	}
 	// A readiness notification must not override an already-terminal session.
 	select {
 	case err := <-session.Done():
-		var ce *CleanupError
-		if errors.As(err, &ce) {
-			e.complete(CleanupFailed, ce.Error())
+		if classifyFailure(err, FailureUnknown) == FailureCleanup {
+			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
 		} else {
-			stop("Tunnel ended without verified readiness")
+			stop("Tunnel ended without verified readiness", classifyFailure(err, FailureReadiness))
 		}
 		return
 	default:
@@ -281,13 +291,12 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	e.mu.Unlock()
 	select {
 	case <-ctx.Done():
-		stop("")
+		stop("", FailureNone)
 	case err := <-session.Done():
-		var ce *CleanupError
-		if errors.As(err, &ce) {
-			e.complete(CleanupFailed, ce.Error())
+		if classifyFailure(err, FailureUnknown) == FailureCleanup {
+			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
 		} else {
-			stop("Tunnel connection was lost; cleanup completed. Sign in again to reconnect.")
+			stop("Tunnel connection was lost; cleanup completed. Sign in again to reconnect.", classifyFailure(err, FailureConnectionLost))
 		}
 	}
 }
@@ -303,20 +312,21 @@ func (e *Engine) beginCleanup() {
 	e.message = "Waiting for verified tunnel cleanup"
 }
 
-func (e *Engine) complete(state, msg string) {
+func (e *Engine) complete(state, msg string, failure FailureKind) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.completeLocked(state, msg)
+	e.completeLocked(state, msg, failure)
 }
 
 // completeLocked requires e.mu.
-func (e *Engine) completeLocked(state, msg string) {
+func (e *Engine) completeLocked(state, msg string, failure FailureKind) {
 	if e.cancel != nil {
 		e.cancel()
 	}
 	e.cancel = nil
 	e.session = nil
 	e.state = state
+	e.failure = failure
 	e.connectedAt = time.Time{}
 	e.message = msg
 	level := "info"

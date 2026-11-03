@@ -393,7 +393,7 @@ jobs:
           test ! -L /opt
           test "$(stat -c '%u:%a' /opt)" = '0:755'
           mkdir -m 0755 /opt/meridian-crossuid-source
-          git archive HEAD | tar -x --no-same-owner -C /opt/meridian-crossuid-source
+          tar --exclude='./.git' -cf - . | tar -x --no-same-owner -C /opt/meridian-crossuid-source
           chmod -R go-w /opt/meridian-crossuid-source
           useradd --create-home --user-group --shell /bin/bash meridian-cross-a
           useradd --create-home --user-group --shell /bin/bash meridian-cross-b

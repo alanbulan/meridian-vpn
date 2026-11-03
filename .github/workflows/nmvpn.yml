@@ -1,0 +1,52 @@
+name: NetworkManager offline contract tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nmvpn-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Linux / NM offline contract and journal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Capture formatting evidence
+        run: |
+          mkdir -p reports/nmvpn
+          gofmt -d internal/nmvpn > reports/nmvpn/format.patch
+          echo NMVPN_FORMAT_PATCH_BEGIN
+          cat reports/nmvpn/format.patch
+          echo NMVPN_FORMAT_PATCH_END
+      - name: Race-test only in-memory peers and temporary files
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json ./internal/nmvpn | tee reports/nmvpn/tests.jsonl
+          go vet ./internal/nmvpn
+      - name: Require canonical formatting
+        run: test ! -s reports/nmvpn/format.patch
+      - name: Upload offline evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nmvpn-offline-evidence
+          path: reports/nmvpn/
+          if-no-files-found: error
+          retention-days: 7

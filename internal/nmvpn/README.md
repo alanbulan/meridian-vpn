@@ -84,7 +84,7 @@ go test -race -count=1 ./internal/nmvpn
 go vet ./internal/nmvpn
 ```
 
-Still missing: concrete manager activation-receipt and host-resource authority,
+Still missing: concrete retained host-resource authority,
 plugin registration/packaging, actual applied/global/dispatcher policy inspection,
 real host relay/readback, activation and real host cleanup proof, complete
 startup/reboot recovery, `core.Session` integration, DNS/IPv6 support, disposable
@@ -214,10 +214,66 @@ exit. PublicationVerifier separately requires live worker/host policy immediatel
 before each signal, and is mandatory for an installed incoming Plugin. Stop joins
 only retained local handles; ProveAbsent additionally requires native containment
 and independent host link/routes/DNS/relay absence. Neither normal application
-wiring nor core.Ready is supplied. The HostAuthority/HostBinding concrete manager,
-TUN/relay, policy and readback implementations remain mandatory missing deployment
+wiring nor core.Ready is supplied. The HostAuthority/HostBinding TUN/relay, policy
+and readback implementations remain mandatory missing deployment
 gates. Mock bridge tests do not establish those proofs.
 
 Additional primary sources: [NM service implementation](https://github.com/NetworkManager/NetworkManager/blob/a0f2961616e2ca50ebf8eeecde2900b00150ec4e/src/libnm-client-impl/nm-vpn-service-plugin.c),
 [NM activation and secret flow](https://github.com/NetworkManager/NetworkManager/blob/a0f2961616e2ca50ebf8eeecde2900b00150ec4e/src/core/vpn/nm-vpn-connection.c),
 and [godbus export dispatch](https://github.com/godbus/dbus/blob/v5.2.2/export.go).
+
+## Concrete manager transaction and durable containment
+
+`NewActivationManager` takes the already served Plugin and its exact PinnedBus,
+an exclusively held ActivationJournal, and a trusted boot-identity reader. The
+reader must honor its context and report the actual host boot, never desktop or
+gateway input. One Plugin admits only one manager. The manager installs a fresh
+128-bit nonce before any accepted Connect; a caller cannot choose the receipt's
+nonce or object paths.
+
+`Start` freezes the approved narrow network profile, forces autoconnect=false,
+and adds only the planned username, nonce and not-saved password flag. It never
+accepts a password. It durably records add-intent before Settings.AddConnection2
+with flags `0x22` (IN_MEMORY | BLOCK_AUTOCONNECT), records the actual returned
+settings path, then writes activate-intent before ActivateConnection. Both the
+device and base connection argument are `/`; NM chooses the base connection.
+Only the method-returned active path is recorded. No UUID lookup, object scan,
+AddAndActivateConnection fallback, reconnect or uncertain mutation replay exists.
+
+The opaque receipt's `Correlate` verifies the exact authenticated Activation,
+nonce, immutable profile, current settings envelope, boot/bus/unique owners and
+the direct returned active object's reference to the direct returned settings
+object. Its Binding output has an empty native Session; the separate native
+owner creates that generation. Equality is deliberately strict: NM-added defaults,
+timestamps or other normalization are currently rejected even if otherwise safe.
+Synthetic echo fixtures do not establish compatibility with real NM normalization.
+Activation's inbound Connect may arrive before
+ActivateConnection replies, so the manager must not hold the bus serialization
+lock while waiting for that method. A bounded, joined cancellation callback
+closes the raw transport before the D-Bus connection.
+
+`FileActivationJournal` uses the same strict private-directory/openat/flock,
+atomic file/rename and directory-fsync model as FileJournal. Its independent flat
+schema stores only identifiers and stages, including the nonce and both returned
+paths. It rejects missing, duplicate, case-folded, unknown, null and malformed
+fields. Use a distinct directory from the publication Controller: their common
+lock and filename make accidental cross-schema reuse fail closed. There is no
+public clearance method because this transaction cannot prove host cleanup.
+
+Every preexisting journal record blocks a new transaction and is quarantined.
+Corruption is retained unchanged. A missing reply, failed durable write, changed
+boot/bus/NM owner or failed correlation fences the Plugin and invalidates the bus.
+Recovery never reconstructs a receipt from disk or guesses a missing path. This
+is durable restart containment, **not** automatic restart/reboot recovery or
+network cleanup. Manual inspection and a future separately authenticated recovery
+authority remain required. A newly started process cannot recover the former
+Plugin unique owner, opaque Activation or host resource handles from identifiers.
+
+This manager supplies only the manager-side transaction proof. It does not
+implement UniVPNNMHostAuthority/HostBinding, acquire TUN or relay handles, inspect
+applied/global/dispatcher policy, install services, or change normal application
+enablement. The only exercised D-Bus service is synthetic NM on a private bus.
+
+Primary references: [Settings.AddConnection2](https://www.networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Settings.html),
+[ActivateConnection](https://www.networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.html),
+and [AddConnection2 flags](https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/nm-dbus-types.html).

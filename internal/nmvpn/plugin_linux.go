@@ -52,6 +52,7 @@ type Plugin struct {
 	activation   atomic.Pointer[Activation]
 	disconnected atomic.Bool
 	disconnectCh chan struct{}
+	managerClaimed atomic.Bool
 	published    atomic.Uint32
 	state        uint32
 	consumed     bool

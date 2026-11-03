@@ -125,6 +125,37 @@ func TestUniVPNPacketPairProviderInvalidAndCopied(t *testing.T) {
 }
 
 func TestUniVPNPacketPairProviderCancellationAndCleanup(t *testing.T) {
+	// RawConn returns the poller's closed-file sentinel, not os.ErrClosed.
+	// Obtain it from a closed control pair, without matching an error string.
+	controlNative, controlPeer, err := packetrelay.OpenPacketPair(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = controlNative.Close() })
+	t.Cleanup(func() { _ = controlPeer.Close() })
+	if err := controlNative.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stillOpen := make(chan error, 1)
+	go func() {
+		_, err := controlPeer.ReadPacket(make([]byte, 1))
+		stillOpen <- err
+	}()
+	select {
+	case err := <-stillOpen:
+		if !errors.Is(err, io.EOF) {
+			t.Fatal("open control peer did not observe EOF", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("control peer did not return")
+	}
+	if err := controlPeer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, closedErr := controlPeer.ReadPacket(make([]byte, 1))
+	if closedErr == nil || errors.Is(closedErr, io.EOF) {
+		t.Fatal("closed control did not differ from a leaked open peer", closedErr)
+	}
 	for _, phase := range []string{"opener", "uncertain", "cancel-after-open", "missing-peer", "close-failure"} {
 		t.Run(phase, func(t *testing.T) {
 			p := NewUniVPNPacketPairProvider()
@@ -171,7 +202,7 @@ func TestUniVPNPacketPairProviderCancellationAndCleanup(t *testing.T) {
 				}
 			}
 			if peer != nil {
-				if _, err := peer.ReadPacket(make([]byte, 1)); !errors.Is(err, os.ErrClosed) {
+				if _, err := peer.ReadPacket(make([]byte, 1)); !errors.Is(err, closedErr) {
 					t.Fatal("relay was not closed", err)
 				}
 			}

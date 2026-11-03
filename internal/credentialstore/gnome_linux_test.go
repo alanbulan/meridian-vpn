@@ -111,20 +111,33 @@ func gnomeCollection(t *testing.T,b systemBus)dbus.ObjectPath{
  t.Helper();var path dbus.ObjectPath
  if err:=b.call(context.Background(),servicePath,serviceInterface+".ReadAlias",[]any{"default"},&path);err!=nil || path=="/" || !path.IsValid(){t.Fatal("default collection unavailable")};return path
 }
+// Diagnostics contain only boolean/size metadata, never secret bytes or raw errors.
+type gnomeDiagnosticBus struct { systemBus; t *testing.T }
+func (b gnomeDiagnosticBus) call(ctx context.Context,path dbus.ObjectPath,method string,args []any,out ...any) error {
+ err:=b.systemBus.call(ctx,path,method,args,out...)
+ if method==itemInterface+".GetSecret" && err==nil && len(out)==1 {
+  if got,ok:=out[0].(*secret);ok {
+   b.t.Logf("fixture GetSecret metadata: session_match=%t parameters=%d value_size=%d octet_stream=%t text_plain=%t",got.Session==args[0],len(got.Parameters),len(got.Value),got.ContentType=="application/octet-stream",got.ContentType=="text/plain")
+  }
+ }
+ return err
+}
+func diagnosticGNOMEStore(t *testing.T,b systemBus)Store{return Store{run:func(ctx context.Context,op operation,key string,value []byte)([]byte,error){return execute(ctx,gnomeDiagnosticBus{b,t},op,key,value)}}}
+
 func assertGNOMEValue(t *testing.T,store Store,r Reference,want []byte){
  t.Helper();out,err:=store.Load(context.Background(),r,UsePassword);defer clear(out)
- if err!=nil || !bytes.Equal(out,want){t.Fatal("real-provider password round trip failed")}
+ if err!=nil || !bytes.Equal(out,want){t.Fatalf("real-provider round trip failed: unavailable=%t not_found=%t locked=%t value_size=%d",err==ErrUnavailable,err==ErrNotFound,err==ErrLocked,len(out))}
 }
 
 func TestCredentialGNOMERealLifecycle(t *testing.T){
- f:=newGNOMEFixture(t);child:=f.start();b:=f.provider();store:=wireStore(b);r:=reference();ctx:=context.Background()
+ f:=newGNOMEFixture(t);child:=f.start();b:=f.provider();store:=diagnosticGNOMEStore(t,b);r:=reference();ctx:=context.Background()
  if _,err:=store.Load(ctx,r,UsePassword);err!=ErrNotFound{t.Fatal("missing GNOME item not classified")}
  first:=[]byte("synthetic-real-provider-password");replacement:=[]byte("synthetic-real-provider-replacement");defer clear(first);defer clear(replacement)
  if err:=store.Save(ctx,r,first,SavePassword);err!=nil{t.Fatal("GNOME create failed",err)}
  assertGNOMEValue(t,store,r,first)
  if err:=store.Save(ctx,r,replacement,SavePassword);err!=nil{t.Fatal("GNOME replacement failed",err)}
  assertGNOMEValue(t,store,r,replacement)
- child=f.restart(child);b=f.provider();store=wireStore(b)
+ child=f.restart(child);b=f.provider();store=diagnosticGNOMEStore(t,b)
  assertGNOMEValue(t,store,r,replacement) // Actual provider disk/restart path; not proof of its encryption policy.
 
  // Deliberately create a second synthetic item using the real provider API,
@@ -144,10 +157,10 @@ func TestCredentialGNOMERealLifecycle(t *testing.T){
  if err:=b.call(ctx,servicePath,serviceInterface+".Lock",[]any{[]dbus.ObjectPath{collection}},&locked,&prompt);err!=nil || prompt!="/"{t.Fatal("real-provider fixture lock failed")}
  if _,err:=store.Load(ctx,r,UsePassword);err!=ErrLocked{t.Fatal("real locked keyring did not fail closed")}
  if err:=store.Save(ctx,r,first,SavePassword);err!=ErrLocked{t.Fatal("locked real password was overwritten")}
- child=f.restart(child);store=wireStore(f.provider());assertGNOMEValue(t,store,r,replacement)
+ child=f.restart(child);store=diagnosticGNOMEStore(t,f.provider());assertGNOMEValue(t,store,r,replacement)
  if err:=store.Delete(ctx,r,DeletePassword);err!=nil{t.Fatal("real-provider delete failed",err)}
  if _,err:=store.Load(ctx,r,UsePassword);err!=ErrNotFound{t.Fatal("real-provider deleted item remained")}
- child=f.restart(child);store=wireStore(f.provider())
+ child=f.restart(child);store=diagnosticGNOMEStore(t,f.provider())
  if _,err:=store.Load(ctx,r,UsePassword);err!=ErrNotFound{t.Fatal("real-provider deletion did not persist across restart")}
  child.stop()
 }

@@ -18,7 +18,9 @@ and cleanup retry with reconnect blocked until confirmation. Injected driver
 errors are redacted rather than passed into UI/logs. It does not claim interface
 validation proves route/DNS correctness or leak prevention.
 
-Tests use an in-memory driver exclusively. They are not real RAS tests. The
+Lifecycle tests use an in-memory driver; discovery/property tests inject fake
+API functions, and SDK checks compile declarations only. None are real RAS
+operation tests. The
 controller is intentionally separate from `core.Adapter`: integrating it before
 implementing the native contract and additional consent would misrepresent the
 current capability. Any future bridge must reject unsupported profile options,
@@ -75,9 +77,9 @@ starting until all queued cleanup requests have finished.
    integration, Windows storage-consent UI, crash recovery with ownership proof,
    native architecture builds, and authorized real Windows acceptance tests.
 
-A safe implementation is blocked here by the absence of a verified native ABI
-binding and Windows runtime test environment, not by an imaginary lack of RAS
-APIs. A Windows-only cgo binding could use official SDK structure definitions,
+Real dialing remains blocked on audited dial/connection/credential ABI
+bindings, native lifetime implementation, and Windows runtime acceptance. The
+read-only property/layout slice below addresses discovery, not those operations. A Windows-only cgo binding could use official SDK structure definitions,
 but would require a deliberate exception to the project's CGO-disabled release
 policy. A pure-Go binding instead needs audited ABI sizes/layouts on every
 supported architecture. Neither option should be represented as complete based
@@ -150,10 +152,11 @@ There are unresolved correctness requirements before implementing dialing:
   cleanup failure, while repeatedly hanging up could disconnect another owner.
   This needs an ownership/reference state machine and target-system tests, not
   a broad `rasdial /disconnect` fallback.
-- Read and validate protocol, gateway, authentication and prohibited custom
-  dialer/script behavior through a verified `RASENTRY` binding. Entry-name
-  enumeration alone cannot establish that a selected item is L2TP/IPsec or
-  pin the intended destination. Revalidate identity around operations.
+- The read-only slice below implements strict protocol, gateway, authentication
+  and custom dialer/script checks through `RASENTRYW`, with SDK layout checks.
+  Native API acceptance is still pending. A future dialer must revalidate
+  identity around operations and close the configuration/connection race;
+  neither entry enumeration nor a metadata snapshot is safe-to-dial proof.
 - Do not assume omitting `RasSetCredentials` proves that a successful dial cannot
   update a credential cache. The saved-credential behavior and current OS policy
   need verification. Do not read or clear existing secrets to test this. If a

@@ -21,7 +21,7 @@ def main():
     vcvars = Path(installation) / "VC/Auxiliary/Build/vcvarsall.bat"
     if not vcvars.is_file():
         raise SystemExit("Installed Microsoft C compiler was not found")
-    output = root / "build/windows-ras-abi"
+    output = root / "reports/windows-ras-abi"
     output.mkdir(parents=True, exist_ok=True)
     for architecture in ("x64", "x86"):
         obj = output / f"ras-layout-{architecture}.obj"

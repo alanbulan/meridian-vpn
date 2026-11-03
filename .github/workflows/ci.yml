@@ -364,3 +364,72 @@ jobs:
           path: reports/credential-production/
           if-no-files-found: warn
           retention-days: 7
+
+  credential-crossuid:
+    name: Linux / isolated cross-UID rejection fixtures
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 procps util-linux coreutils libc-bin
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare immutable fixture source before running either fixture UID
+        run: |
+          test "$(id -u)" -eq 0
+          test ! -L /opt
+          test "$(stat -c '%u:%a' /opt)" = '0:755'
+          mkdir -m 0755 /opt/meridian-crossuid-source
+          git archive HEAD | tar -x --no-same-owner -C /opt/meridian-crossuid-source
+          chmod -R go-w /opt/meridian-crossuid-source
+          useradd --create-home --user-group --shell /bin/bash meridian-cross-a
+          useradd --create-home --user-group --shell /bin/bash meridian-cross-b
+      - name: Run root supervisor and two unprivileged synthetic fixtures
+        run: |
+          mkdir -p reports/credential-crossuid
+          set -o pipefail
+          GITHUB_ACTIONS=true MERIDIAN_CROSS_UID_TESTS=1 \
+            bash /opt/meridian-crossuid-source/integration/credentialstore/run-crossuid-tests.sh meridian-cross-a meridian-cross-b \
+            | go tool test2json -t -p mygo-vpn/internal/credentialstore \
+            | tee reports/credential-crossuid/tests.jsonl
+      - name: Verify supervisor actually passed without skips
+        run: |
+          python3 scripts/ci-summary.py reports/credential-crossuid/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-crossuid/tests.jsonl').read_text().splitlines()]
+          assert any(r.get('Test') == 'TestCredentialCrossUIDSupervisor' and r.get('Action') == 'pass' for r in rows), 'missing passing supervisor'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'cross-UID fixture skipped or failed'
+          PY
+      - name: Stop only dedicated fixture users on failure or timeout
+        if: always()
+        run: |
+          for user in meridian-cross-a meridian-cross-b; do
+            if id "$user" >/dev/null 2>&1; then
+              pkill -KILL -u "$(id -u "$user")" || test "$?" -eq 1
+            fi
+          done
+          # Never recurse through /run/user. Precise cleanup belongs to the
+          # root supervisor; whole-container teardown removes abnormal leftovers.
+      - name: Upload synthetic test results only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-crossuid-evidence
+          path: reports/credential-crossuid/
+          if-no-files-found: warn
+          retention-days: 7

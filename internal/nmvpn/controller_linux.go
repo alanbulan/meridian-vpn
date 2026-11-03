@@ -39,8 +39,8 @@ func validateRecord(r Record) error {
 	return nil
 }
 
-// Peer is a SECURITY BOUNDARY, not implemented by this package. A production
-// implementation must pin the authenticated system-bus NM owner and verify the
+// Peer is a SECURITY BOUNDARY. DBusPeer implements its NM wire half but requires
+// a trusted Broker for platform authority. A production integration must pin the authenticated system-bus NM owner and verify the
 // whole identity on EVERY operation, including after an owner-change event.
 // It must also reject a profile whose applied routes, DNS, default-route or IPv6
 // settings add anything outside the approved configuration: NM can merge profile
@@ -50,13 +50,19 @@ func validateRecord(r Record) error {
 // exact generation and stops/joins its native worker and relay. All operations
 // must honor context cancellation/deadlines without background mutations.
 // ProveAbsent must read back removal of this session's link, routes, DNS, active
-// connection and
-// workers, not just disappearance of an NM object. No matching means no mutation.
+// connection and workers, not just disappearance of an NM object. No matching means no mutation.
 type Peer interface {
 	Check(context.Context, Identity) error
 	Publish(context.Context, Identity, string, map[string]dbus.Variant) error
 	Withdraw(context.Context, Identity) error
 	ProveAbsent(context.Context, Identity) error
+}
+
+// LocalStopper may stop only independently authenticated local worker/relay
+// handles when NM identity is lost. It must not mutate NM/network state or claim
+// network cleanup. Controller always retains quarantine even when it succeeds.
+type LocalStopper interface {
+	StopLocal(context.Context, Identity) error
 }
 
 // Journal must belong to exactly ONE Controller for its entire lifecycle.
@@ -162,9 +168,11 @@ func (c *Controller) cleanup(ctx context.Context, r Record) error {
 		return errors.New("NM cleanup context expired")
 	}
 	if c.peer.Check(ctx, r.Identity) != nil {
+		c.stopLocal(r.Identity)
 		return errors.New("NM identity changed; reconciliation blocked")
 	}
 	if c.peer.Withdraw(ctx, r.Identity) != nil {
+		c.stopLocal(r.Identity)
 		return errors.New("NM withdrawal uncertain")
 	}
 	if c.peer.ProveAbsent(ctx, r.Identity) != nil {
@@ -179,6 +187,17 @@ func (c *Controller) cleanup(ctx context.Context, r Record) error {
 	}
 	c.blocked = false
 	return nil
+}
+
+// Local worker shutdown is a separate bounded recovery step and intentionally
+// survives a deadline consumed by NM verification/withdrawal. It never clears the
+// journal, changes NM networking, or trusts the old connection context.
+func (c *Controller) stopLocal(id Identity) {
+	if local, ok := c.peer.(LocalStopper); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = local.StopLocal(ctx, id)
+	}
 }
 
 // Reconcile never replays configuration after restart. Changed boot/owner/session

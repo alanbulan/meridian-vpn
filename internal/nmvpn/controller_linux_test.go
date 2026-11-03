@@ -426,3 +426,41 @@ func TestControllerUncertainClearCannotReopenGeneration(t *testing.T) {
 	safeError(t, c.Reconcile(context.Background()))
 	safeError(t, publishFixture(c, p))
 }
+
+type localRecoveryPeer struct {
+ *fakePeer
+ localCalled bool
+ localFresh bool
+ failWithdraw bool
+ expire context.CancelFunc
+}
+func(p *localRecoveryPeer)Check(ctx context.Context,id Identity)error{
+ if p.failWithdraw {return p.fakePeer.Check(ctx,id)}
+ p.expire()
+ <-ctx.Done()
+ return ctx.Err()
+}
+func(p *localRecoveryPeer)Withdraw(ctx context.Context,id Identity)error{
+ p.expire()
+ <-ctx.Done()
+ return ctx.Err()
+}
+func(p *localRecoveryPeer)StopLocal(ctx context.Context,id Identity)error{
+ p.localCalled=true
+ _,bounded:=ctx.Deadline()
+ p.localFresh=ctx.Err()==nil && bounded && id==p.id
+ return nil
+}
+func TestControllerLocalRecoveryGetsFreshContextAfterTimeout(t *testing.T){
+ for _,withdraw:=range []bool{false,true}{
+  trace:=[]string{}
+  peer:=&localRecoveryPeer{fakePeer:&fakePeer{trace:&trace,id:journalFixture().Identity},failWithdraw:withdraw}
+  record:=journalFixture();journal:=&memoryJournal{trace:&trace,r:&record}
+  controller,err:=NewController(peer,journal);if err!=nil{t.Fatal(err)}
+  ctx,cancel:=context.WithCancel(context.Background())
+  peer.expire=cancel
+  err=controller.Stop(ctx);cancel()
+  if err==nil || !peer.localCalled || !peer.localFresh{t.Fatal("local recovery inherited expired context")}
+  if journal.r==nil || journal.r.Phase!="quarantine"{t.Fatal("local-only stop cleared network uncertainty")}
+ }
+}

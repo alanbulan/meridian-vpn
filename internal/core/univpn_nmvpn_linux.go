@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mygo-vpn/internal/fdtransport"
@@ -86,6 +87,7 @@ type uniVPNNMDependencies struct {
 // host binding for the entire generation. Never also give that worker to
 // UniVPNBrokerBackend. A stopped or failed instance can never be started again.
 type UniVPNNMBroker struct {
+	self       *UniVPNNMBroker
 	gate       chan struct{}
 	activation uniVPNNMActivation
 	host       UniVPNNMHostBinding
@@ -109,6 +111,8 @@ type UniVPNNMBroker struct {
 	stopped    bool
 	stopErr    error
 	uncertain  bool // launch/source reported resources whose cleanup was not proven
+	localTried atomic.Bool // one retained local correlation attempt, never reset
+	local      *UniVPNNMLocalBinding
 }
 
 var _ nmvpn.Broker = (*UniVPNNMBroker)(nil)
@@ -229,6 +233,7 @@ func startUniVPNNM(ctx context.Context, a uniVPNNMActivation, policy nmvpn.Polic
 	policy.Routes = append([]netip.Prefix(nil), policy.Routes...)
 	run, cancel := context.WithCancel(ctx)
 	b := &UniVPNNMBroker{gate: make(chan struct{}, 1), activation: a, source: deps.source, launcher: deps.launcher, authorize: deps.authorize, run: run, cancel: cancel}
+	b.self = b
 	b.unhook = context.AfterFunc(a.Context(), cancel)
 	finishStartup := uniVPNNMStartupDeadline(45*time.Second, cancel)
 	// Hold the gate throughout acquisition; a cancellation watcher cannot race

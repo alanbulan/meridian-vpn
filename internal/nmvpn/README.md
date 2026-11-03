@@ -310,7 +310,49 @@ identity observations. These are deliberately not HostAuthority/HostBinding
 implementations. An NM property, root UID, executable hash or matching namespace
 identifier never grants exclusive host-network ownership, readiness or cleanup
 authority. The separate packetrelay precursor now has concrete TUN acquisition
-and retained local relay ownership, exercised only through private fake I/O. It
-does not correlate those handles to this NM transaction or native generation.
+and retained local relay ownership. TUN operations remain injected; anonymous
+local packet pairs are real. The local correlation described below connects their
+retained identities without supplying the missing host-policy authority.
 Applied/global/dispatcher policy, independent absence readback and authorized
 real-kernel acceptance remain missing; normal application enablement is unchanged.
+
+
+## Retained local generation correlation
+
+`ActivationReceipt.RetainedCorrelation` reads only the original manager's local,
+already-correlated receipt for the exact authenticated Activation. It does not
+contact NM, read boot identity again, write the journal, quarantine, fence or close
+anything on rejection. A foreign activation, uncorrelated receipt, local
+revocation or quarantine fails. This is retained provenance, not fresh NM state.
+
+The concrete native launch path preserves a private witness only when the
+explicit `UniVPNPacketPairProvider` created the pair. The witness retains the exact
+opposite packet endpoint, original process object and generated session through
+fixed-FD wiring and the reviewed bootstrap wrapper. Other trusted providers do
+not gain this proof. It is a reference to original identity, not a duplicate
+handle, second owner, process lookup, or replacement cleanup path.
+
+`UniVPNNMBroker.RetainLocalBinding` makes one non-owning attempt to correlate that
+witness, the original process observation, the actual manager receipt and the
+exact `TUNRelay` endpoint. The existing independently supplied HostBinding must
+already have prepared the broker. This new association does not implement or
+replace that boundary, start a relay or worker, create a TUN, mutate NM, or enable
+the normal application. Receipt, process, offer, cancellation and relay identity
+are checked again before the token is committed. Matching a retained TUN's name
+to the NM interface is only consistency; it does not prove that NM controls this
+particular device or that the device lives in the host network namespace.
+
+The returned opaque local binding and copied snapshot remain historical evidence
+after cancellation, worker exit or failed cleanup. `CheckLocalBinding` does not
+perform live checks, authorize publication, or prove absence. Failed and repeated
+attempts neither close an unrelated supplied relay nor transfer any ownership.
+The existing broker/host and relay owners retain all cleanup obligations and
+uncertain-close evidence. Sequential readbacks are not an atomic snapshot and
+cannot exclude changes immediately after the final check.
+
+Tests separately exercise concrete anonymous-pair/relay identity with injected
+TUN I/O, private process-file fixtures, local receipt invariants and a real private
+D-Bus synthetic-NM receipt. Core cross-package orchestration uses private test
+seams, not a real TUN/native/NM end-to-end acceptance claim. Applied/global policy,
+independent network absence, actual host namespace/device association and authorized
+real-kernel/gateway acceptance remain open deployment gates.

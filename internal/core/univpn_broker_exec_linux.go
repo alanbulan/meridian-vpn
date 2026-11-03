@@ -236,11 +236,6 @@ func (l UniVPNExecLauncher) Launch(ctx context.Context, path string, args []stri
 	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "HOME=/"}
 	cmd.Dir = "/"
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if worker, ok := l.Isolation.(interface{ wrap(*exec.Cmd, string) error }); ok {
-		if err := worker.wrap(cmd, l.ExecutableSHA256); err != nil {
-			return nil, err
-		}
-	}
 	p := &uniVPNExecProcess{cmd: cmd, exited: make(chan struct{}), contained: make(chan struct{}), isolation: l.Isolation, packet: relay, sessionID: sessionID}
 	if sessionRead != nil {
 		if packetNative.file != nil {
@@ -248,6 +243,9 @@ func (l UniVPNExecLauncher) Launch(ctx context.Context, path string, args []stri
 		} else {
 			p.session = newUniVPNNativeChannel()
 		}
+	}
+	if err = prepareUniVPNPacketProcess(p, l.PacketProvider, packetNative, l.ExecutableSHA256); err != nil {
+		return nil, err
 	}
 	cmd.Cancel = func() error { return p.Stop() }
 	cmd.WaitDelay = 3 * time.Second
@@ -286,6 +284,7 @@ type uniVPNExecProcess struct {
 	sessionReader    *os.File
 	offer            *uniVPNOfferChannel
 	packet           packetrelay.PacketIO
+	packetPair       *uniVPNPacketProvenance // immutable original-pair identity, not another endpoint owner
 	packetMu         sync.Mutex
 	sessionID        string
 	observation      *uniVPNProcessObservation

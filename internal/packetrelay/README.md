@@ -226,3 +226,21 @@ Sources: [socketpair semantics](https://man7.org/linux/man-pages/man2/socketpair
 [atomic socket flags](https://man7.org/linux/man-pages/man2/socket.2.html),
 [Go Socketpair wrapper](https://go.dev/src/syscall/syscall_unix.go), and
 [Go preexisting-nonblocking NewFile behavior](https://go.dev/src/os/file_unix.go).
+
+
+## Non-owning retained packet identity
+
+`TUNRelay.ObservePacketBinding` accepts only the exact concrete child endpoint
+already claimed by that relay and reads the original retained TUN. It neither
+starts forwarding nor consumes Start, changes ownership, consumes packets or
+closes resources on rejection. It does not call the close-on-error `TUNResource.Observe`
+path. The relay's existing owner still must Stop/Wait after a failed observation.
+`CheckPacketBinding` checks historical exact child/relay identity and survives
+stopped pumps, drift and uncertain closes. No same-name TUN, same-session string,
+foreign pair or copied owner can replace the retained objects.
+
+Core uses these methods only for an additional historical local-generation
+association behind its still-mandatory independent HostBinding gate. A matching
+name is not actual NM device ownership, host-namespace proof, a lease, readiness,
+applied-policy verification or host absence. Observations remain sequential and
+can become stale immediately; no new automatic application path is enabled.

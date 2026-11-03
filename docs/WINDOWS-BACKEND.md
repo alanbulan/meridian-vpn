@@ -4,7 +4,7 @@
 
 `internal/windowsvpn` is a portable, injected RAS lifecycle controller, **not a
 working Windows VPN backend**. It is not wired into the desktop/engine. There is
-no native connection binding, no default system driver, and no network-capable command
+no native dialing/cleanup driver, no default system driver, and no network-capable command
 runner. Calling `New(nil).Start(...)` reports unavailable. Existing Windows
 capability reporting must continue to say that a VPN backend is unavailable.
 
@@ -210,8 +210,9 @@ cancellation requirements above remain open. No production dialing is enabled.
 
 The pointer-free Windows 10 `RASENTRYW` layout is checked by Go fake-reader tests
 and compile-only assertions against the installed Microsoft Windows SDK on x64
-and x86 CI. Cross-compilation also covers Windows 386 and arm64 Go packages;
-arm64 SDK/native-runtime acceptance remains unverified. The tests exercise
+and x86 CI. Windows 386 fake tests also execute under the x64 runner's WOW64
+support, while Windows arm64 Go packages are compile-only; arm64 SDK/native-
+runtime acceptance remains unverified. The tests exercise
 buffer growth/error bounds, malformed UTF-16, protocol/target rejection and
 identity/configuration drift. They never load RAS or read a real phonebook.
 SDK compilation checks layout and constants, not actual native API behavior.
@@ -220,3 +221,51 @@ Sources:
 - [RasGetEntryPropertiesW and explicit phonebook/entry buffers](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasgetentrypropertiesw)
 - [RASENTRY fields, protocol fallback and read-only GUID](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377274(v=vs.85))
 - [Microsoft SDK RAS declarations](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/Ras.h)
+
+
+## Read-only existing-connection evidence slice
+
+`ObserveSystemConnections` now binds `RasEnumConnectionsW` and
+`RasGetConnectStatusW`, but does not expose their handles or acquire any RAS
+reference. It accepts only an opaque, previously validated entry snapshot,
+revalidates that profile before and after observation, and compares two bounded
+connection enumerations. Matching requires the exact phonebook/name and entry
+GUID, with stable handle, device, scope flags, logon LUID and connection
+correlation GUID. Status checks verify both the API return code and `dwError`,
+connected state, device identity and the reported dialed target. Ambiguous
+identity, malformed data, partial errors, appearance/disappearance and observed
+handle reuse fail closed. Unrelated connection status is not queried.
+
+**Every snapshot blocks dialing.** `ConnectionSnapshot.DialBlocker()` returns
+an existing-connection blocker if any matching connection was observed and an
+exclusivity-unproven blocker otherwise, including for a zero-value snapshot.
+It does not return a reference count, ownership token, cleanup lease, readiness
+claim or permission. Windows enumeration cannot list a connection as active
+until RAS has connected successfully, so an external in-flight dial may be
+invisible. A connection can also appear after the last read. Repeating reads
+cannot establish atomic exclusion. `RASCF_OwnerKnown`/`RASCF_OwnerMatch` are not
+proof that this process created or owns a connection. An enumerated handle must
+never be passed to `RasHangUp` merely because it was observed.
+
+The wrapper loads only enumeration/status procedures and performs no dialing,
+hangup, credential read/write, profile creation/edit/deletion or network changes.
+No application entry point invokes it. Loading RAS can still start its service.
+No actual RAS procedure is executed by the tests; the Windows runner uses fake
+functions and compile-only SDK assertions. Synchronous native query duration
+and real system behavior remain unverified; allocation/retry bounds are not a
+native API cancellation guarantee.
+
+`RASCONNW` uses four-byte SDK packing even on x64, where its pointer sits at
+byte offset four. The implementation decodes it from aligned word storage
+rather than using a naturally aligned Go `uintptr` struct. Fake tests cover
+both pointer layouts and malformed buffers. Microsoft SDK assertions check
+x86/x64 connection/status sizes, field offsets and enum constants; Go Windows
+386 fake tests execute under WOW64; arm64 is compile-only. Both remain
+separate from real RAS runtime acceptance.
+
+Sources:
+- [RasEnumConnectionsW, including the in-flight visibility limit](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasenumconnectionsw)
+- [RasGetConnectStatusW and distinct API/connection errors](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasgetconnectstatusw)
+- [RASCONN entry and correlation identities](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa376725(v=vs.85))
+- [RASCONNSTATUS fields](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa376728(v=vs.85))
+- [RasDial reference semantics](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw)

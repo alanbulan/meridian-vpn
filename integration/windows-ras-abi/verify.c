@@ -43,3 +43,31 @@ CHECK(encryption_optional, ET_Optional == 3);
 CHECK(ppp, RASFP_Ppp == 1);
 CHECK(ipv4, RASNP_Ip == 4);
 CHECK(ipv6, RASNP_Ipv6 == 8);
+
+/* RASCONNW deliberately packs a pointer at offset four on x64. */
+#define CONNOFF(field, expected) CHECK(conn_##field, offsetof(RASCONNW, field) == (expected))
+CONNOFF(hrasconn, 4);
+CONNOFF(szEntryName, 4 + sizeof(void *));
+CONNOFF(szDeviceType, 518 + sizeof(void *));
+CONNOFF(szDeviceName, 552 + sizeof(void *));
+CONNOFF(szPhonebook, 810 + sizeof(void *));
+CONNOFF(dwSubEntry, 1332 + sizeof(void *));
+CONNOFF(guidEntry, 1336 + sizeof(void *));
+CONNOFF(dwFlags, 1352 + sizeof(void *));
+CONNOFF(luid, 1356 + sizeof(void *));
+CONNOFF(guidCorrelationId, 1364 + sizeof(void *));
+CHECK(connection_size, sizeof(RASCONNW) == 1380 + sizeof(void *));
+#define STATUSOFF(field, expected) CHECK(status_##field, offsetof(RASCONNSTATUSW, field) == (expected))
+CHECK(status_size, sizeof(RASCONNSTATUSW) == 608);
+STATUSOFF(rasconnstate, 4);
+STATUSOFF(dwError, 8);
+STATUSOFF(szDeviceType, 12);
+STATUSOFF(szDeviceName, 46);
+STATUSOFF(szPhoneNumber, 304);
+STATUSOFF(localEndPoint, 564);
+STATUSOFF(remoteEndPoint, 584);
+STATUSOFF(rasconnsubstate, 604);
+CHECK(connected_state, RASCS_Connected == 0x2000);
+CHECK(disconnected_state, RASCS_Disconnected == 0x2001);
+CHECK(owner_known, RASCF_OwnerKnown == 0x4);
+CHECK(owner_match, RASCF_OwnerMatch == 0x8);

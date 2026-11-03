@@ -4,7 +4,7 @@
 
 `internal/windowsvpn` is a portable, injected RAS lifecycle controller, **not a
 working Windows VPN backend**. It is not wired into the desktop/engine. There is
-no native DLL binding, no default system driver, and no network-capable command
+no native connection binding, no default system driver, and no network-capable command
 runner. Calling `New(nil).Start(...)` reports unavailable. Existing Windows
 capability reporting must continue to say that a VPN backend is unavailable.
 
@@ -102,3 +102,76 @@ go vet ./internal/windowsvpn
 These commands do not create phonebook entries, persist actual credentials,
 load RAS, alter routes/DNS, or contact a gateway. Their results must be recorded
 separately from target-platform runtime and real-tunnel acceptance.
+
+
+## Native read-only discovery slice
+
+`EnumerateSystemEntries` now has a real Windows `RasEnumEntriesW` binding.
+It loads Rasapi32 from the directory returned by the KnownDLL kernel32, only
+when explicitly invoked, caches the DLL/procedure resolution (including failure)
+once per process, and enumerates current-user and all-user phonebook
+entries. A DLL-resolution failure remains fail-closed until process restart.
+It returns entry name, phonebook path and raw scope flags; it never
+reads saved credentials. A path is retained internally to distinguish duplicate
+names across phonebooks, not for logs or telemetry. Entry names and paths can
+contain personal or organization information; do not automatically persist,
+export or display them outside the explicit local selection workflow. These entries may be dial-up
+or otherwise unsupported; discovery is not a compatibility check or connection
+permission. No user-interface or CLI path invokes it yet.
+
+The boundary validates the pointer-free RASENTRYNAMEW ABI, limits buffer size
+and retries, and rejects malformed counts, unterminated strings, and invalid
+UTF-16. Tests use an injected enumeration function, including ABI layout tests
+on the target runner. No test loads the real DLL or reads a user's phonebook.
+Native calls are not claimed tested until Windows acceptance is performed.
+Loading RAS can cause Windows to start its Remote Access Connection Manager
+service; read-only here means no dialing, phonebook edits, or credential calls,
+not a guarantee of zero OS service activity.
+
+Sources:
+- [RasEnumEntriesW](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasenumentriesw)
+- [RASENTRYNAME layout](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377267(v=vs.85))
+- [RAS service and connection operations](https://learn.microsoft.com/en-us/windows/win32/rras/ras-connection-operations)
+
+## Borrowing an existing user-configured connection: remaining blockers
+
+Using an already configured L2TP profile could avoid a new PSK storage request,
+but it must not reuse the owned-entry cleanup contract above. A separate borrowed
+profile mode must never clear credentials, edit the profile, or delete it. The
+user must choose the exact phonebook/entry and explicitly authorize using its
+configured identity and changing the network.
+
+There are unresolved correctness requirements before implementing dialing:
+
+- `RasDial` can reference an already connected entry rather than create a new
+  connection. Every successful reference needs its matching release. Observing
+  a connection beforehand does not prevent another process racing to create it.
+  Waiting for the entire shared handle to disappear can incorrectly report
+  cleanup failure, while repeatedly hanging up could disconnect another owner.
+  This needs an ownership/reference state machine and target-system tests, not
+  a broad `rasdial /disconnect` fallback.
+- Read and validate protocol, gateway, authentication and prohibited custom
+  dialer/script behavior through a verified `RASENTRY` binding. Entry-name
+  enumeration alone cannot establish that a selected item is L2TP/IPsec or
+  pin the intended destination. Revalidate identity around operations.
+- Do not assume omitting `RasSetCredentials` proves that a successful dial cannot
+  update a credential cache. The saved-credential behavior and current OS policy
+  need verification. Do not read or clear existing secrets to test this. If a
+  no-persistence guarantee is unavailable, disclose and obtain a specific grant
+  or decline the operation. Do not silently use ambient Windows logon secrets.
+- Async native cancellation must preserve callback and credential buffer
+  lifetimes until every native consumer has finished. A detached Go goroutine
+  wrapping a synchronous RasDial call is not safe cancellation.
+
+Sources:
+- [RasDial reference semantics, asynchronous operation, and error cleanup](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw)
+- [Stored-credential semantics](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rassetcredentialsw)
+- [RAS dial extensions and custom scripting](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377029(v=vs.85))
+
+Required acceptance environment: supported Go toolchain plus Windows amd64
+runner for compilation/ABI tests; then an explicitly authorized isolated Windows
+machine with a disposable user-configured L2TP/IPsec entry and test gateway.
+Test no saved password, saved password, connection already active, concurrent
+external dialing, cancellation at each phase, service errors, and route/DNS
+recovery without altering unrelated profiles or credentials. Do not request
+real secrets in chat. No real dialing or system changes were performed here.

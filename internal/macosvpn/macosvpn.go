@@ -11,6 +11,9 @@ import (
  "time"
 )
 
+// CF text reads reserve one byte for the C string terminator.
+const maxServiceIDBytes = 127
+
 type Status int32
 const (
  Invalid Status = -1
@@ -56,7 +59,7 @@ func startExisting(ctx context.Context, id string, authorized bool, open func(st
  if !authorized { return nil, ErrAuthorization }
  if err := ctx.Err(); err != nil { return nil, err }
  // A system service identifier, never a display name, command or path.
- if len(id) == 0 || len(id) > 128 || strings.ContainsAny(id, "\x00\r\n") { return nil, errors.New("invalid system service identifier") }
+ if len(id) == 0 || len(id) > maxServiceIDBytes || strings.ContainsAny(id, "\x00\r\n") { return nil, errors.New("invalid system service identifier") }
  for _, c := range id { if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') { return nil, errors.New("invalid system service identifier") } }
  n, err := open(id)
  if err != nil { return nil, err }

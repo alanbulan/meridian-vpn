@@ -3,6 +3,7 @@ package macosvpn
 import (
  "context"
  "errors"
+ "strings"
  "testing"
  "time"
 )
@@ -116,4 +117,13 @@ func TestStatusObservationPreservesAsyncProgress(t *testing.T) {
  ctx,cancel:=context.WithTimeout(context.Background(),time.Second);defer cancel()
  if err=s.WaitConnected(ctx);err==nil||errors.Is(err,context.DeadlineExceeded) {t.Fatalf("forgot observed progress: %v",err)}
  if err=s.Stop(context.Background());err!=nil {t.Fatal(err)}
+}
+
+func TestServiceIDMatchesNativeCStringBoundary(t *testing.T) {
+ f:=&fakeConnection{disconnectOnStop:true}
+ s,err:=startExisting(context.Background(),strings.Repeat("a",maxServiceIDBytes),true,fakeOpen(f))
+ if err!=nil {t.Fatalf("127-byte service ID rejected: %v",err)}
+ if err=s.Stop(context.Background());err!=nil {t.Fatal(err)}
+ _,err=startExisting(context.Background(),strings.Repeat("a",maxServiceIDBytes+1),true,func(string)(connection,error){t.Fatal("opened service ID without space for native terminator");return nil,nil})
+ if err==nil {t.Fatal("128-byte service ID accepted")}
 }

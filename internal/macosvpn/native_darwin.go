@@ -14,6 +14,7 @@ import (
 // Boolean for Start/Stop. CFIndex is signed pointer-width on supported macOS.
 // No Go callbacks or pointers are retained by SystemConfiguration.
 type nativeAPI struct {
+ evidenceAPI
  release func(uintptr)
  createString func(uintptr, string, uint32) uintptr
  stringCString func(uintptr, *byte, int, uint32) uint8
@@ -54,6 +55,7 @@ func loadAPI() (*nativeAPI, error) {
   purego.RegisterLibFunc(&a.status,sc,"SCNetworkConnectionGetStatus")
   purego.RegisterLibFunc(&a.start,sc,"SCNetworkConnectionStart")
   purego.RegisterLibFunc(&a.stop,sc,"SCNetworkConnectionStop")
+  bindEvidenceAPI(a,cf,sc)
   sharedAPI=a
  })
  return sharedAPI,apiError
@@ -61,7 +63,7 @@ func loadAPI() (*nativeAPI, error) {
 const utf8Encoding uint32 = 0x08000100
 func (a *nativeAPI) text(v uintptr) string {
  if v==0 { return "" }
- var b [128]byte
+ var b [maxServiceIDBytes+1]byte
  if a.stringCString(v,&b[0],len(b),utf8Encoding)==0 { return "" }
  for i,c:=range b { if c==0 { return string(b[:i]) } }
  return ""
@@ -86,9 +88,9 @@ func openWithAPI(a *nativeAPI,id string) (connection,error) {
  if lower==0 || a.text(a.interfaceType(lower))!="L2TP" { return nil,errors.New("service is not PPP over L2TP") }
  ref:=a.createConnection(0,sid,0,0)
  if ref==0 { return nil,errors.New("could not open system VPN connection") }
- return &nativeConnection{a:a,ref:ref},nil
+ return &nativeConnection{a:a,ref:ref,serviceID:id},nil
 }
-type nativeConnection struct { a *nativeAPI; ref uintptr }
+type nativeConnection struct { a *nativeAPI; ref uintptr; serviceID string }
 func (n *nativeConnection) status() Status { return Status(n.a.status(n.ref)) }
 func (n *nativeConnection) start() error {
  if n.a.start(n.ref,0,0)==0 { return errors.New("system rejected VPN start; check system configuration and authorization") }; return nil

@@ -54,3 +54,26 @@ func TestNativeDisabledServiceRejected(t *testing.T) {
  a.createConnection=func(uintptr,uintptr,uintptr,uintptr)uintptr{t.Fatal("opened disabled service");return 0}
  if _,err:=openWithAPI(a,"service-id");err==nil {t.Fatal("accepted disabled service")}
 }
+
+func TestNativeOpenFailurePathsReleaseAllOwnedCF(t *testing.T) {
+ cases:=[]struct{name string;inject func(*nativeAPI)}{
+  {"name allocation",func(a *nativeAPI){a.createString=func(uintptr,string,uint32)uintptr{return 0}}},
+  {"preferences allocation",func(a *nativeAPI){a.preferencesCreate=func(uintptr,uintptr,uintptr)uintptr{return 0}}},
+  {"ID allocation",func(a *nativeAPI){old:=a.createString;calls:=0;a.createString=func(x uintptr,s string,e uint32)uintptr{calls++;if calls==2{return 0};return old(x,s,e)}}},
+  {"service missing",func(a *nativeAPI){a.serviceCopy=func(uintptr,uintptr)uintptr{return 0}}},
+  {"disabled service",func(a *nativeAPI){a.serviceEnabled=func(uintptr)uint8{return 0}}},
+  {"interface missing",func(a *nativeAPI){a.serviceInterface=func(uintptr)uintptr{return 0}}},
+  {"lower interface missing",func(a *nativeAPI){a.lowerInterface=func(uintptr)uintptr{return 0}}},
+  {"connection allocation",func(a *nativeAPI){a.createConnection=func(uintptr,uintptr,uintptr,uintptr)uintptr{return 0}}},
+ }
+ for _,tc:=range cases {t.Run(tc.name,func(t *testing.T){
+  a,released:=testAPI(t,"PPP","L2TP");tc.inject(a)
+  owned:=map[uintptr]int{};record:=func(v uintptr)uintptr{if v!=0 {owned[v]++};return v}
+  cs:=a.createString;a.createString=func(x uintptr,s string,e uint32)uintptr{return record(cs(x,s,e))}
+  prefs:=a.preferencesCreate;a.preferencesCreate=func(x,y,z uintptr)uintptr{return record(prefs(x,y,z))}
+  service:=a.serviceCopy;a.serviceCopy=func(x,y uintptr)uintptr{return record(service(x,y))}
+  conn:=a.createConnection;a.createConnection=func(x,y,z,w uintptr)uintptr{return record(conn(x,y,z,w))}
+  if _,err:=openWithAPI(a,"service-id");err==nil {t.Fatal("failure injection was accepted")}
+  assertBalancedCF(t,owned,*released)
+ })}
+}

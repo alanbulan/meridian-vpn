@@ -269,3 +269,94 @@ Sources:
 - [RASCONN entry and correlation identities](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa376725(v=vs.85))
 - [RASCONNSTATUS fields](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa376728(v=vs.85))
 - [RasDial reference semantics](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw)
+
+## Private-phonebook dialing design: unresolved isolation and credential gates
+
+A per-attempt random entry and private phonebook are candidates for avoiding
+accidental collision with existing user profiles, **not proof of exclusive RAS
+ownership**. Do not enable a native driver from the following proposal alone.
+
+- Create a fresh namespace with `CREATE_NEW`, an explicit protected DACL,
+  noninheritable handles and verified filesystem identity. `CREATE_NEW` protects
+  the initial file creation only. `RasSetEntryProperties` updates a same-named
+  entry if one exists; a preceding name check is not atomic create-only.
+- A user-SID DACL or logon SID does not isolate this process from other processes
+  with the same token. A service-specific security principal and service-owned
+  directory may provide a stronger boundary, but secure service installation,
+  token/IPC validation and RAS compatibility have not been implemented or
+  verified. Do not silently elevate, install a service, or widen an ACL.
+- A no-sharing file handle prevents subsequent opens even by the same process.
+  RAS takes a path rather than the application's existing file handle, so an
+  exclusive `CreateFile` handle cannot simply be assumed compatible with it.
+  Relaxing sharing or closing the handle would reopen the race. RAS's actual
+  read/write/replacement needs must be validated before claiming a lock.
+- The official `RasSetEntryProperties` documentation still warns that an
+  explicit phonebook argument may not be supported after Windows XP, and gives
+  additional all-users path restrictions. This is a compatibility uncertainty
+  to resolve on each supported Windows version, not evidence of universal
+  failure or permission to fall back to the user's default phonebook.
+- A private PBK is not a documented credential-storage sandbox. Microsoft
+  describes saved connection information from successful `RasDial` calls.
+  Clearing `RASEO2_CacheCredentials` and setting `RASEO2_DontUseRasCredentials`
+  are defensive settings, not a universal no-save guarantee; the latter is
+  specifically about credentials used to access other network resources.
+- The documented L2TP PSK route is `RasSetCredentials(RASCM_PreSharedKey)`.
+  `RASDIALPARAMS` has no separate session-only IPsec PSK input, and no documented
+  blanket no-save flag was found in `RASDIALEXTENSIONS`. Existing owned-entry
+  PSK storage consent therefore remains necessary; a password no-persistence
+  promise also needs evidence or a revised, explicit storage contract.
+- Deleting an entry or PBK does not establish that every credential store was
+  cleared. Masked credential clearing and separate PSK clearing are distinct
+  operations with possible privilege/errors/crash leftovers. Logical clearing
+  is not a secure physical-erasure guarantee. Never probe or clear the user's
+  existing saved credentials as an experiment.
+
+Before any production dial: prove namespace isolation and actual native
+identity; validate the intended target, protocol and authentication; establish
+credential/storage semantics; implement bounded asynchronous cancellation and
+native buffer/callback lifetimes; then verify route/DNS restoration and crash
+recovery on an explicitly authorized disposable Windows setup. Current CI does
+none of these real network/credential operations.
+
+### One-reference release ledger (injected only)
+
+`dialReference` now models a single future native call's direct return. It is
+unexported, has no native implementation and is not wired to the controller.
+It stores no password, PSK or phonebook path. An enumerated or callback handle
+must never be recorded as a newly acquired reference. Native result provenance
+is an unresolved integration requirement, not something this ledger proves.
+
+Wrapper copies share one ledger, and a zero-value ledger rejects operations.
+Retain exactly one constructor result per direct native invocation; making two
+independent ledgers for the same result would violate the integration contract.
+The first result is immutable. A nonzero handle creates one release obligation,
+even if the dial return code is an error. A duplicate/misrouted result cannot
+replace that handle and taints cleanup consideration. The ledger consumes its
+one release attempt before invoking the injected function, so concurrent Stop,
+retries, a failure result or an uncertain/panicking boundary cannot hang up the
+same reference twice. A nil boundary, before any call, does not consume it.
+
+Successful hangup is not termination. Subsequent read-only probes remain
+pending until the status API returns `ERROR_INVALID_HANDLE`; a successful query
+or a disconnected state is insufficient. Errors, a still-shared/reused handle,
+or uncertain hangup keep cleanup blocked. The ledger never repeats hangup to
+force another owner's reference to disappear. A failed hangup is quarantined,
+not automatically retried. Native query cancellation is not implemented.
+
+Confirmed reference termination is only an ordering prerequisite: a future
+implementation must separately establish native consumer quiescence and fresh
+object ownership/identity before clearing credentials or deleting its objects.
+No deletion/credential capability is exposed here, and a null-handle failure
+does not infer callback quiescence. Private-phonebook exclusivity, password
+persistence, PSK storage, and actual native dialing remain blocked.
+
+Sources:
+- [CreateFile creation and sharing semantics](https://learn.microsoft.com/en-us/windows/win32/fileio/creating-and-opening-files)
+- [RasSetEntryProperties create-or-update and compatibility notes](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rassetentrypropertiesw)
+- [Access tokens and shared user security context](https://learn.microsoft.com/en-us/windows/win32/secauthz/access-tokens)
+- [Service-specific SIDs](https://learn.microsoft.com/en-us/windows/win32/api/winsvc/ns-winsvc-service_sid_info)
+- [Saved dial information](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasgetentrydialparamsw)
+- [Credential/PSK storage and clearing](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rassetcredentialsw)
+- [RasDial direct-result and reference obligations](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw)
+- [RasHangUp asynchronous termination](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rashangupw)
+- [RasDeleteEntry scope](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdeleteentryw)

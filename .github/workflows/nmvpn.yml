@@ -29,10 +29,12 @@ jobs:
       - name: Capture formatting evidence
         run: |
           mkdir -p reports/nmvpn
-          gofmt -d internal/nmvpn > reports/nmvpn/format.patch
+          status=0
+          gofmt -d internal/nmvpn > reports/nmvpn/format.patch || status=$?
           echo NMVPN_FORMAT_PATCH_BEGIN
           cat reports/nmvpn/format.patch
           echo NMVPN_FORMAT_PATCH_END
+          exit "$status"
       - name: Race-test only in-memory peers and temporary files
         env:
           CGO_ENABLED: '1'

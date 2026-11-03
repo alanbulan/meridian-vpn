@@ -1,0 +1,104 @@
+# Windows RAS adapter: implemented boundary and remaining work
+
+## Status
+
+`internal/windowsvpn` is a portable, injected RAS lifecycle controller, **not a
+working Windows VPN backend**. It is not wired into the desktop/engine. There is
+no native DLL binding, no default system driver, and no network-capable command
+runner. Calling `New(nil).Start(...)` reports unavailable. Existing Windows
+capability reporting must continue to say that a VPN backend is unavailable.
+
+The package implements the parts that can be exercised without changing a real
+machine: bounded input policy, separate per-attempt consent for network changes
+and PSK storage, caller-owned secret preservation and temporary-copy erasure,
+serialized single-session ownership with independently accessible cancellation,
+rollback after partial failures, fresh
+connection identity/interface/address validation, independent cleanup contexts,
+and cleanup retry with reconnect blocked until confirmation. Injected driver
+errors are redacted rather than passed into UI/logs. It does not claim interface
+validation proves route/DNS correctness or leak prevention.
+
+Tests use an in-memory driver exclusively. They are not real RAS tests. The
+controller is intentionally separate from `core.Adapter`: integrating it before
+implementing the native contract and additional consent would misrepresent the
+current capability. Any future bridge must reject unsupported profile options,
+not silently discard Linux-specific IKE/ESP/MRU, certificates or proxy fields.
+
+## Protocol and credential boundary
+
+Only L2TP/IPsec with MSCHAPv2 is represented by this contract. It provides no
+UniVPN, AnyConnect, proprietary SSL, national-cryptography, or vendor compliance
+support. Password/PSK are byte slices, never profile fields or command arguments.
+The supported inputs are UTF-8, bounded to the corresponding restricted UTF-16
+credential lengths. Configure borrows only the PSK; Dial borrows only the password. Both calls
+must finish or cancel every native consumer and erase their conversion buffers
+before returning. The controller erases each supplied slice immediately after
+that stage (and all copies before failure cleanup). Drivers must not retain a
+password copy between stages, cache it in Windows, or retain it for reconnect.
+Driver buffers must also be erased after use. Erasing Go
+slices is best-effort hygiene, not a guarantee against process-memory inspection.
+
+Windows RAS `RasSetCredentials` stores credentials associated with a phonebook
+entry. Its PSK route therefore cannot be advertised as memory-only. The native
+implementation must require a separate, explicit storage grant before setting
+a PSK; ordinary route/DNS permission alone is insufficient. It must attempt PSK
+removal at cleanup and disclose that a crash or power loss can leave a key
+stored. Do not bypass Windows privilege checks or elevate silently.
+
+Stop requests cancellation without waiting for the operation-serialization lock.
+It then waits for the canceled driver operation to return before cleanup, so
+cleanup never races native credential consumers. A driver that ignores context
+cancellation violates the contract; the controller cannot safely kill arbitrary
+in-process native code. Concurrent stop requests prevent a new operation from
+starting until all queued cleanup requests have finished.
+
+## Required native-driver contract
+
+1. Reserve an unpredictable per-attempt identity without mutating Windows.
+   Configure must exclusively create an owned phonebook entry, refusing an
+   existing entry. Never edit, adopt or remove the user's other VPN profiles.
+2. Use a version-correct Windows SDK binding to RAS APIs. Do not use `rasdial`
+   with a plaintext password, command interpolation, environment secrets, or
+   PowerShell script source containing credentials. Select only supported
+   L2TP/IPsec and MSCHAPv2 flags; do not fall back to weaker authentication.
+3. Store only the authorized per-entry PSK. Supply password through the native
+   dial API without saving it. Use explicit identity rather than an ambient
+   login credential fallback. Obey deadlines and handle partial dial results.
+4. Verify the returned RAS handle, owned entry, connected state, interface and
+   projected address. Native status-query success alone is not connection
+   success. Check both function status and the connection error field.
+5. Hang up only the owned handle. Wait for termination confirmation before
+   clearing secrets and removing the owned entry. `RasHangUp` returning success
+   alone does not prove termination. Retain uncertain cleanup for retry and
+   block reconnect. No unconditional deletion of unrelated entries.
+6. Before desktop wiring, add a bounded status monitor, core session channel
+   integration, Windows storage-consent UI, crash recovery with ownership proof,
+   native architecture builds, and authorized real Windows acceptance tests.
+
+A safe implementation is blocked here by the absence of a verified native ABI
+binding and Windows runtime test environment, not by an imaginary lack of RAS
+APIs. A Windows-only cgo binding could use official SDK structure definitions,
+but would require a deliberate exception to the project's CGO-disabled release
+policy. A pure-Go binding instead needs audited ABI sizes/layouts on every
+supported architecture. Neither option should be represented as complete based
+on portable mock tests.
+
+## Authoritative references
+
+- [RasSetCredentials and stored credentials / PSK permissions](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rassetcredentialsa)
+- [RasHangUp and termination confirmation](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rashangupa)
+- [RasGetConnectStatus and connection error status](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasgetconnectstatusw)
+
+## Reproducible checks
+
+With the project's supported Go toolchain, run:
+
+```sh
+go test -count=1 ./internal/windowsvpn
+go test -race -count=1 ./internal/windowsvpn
+go vet ./internal/windowsvpn
+```
+
+These commands do not create phonebook entries, persist actual credentials,
+load RAS, alter routes/DNS, or contact a gateway. Their results must be recorded
+separately from target-platform runtime and real-tunnel acceptance.

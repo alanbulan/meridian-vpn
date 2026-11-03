@@ -132,7 +132,7 @@ func(i *wireItem)GetSecret(session dbus.ObjectPath)(secret,*dbus.Error){
  i.s.mu.Lock();defer i.s.mu.Unlock()
  r,ok:=i.s.records[i.path];if !ok{return secret{},&dbus.Error{Name:"org.freedesktop.Secret.Error.NoSuchObject"}}
  if r.locked{return secret{},&dbus.Error{Name:"org.freedesktop.Secret.Error.IsLocked"}}
- return secret{session,[]byte{},append([]byte(nil),r.value...),"application/octet-stream"},nil
+ return secret{session,[]byte{},append([]byte(nil),r.value...),"text/plain"},nil
 }
 func(i *wireItem)SetSecret(value secret)*dbus.Error{
  i.s.mu.Lock();defer i.s.mu.Unlock();defer clear(value.Value)
@@ -206,4 +206,18 @@ func TestCredentialWireOwnerReplacement(t *testing.T){
  _=old.conn.Close()
  if _,err:=execute(context.Background(),pinned,load,"digest",nil);err!=ErrUnavailable{t.Fatal("departed owner did not fail closed")}
  replacement.mu.Lock();calls=replacement.searches;replacement.mu.Unlock();if calls!=0{t.Fatal("departed owner operation reached replacement")}
+}
+
+func TestCredentialWireLegacyNamespaceIgnored(t *testing.T){
+ address:=privateWireBus(t);s:=installWireService(t,address);store:=wireStore(wireProvider(t,address));r:=reference();key,_:=r.key()
+ s.mu.Lock();s.records["/legacy"]=&wireRecord{attrs:map[string]string{"application":"meridian-vpn","kind":"login-password-v1","reference":key},value:[]byte("synthetic-legacy")};s.mu.Unlock()
+ if _,err:=store.Load(context.Background(),r,UsePassword);err!=ErrNotFound{t.Fatal("legacy binary record was read")}
+ if err:=store.Save(context.Background(),r,[]byte("synthetic-new"),SavePassword);err!=nil{t.Fatal("new namespace could not be saved")}
+ out,err:=store.Load(context.Background(),r,UsePassword);defer clear(out)
+ if err!=nil || !bytes.Equal(out,[]byte("synthetic-new")){t.Fatal("namespace-isolated round trip failed")}
+ s.mu.Lock();_,legacyExists:=s.records["/legacy"];s.mu.Unlock();if !legacyExists{t.Fatal("legacy record was silently deleted")}
+ if err:=store.Delete(context.Background(),r,DeletePassword);err!=nil{t.Fatal("v2 deletion failed")}
+ if _,err:=store.Load(context.Background(),r,UsePassword);err!=ErrNotFound{t.Fatal("v2 deletion exposed a legacy record")}
+ s.mu.Lock();_,legacyExists=s.records["/legacy"];remaining:=len(s.records);s.mu.Unlock()
+ if !legacyExists || remaining!=1{t.Fatal("v2 deletion modified the legacy namespace")}
 }

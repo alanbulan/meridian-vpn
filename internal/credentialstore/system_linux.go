@@ -98,7 +98,7 @@ func systemRun(ctx context.Context, op operation, key string, value []byte) ([]b
 }
 
 func execute(ctx context.Context, b bus, op operation, key string, value []byte) ([]byte, error) {
- attrs := map[string]string{"application":"meridian-vpn", "kind":"login-password-v1", "reference":key}
+ attrs := map[string]string{"application":"meridian-vpn", "kind":credentialKind, "reference":key}
  var unlocked, locked []dbus.ObjectPath
  if err := b.call(ctx, servicePath, serviceInterface+".SearchItems", []any{attrs}, &unlocked, &locked); err != nil { return nil, err }
  for _, path := range append(append([]dbus.ObjectPath(nil), unlocked...), locked...) {
@@ -135,13 +135,16 @@ func execute(ctx context.Context, b bus, op operation, key string, value []byte)
  if op == load {
   var result secret
   if err := b.call(ctx, unlocked[0], itemInterface+".GetSecret", []any{session}, &result); err != nil { clear(result.Value); return nil, err }
-  if result.Session != session || len(result.Parameters) != 0 || result.ContentType != "application/octet-stream" || len(result.Value) == 0 || len(result.Value) > MaxSecretBytes {
+  if result.Session != session || len(result.Parameters) != 0 || result.ContentType != "text/plain" || len(result.Value) == 0 || len(result.Value) > maxStoredBytes {
    clear(result.Value)
    return nil, ErrUnavailable
   }
-  return result.Value, nil
+  defer clear(result.Value)
+  return decodePassword(key, result.Value)
  }
- payload := secret{session, []byte{}, value, "application/octet-stream"}
+ encoded := encodePassword(key, value)
+ defer clear(encoded)
+ payload := secret{session, []byte{}, encoded, "text/plain"}
  if len(unlocked) == 1 {
   return nil, b.call(ctx, unlocked[0], itemInterface+".SetSecret", []any{payload})
  }

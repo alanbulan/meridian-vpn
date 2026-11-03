@@ -144,10 +144,11 @@ func TestCredentialGNOMERealLifecycle(t *testing.T){
  // then verify that application lookup refuses to choose between duplicates.
  var output dbus.Variant;var session dbus.ObjectPath
  if err:=b.call(ctx,servicePath,serviceInterface+".OpenSession",[]any{"plain",dbus.MakeVariant("")},&output,&session);err!=nil{t.Fatal("fixture session failed")}
- key,_:=r.key();attrs:=map[string]string{"application":"meridian-vpn","kind":"login-password-v1","reference":key}
+ key,_:=r.key();attrs:=map[string]string{"application":"meridian-vpn","kind":credentialKind,"reference":key}
  props:=map[string]dbus.Variant{itemInterface+".Label":dbus.MakeVariant("Meridian synthetic integration item"),itemInterface+".Attributes":dbus.MakeVariant(attrs)}
+ duplicateValue:=encodePassword(key,first);defer clear(duplicateValue)
  var duplicate,prompt dbus.ObjectPath
- if err:=b.call(ctx,gnomeCollection(t,b),collectionInterface+".CreateItem",[]any{props,secret{session,[]byte{},first,"application/octet-stream"},false},&duplicate,&prompt);err!=nil || prompt!="/"{t.Fatal("real-provider duplicate fixture failed")}
+ if err:=b.call(ctx,gnomeCollection(t,b),collectionInterface+".CreateItem",[]any{props,secret{session,[]byte{},duplicateValue,"text/plain"},false},&duplicate,&prompt);err!=nil || prompt!="/"{t.Fatal("real-provider duplicate fixture failed")}
  _=b.call(ctx,session,"org.freedesktop.Secret.Session.Close",nil)
  if _,err:=store.Load(ctx,r,UsePassword);err!=ErrAmbiguous{t.Fatal("real-provider duplicate was guessed")}
  if err:=b.call(ctx,duplicate,itemInterface+".Delete",nil,&prompt);err!=nil || prompt!="/"{t.Fatal("synthetic duplicate cleanup failed")}

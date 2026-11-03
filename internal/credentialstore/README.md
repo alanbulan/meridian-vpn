@@ -104,3 +104,26 @@ Before enabling this feature:
    copies, D-Bus allocation bounds, duplicate races, and uncertain write outcomes.
 
 Until these gates pass, the existing application remains memory-only.
+
+
+## Versioned text envelope and GNOME compatibility
+
+GNOME Keyring's upstream `gkd_secret_secret_parse` reads but does not retain the
+incoming MIME label, and `gkd_secret_secret_append` emits `text/plain` for replies.
+The original binary `application/octet-stream` design therefore failed closed on
+its first real-provider read. We do not accept arbitrary MIME types to hide that
+mismatch. The provider now writes and requires exactly `text/plain`, containing
+`meridian-password-v2:<exact-reference-digest>:<canonical-padded-base64>`.
+The reference in the payload must match the query reference; malformed versions,
+noncanonical padding, whitespace, invalid base64 and oversized decoded values
+are rejected. Binary password bytes still round-trip without text conversion.
+Base64 is encoding, not encryption. The OS provider retains responsibility for
+storage protection, and a malicious same-UID provider can rewrite this envelope.
+
+The distinct `login-password-base64-v2` attribute namespace does not read, migrate
+or delete old `login-password-v1` records. This package remains unconnected to the
+application, so no live-user migration is authorized or performed. The 4096-byte
+password limit is unchanged; only the bounded stored encoding has additional
+space for its version, digest and base64 expansion.
+
+Source: [GNOME secret serialization implementation](https://github.com/GNOME/gnome-keyring/blob/master/daemon/dbus/gkd-secret-secret.c).

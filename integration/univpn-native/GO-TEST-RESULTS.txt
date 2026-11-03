@@ -1,0 +1,45 @@
+=== RUN   TestUniVPNBrokerContinuousLifecycle
+--- PASS: TestUniVPNBrokerContinuousLifecycle (0.00s)
+=== RUN   TestUniVPNBrokerFailedVerificationCleansUp
+--- PASS: TestUniVPNBrokerFailedVerificationCleansUp (0.00s)
+=== RUN   TestUniVPNBrokerExitBeforeReady
+--- PASS: TestUniVPNBrokerExitBeforeReady (0.00s)
+=== RUN   TestUniVPNBrokerRejectsOptions
+=== RUN   TestUniVPNBrokerRejectsOptions/--script=/tmp/evil
+=== RUN   TestUniVPNBrokerRejectsOptions/--servercert=pin
+=== RUN   TestUniVPNBrokerRejectsOptions/--cafile=/tmp/ca
+=== RUN   TestUniVPNBrokerRejectsOptions/--user=second
+=== RUN   TestUniVPNBrokerRejectsOptions/--mtu=1
+=== RUN   TestUniVPNBrokerRejectsOptions/--background
+--- PASS: TestUniVPNBrokerRejectsOptions (0.00s)
+    --- PASS: TestUniVPNBrokerRejectsOptions/--script=/tmp/evil (0.00s)
+    --- PASS: TestUniVPNBrokerRejectsOptions/--servercert=pin (0.00s)
+    --- PASS: TestUniVPNBrokerRejectsOptions/--cafile=/tmp/ca (0.00s)
+    --- PASS: TestUniVPNBrokerRejectsOptions/--user=second (0.00s)
+    --- PASS: TestUniVPNBrokerRejectsOptions/--mtu=1 (0.00s)
+    --- PASS: TestUniVPNBrokerRejectsOptions/--background (0.00s)
+=== RUN   TestUniVPNBrokerFrameLimits
+--- PASS: TestUniVPNBrokerFrameLimits (0.00s)
+=== RUN   TestUniVPNBrokerMissingDependenciesFailClosed
+--- PASS: TestUniVPNBrokerMissingDependenciesFailClosed (0.00s)
+=== RUN   TestUniVPNBrokerCleanupFailureLatchesUnavailable
+--- PASS: TestUniVPNBrokerCleanupFailureLatchesUnavailable (0.00s)
+=== RUN   TestUniVPNBrokerJoinsVerifierBeforeCleanup
+--- PASS: TestUniVPNBrokerJoinsVerifierBeforeCleanup (0.01s)
+=== RUN   TestUniVPNBrokerLauncherRefusesMissingContainment
+--- PASS: TestUniVPNBrokerLauncherRefusesMissingContainment (0.00s)
+=== RUN   TestUniVPNBrokerPeerCredentialsAndDeniedUID
+    univpn_broker_socket_linux_test.go:18: AF_UNIX integration not verified: recovery sandbox denied socket creation (EPERM); opt in only in an authorized environment with UNIVPN_TEST_SOCKET=1
+--- SKIP: TestUniVPNBrokerPeerCredentialsAndDeniedUID (0.00s)
+=== RUN   TestUniVPNArgs
+--- PASS: TestUniVPNArgs (0.00s)
+=== RUN   TestUniVPNUnsupportedOptionsFailClosed
+--- PASS: TestUniVPNUnsupportedOptionsFailClosed (0.00s)
+=== RUN   TestUniVPNRequiresContinuousBroker
+--- PASS: TestUniVPNRequiresContinuousBroker (0.00s)
+=== RUN   TestUniVPNEngineLifecycle
+--- PASS: TestUniVPNEngineLifecycle (0.00s)
+=== RUN   TestUniVPNRouterNoFallback
+--- PASS: TestUniVPNRouterNoFallback (0.00s)
+PASS
+ok  	mygo-vpn/internal/core	1.034s

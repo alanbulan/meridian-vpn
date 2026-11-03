@@ -1,0 +1,2 @@
+ok  	mygo-vpn/internal/processcontainment	1.009s
+ok  	mygo-vpn/internal/core	3.029s

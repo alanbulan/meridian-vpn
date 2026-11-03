@@ -1,0 +1,315 @@
+configure.ac:35: installing './compile'
+configure.ac:9: installing './missing'
+Makefile.am: installing './depcomp'
+checking for pkg-config... /usr/bin/pkg-config
+checking pkg-config is at least version 0.9.0... yes
+checking build system type... x86_64-pc-linux-gnu
+checking host system type... x86_64-pc-linux-gnu
+checking whether to enable maintainer-specific portions of Makefiles... yes
+checking for a BSD-compatible install... /usr/bin/install -c
+checking whether sleep supports fractional seconds... yes
+checking filesystem timestamp resolution... 0.01
+checking whether build environment is sane... yes
+checking for a race-free mkdir -p... /usr/bin/mkdir -p
+checking for gawk... no
+checking for mawk... mawk
+checking whether make sets $(MAKE)... yes
+checking whether make supports nested variables... yes
+checking xargs -n works... yes
+checking whether UID '1000' is supported by ustar format... yes
+checking whether GID '1000' is supported by ustar format... yes
+checking how to create a ustar tar archive... gnutar
+checking for gcc... gcc
+checking whether the C compiler works... yes
+checking for C compiler default output file name... a.out
+checking for suffix of executables... 
+checking whether we are cross compiling... no
+checking for suffix of object files... o
+checking whether the compiler supports GNU C... yes
+checking whether gcc accepts -g... yes
+checking for gcc option to enable C11 features... none needed
+checking whether gcc understands -c and -o together... yes
+checking whether make supports the include directive... yes (GNU style)
+checking dependency style of gcc... gcc3
+checking for stdio.h... yes
+checking for stdlib.h... yes
+checking for string.h... yes
+checking for inttypes.h... yes
+checking for stdint.h... yes
+checking for strings.h... yes
+checking for sys/stat.h... yes
+checking for sys/types.h... yes
+checking for unistd.h... yes
+configure: Applying feature macros for GNU build
+checking for xdg-open... checking for xdg-open... /usr/bin/xdg-open
+checking for fdevname_r... no
+checking for statfs... yes
+checking for getline... yes
+checking for strcasestr... yes
+checking for strndup... yes
+checking for strchrnul... yes
+checking for asprintf... yes
+checking for vasprintf... yes
+checking for __builtin_clz... yes
+checking for supported compiler flags...  -Wall -Wextra -Wno-missing-field-initializers -Wno-sign-compare -Wno-unused-parameter -Werror=pointer-to-int-cast -Werror-implicit-function-declaration -Wformat-nonliteral -Wformat-security -Winit-self -Wmissing-declarations -Wmissing-include-dirs -Wnested-externs -Wparentheses -Wpointer-arith -Wunused-function -Wwrite-strings
+checking For memset_s... no
+checking for explicit_memset... no
+checking for explicit_bzero... yes
+checking For localtime_r... yes
+checking for socket... yes
+checking for inet_aton... yes
+checking for IPV6_PATHMTU socket option... yes
+checking for __android_log_vprint... no
+checking for __android_log_vprint in -llog... no
+checking for nl_langinfo... yes
+checking for posix_spawn... yes
+checking for ld used by gcc... /usr/bin/ld
+checking if the linker (/usr/bin/ld) is GNU ld... yes
+checking for shared library run path origin... done
+checking 32-bit host C ABI... no
+checking how to run the C preprocessor... gcc -E
+checking for egrep -e... /usr/bin/grep -E
+checking for ELF binary format... yes
+checking for the common suffixes of directories in the library search path... lib,lib,lib64
+checking for iconv... yes
+checking for working iconv... yes
+checking for iconv declaration... 
+         extern size_t iconv (iconv_t cd, char * *inbuf, size_t *inbytesleft, char * *outbuf, size_t *outbytesleft);
+checking for openssl... yes
+checking for p11-kit-1... yes
+checking for libp11 != 0.4.7... no
+checking for known-broken versions of OpenSSL... no
+checking for ENGINE_by_id() in OpenSSL... yes
+checking for dtls1_stop_timer() in OpenSSL... no
+checking for DTLS_client_method() in OpenSSL... yes
+checking for SSL_CTX_set_min_proto_version() in OpenSSL... yes
+checking for BIO_meth_free() in OpenSSL... yes
+checking for HMAC_CTX_copy... yes
+checking for SSL_CIPHER_find() in OpenSSL... yes
+checking for HKDF support in OpenSSL... yes
+checking for swtpm... no
+checking for tpm2tss-genkey... no
+checking for create_tpm2_key... no
+checking for grep that handles long lines and -e... /usr/bin/grep
+checking for egrep... /usr/bin/grep -E
+checking how to print strings... printf
+checking for a sed that does not truncate output... /usr/bin/sed
+checking for fgrep... /usr/bin/grep -F
+checking for ld used by gcc... /usr/bin/ld
+checking if the linker (/usr/bin/ld) is GNU ld... yes
+checking for BSD- or MS-compatible name lister (nm)... /usr/bin/nm -B
+checking the name lister (/usr/bin/nm -B) interface... BSD nm
+checking whether ln -s works... yes
+checking the maximum length of command line arguments... 1572864
+checking how to convert x86_64-pc-linux-gnu file names to x86_64-pc-linux-gnu format... func_convert_file_noop
+checking how to convert x86_64-pc-linux-gnu file names to toolchain format... func_convert_file_noop
+checking for /usr/bin/ld option to reload object files... -r
+checking for file... file
+checking for objdump... objdump
+checking how to recognize dependent libraries... pass_all
+checking for dlltool... no
+checking how to associate runtime and link libraries... printf %s\n
+checking for ranlib... ranlib
+checking for ar... ar
+checking for archiver @FILE support... @
+checking for strip... strip
+checking command to parse /usr/bin/nm -B output from gcc object... ok
+checking for sysroot... no
+checking for a working dd... /usr/bin/dd
+checking how to truncate binary pipes... /usr/bin/dd bs=4096 count=1
+checking for mt... no
+checking if : is a manifest tool... no
+checking for dlfcn.h... yes
+checking for objdir... .libs
+checking if gcc supports -fno-rtti -fno-exceptions... no
+checking for gcc option to produce PIC... -fPIC -DPIC
+checking if gcc PIC flag -fPIC -DPIC works... yes
+checking if gcc static flag -static works... yes
+checking if gcc supports -c -o file.o... yes
+checking if gcc supports -c -o file.o... (cached) yes
+checking whether the gcc linker (/usr/bin/ld -m elf_x86_64) supports shared libraries... yes
+checking whether -lc should be explicitly linked in... no
+checking dynamic linker characteristics... GNU/Linux ld.so
+checking how to hardcode library paths into programs... immediate
+checking whether stripping libraries is possible... yes
+checking if libtool supports shared libraries... yes
+checking whether to build shared libraries... yes
+checking whether to build static libraries... no
+checking linker version script flag... --version-script
+checking if version scripts can use complex wildcards... yes
+checking for libxml-2.0... yes
+checking for json-parser... no
+checking for library containing pow... -lm
+checking for zlib... yes
+checking for epoll_create1... yes
+checking for if_tun.h... no
+checking for linux/if_tun.h... yes
+checking for net/if_utun.h... no
+checking for vhost-net support... yes
+checking for alloca.h... yes
+checking for endian.h... yes
+checking for python3... /opt/codex/runtimes/codex-primary-runtime/dependencies/python/bin/python3
+checking if groff can create UTF-8 XHTML... no. Not building HTML pages
+checking for uid_wrapper, socket_wrapper... no
+checking for Python 3.6+ with Flask module... not found
+checking for Python 3.7+ or 3.6 with dataclasses backport... found
+checking for nuttcp... no
+checking whether to enable broken in asan tests... yes
+checking that generated files are newer than configure... done
+configure: creating ./config.status
+config.status: creating Makefile
+config.status: creating openconnect.pc
+config.status: creating po/Makefile
+config.status: creating www/Makefile
+config.status: creating libopenconnect.map
+config.status: creating openconnect.8
+config.status: creating www/styles/Makefile
+config.status: creating www/inc/Makefile
+config.status: creating www/images/Makefile
+config.status: creating tests/Makefile
+config.status: creating tests/softhsm2.conf
+config.status: creating tests/configs/test-user-cert.config
+config.status: creating tests/configs/test-user-pass.config
+config.status: creating config.h
+config.status: config.h is unchanged
+config.status: executing depfiles commands
+config.status: executing libtool commands
+BUILD OPTIONS:
+  SSL library:            OpenSSL
+  PKCS#11 support:        no
+  DTLS support:           yes
+  ESP support:            yes
+  HPKE support:           yes
+  libproxy support:       disabled
+  RSA SecurID support:    disabled
+  PSKC OATH file support: no
+  GSSAPI support:         no
+  vhost-net support:      yes
+  Yubikey support:        disabled
+  JSON parser:            builtin
+  LZ4 compression:        no
+  Java bindings:          no
+  Build docs:             no
+  Unit tests:             no
+  Net namespace tests:    no
+  DSA tests:              yes
+  PPP tests:              no
+  Flask tests:            no
+  Insecure debugging:     no
+  External browser:       /usr/bin/xdg-open
+  VPNC script:            /bin/false
+configure: WARNING:
+***
+*** Be sure to run "make check" to verify OpenSSL DTLS support
+*** 
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-meridian-session.lo
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-ssl.lo
+  CC       libopenconnect_la-http.lo
+  CC       libopenconnect_la-textbuf.lo
+  CC       libopenconnect_la-http-auth.lo
+  CC       libopenconnect_la-auth-common.lo
+  CC       libopenconnect_la-auth-html.lo
+  CC       libopenconnect_la-library.lo
+  CC       libopenconnect_la-compat.lo
+  CC       libopenconnect_la-lzs.lo
+  CC       libopenconnect_la-mainloop.lo
+  CC       libopenconnect_la-script.lo
+  CC       libopenconnect_la-ntlm.lo
+  CC       libopenconnect_la-digest.lo
+  CC       libopenconnect_la-mtucalc.lo
+  CC       libopenconnect_la-oncp.lo
+  CC       libopenconnect_la-auth-juniper.lo
+  CC       libopenconnect_la-esp.lo
+  CC       libopenconnect_la-esp-seqno.lo
+  CC       libopenconnect_la-openssl-esp.lo
+  CC       libopenconnect_la-auth.lo
+  CC       libopenconnect_la-cstp.lo
+  CC       libopenconnect_la-hpke.lo
+  CC       libopenconnect_la-multicert.lo
+  CC       libopenconnect_la-dtls.lo
+  CC       libopenconnect_la-openssl-dtls.lo
+  CC       libopenconnect_la-oath.lo
+  CC       libopenconnect_la-gpst.lo
+  CC       libopenconnect_la-auth-globalprotect.lo
+  CC       libopenconnect_la-pulse.lo
+  CC       libopenconnect_la-oidc.lo
+  CC       libopenconnect_la-ppp.lo
+  CC       libopenconnect_la-nullppp.lo
+  CC       libopenconnect_la-f5.lo
+  CC       libopenconnect_la-fortinet.lo
+  CC       libopenconnect_la-jsondump.lo
+  CC       libopenconnect_la-array.lo
+  CC       libopenconnect_la-univpn.lo
+  CC       libopenconnect_la-vhost.lo
+  CC       libopenconnect_la-openssl.lo
+  CC       libopenconnect_la-openssl-pkcs11.lo
+  CC       libopenconnect_la-iconv.lo
+  CC       libopenconnect_la-tun.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CC       lzstest.o
+  CC       buftest.o
+  CC       seqtest.o
+  CCLD     serverhash
+  CCLD     seqtest
+  CCLD     lzstest
+  CCLD     buftest
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-meridian-session.o
+  CC       openconnect-xml.o
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-library.lo
+  CC       libopenconnect_la-univpn.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CCLD     serverhash
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-ssl.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CCLD     serverhash
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-openssl.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CCLD     serverhash
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'

@@ -1,0 +1,19 @@
+test_changed_source_rejected (test_provision.OfflineProvisioning.test_changed_source_rejected) ... ok
+test_directory_change_rejected (test_provision.OfflineProvisioning.test_directory_change_rejected) ... ok
+test_forbidden_paths (test_provision.OfflineProvisioning.test_forbidden_paths) ... ok
+test_missing_extra_hash_mode_hardlink_symlink (test_provision.OfflineProvisioning.test_missing_extra_hash_mode_hardlink_symlink) ... ok
+test_no_stage_on_changed_data (test_provision.OfflineProvisioning.test_no_stage_on_changed_data) ... ok
+test_nss_conflicts_are_not_reuse_permission (test_provision.OfflineProvisioning.test_nss_conflicts_are_not_reuse_permission) ... ok
+test_special_file (test_provision.OfflineProvisioning.test_special_file) ... ok
+test_stage_rollback_only_new_output (test_provision.OfflineProvisioning.test_stage_rollback_only_new_output) ... ok
+test_staging_revalidates_paths (test_provision.OfflineProvisioning.test_staging_revalidates_paths) ... ok
+test_symlink_directory_rejected (test_provision.OfflineProvisioning.test_symlink_directory_rejected) ... ok
+test_uncertain_rollback_retains (test_provision.OfflineProvisioning.test_uncertain_rollback_retains) ... ok
+test_unknown_duplicate_and_bad_types (test_provision.OfflineProvisioning.test_unknown_duplicate_and_bad_types) ... ok
+test_valid_bundle_and_disabled_stage (test_provision.OfflineProvisioning.test_valid_bundle_and_disabled_stage) ... ok
+test_xattrs_rejected (test_provision.OfflineProvisioning.test_xattrs_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.017s
+
+OK

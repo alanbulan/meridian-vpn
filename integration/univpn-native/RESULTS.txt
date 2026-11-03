@@ -1,0 +1,17 @@
+Experimental native packet mode canonical patches0001–0009, Linux x86_64.
+Clean pinned archive replay matches working native source and test files.
+Legacy/preconnected TLS mock suite:17 PASS,113.023s.
+Packet transport/offer mock suite:10 PASS,2.188s (also initial2.537s).
+Trusted direct hook, native pipe/mockTUN session, auth pipe, combined private pipe+dualTLS PASS.
+TLS allocation-failure descriptor cleanup:4/4 PASS.
+Focused session and codec ASAN/UBSAN PASS, detect_leaks=0; not whole-program instrumentation.
+Existing upstream buftest/seqtest/lzstest PASS.
+Real OpenConnect synthetic auth-only certificate fixtures:10 PASS,0.258s.
+Executable SHA256 bbbc907a1887d1e951be919e9ab5dbc2a050f08486c1d78307bc9482df201767
+Shared library SHA256 6b246b9059bfdba28b409eb7a3ab845734e5cbb6a7bb10c53e424172ff1308bd
+Packet fixture preload guard rejects native network connects/resolution, IP/netlink
+socket creation, TUN/vhost opens and namespace operations. This is not a production sandbox.
+Named-local parser case is syscall-mocked: no named bind/listen attempted.
+No actual host TUN/routes/DNS, isolation/bootstrap, real gateway or credentials tested.
+Version2 offer does not claim kernel interface/readiness. Host lease/activation integration
+is separate ongoing work; production deployment remains default disabled.

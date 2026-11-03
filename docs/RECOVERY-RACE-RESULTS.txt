@@ -1,0 +1,6 @@
+?   	mygo-vpn/cmd/meridian	[no test files]
+ok  	mygo-vpn/cmd/meridianctl	1.063s
+ok  	mygo-vpn/internal/autostart	1.029s
+ok  	mygo-vpn/internal/core	2.392s
+ok  	mygo-vpn/internal/desktop	1.874s
+ok  	mygo-vpn/internal/diagnostics	2.043s

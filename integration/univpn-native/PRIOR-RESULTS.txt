@@ -1,0 +1,86 @@
+test_authentication_rejected (__main__.Integration.test_authentication_rejected) ... ok
+test_authentication_success (__main__.Integration.test_authentication_success) ... ok
+test_data_channel_must_match_control_identity (__main__.Integration.test_data_channel_must_match_control_identity) ... ok
+test_ipv4_tcp_udp_icmp_frames (__main__.Integration.test_ipv4_tcp_udp_icmp_frames) ... ok
+test_malformed_data_frame_terminates (__main__.Integration.test_malformed_data_frame_terminates) ... ok
+test_untrusted_certificate_rejected (__main__.Integration.test_untrusted_certificate_rejected) ... ok
+test_watchdog_incomplete_frame (__main__.Integration.test_watchdog_incomplete_frame) ... ok
+test_watchdog_silent_control (__main__.Integration.test_watchdog_silent_control) ... ok
+test_watchdog_silent_data (__main__.Integration.test_watchdog_silent_data) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 108.020s
+
+OK
+UniVPN codec tests passed
+make: Entering directory '/tmp/meridian-native-session-verify/tests'
+make: 'buftest' is up to date.
+make: 'seqtest' is up to date.
+make: 'lzstest' is up to date.
+make: Leaving directory '/tmp/meridian-native-session-verify/tests'
+Accepting expected ESP packet with seq 0
+Accepting later-than-expected ESP packet with seq 2 (expected 1)
+Accepting out-of-order ESP packet with seq 1 (expected 3)
+Discarding replayed ESP packet with seq 0
+Accepting later-than-expected ESP packet with seq 64 (expected 3)
+Accepting expected ESP packet with seq 65
+Discarding replayed ESP packet with seq 65
+Accepting expected ESP packet with seq 66
+Accepting expected ESP packet with seq 67
+Accepting expected ESP packet with seq 68
+Discarding replayed ESP packet with seq 68
+Discarding ancient ESP packet with seq 2 (expected 69)
+Discarding ancient ESP packet with seq 3 (expected 69)
+Accepting out-of-order ESP packet with seq 4 (expected 69)
+Accepting later-than-expected ESP packet with seq 164 (expected 69)
+Discarding ancient ESP packet with seq 99 (expected 165)
+Accepting out-of-order ESP packet with seq 100 (expected 165)
+Accepting later-than-expected ESP packet with seq 200 (expected 165)
+Accepting later-than-expected ESP packet with seq 264 (expected 201)
+Discarding ancient ESP packet with seq 199 (expected 265)
+Discarding replayed ESP packet with seq 200
+Accepting expected ESP packet with seq 265
+Accepting out-of-order ESP packet with seq 210 (expected 266)
+Accepting out-of-order ESP packet with seq 201 (expected 266)
+Accepting later-than-expected ESP packet with seq 270 (expected 266)
+Accepting out-of-order ESP packet with seq 206 (expected 271)
+Discarding replayed ESP packet with seq 210
+Accepting later-than-expected ESP packet with seq 333 (expected 271)
+Discarding ancient ESP packet with seq 268 (expected 334)
+Accepting out-of-order ESP packet with seq 269 (expected 334)
+Discarding replayed ESP packet with seq 270
+Accepting later-than-expected ESP packet with seq 4294967293 (expected 334)
+Discarding ancient ESP packet with seq 1 (expected 4294967294)
+Accepting out-of-order ESP packet with seq 4294967233 (expected 4294967294)
+Accepting out-of-order ESP packet with seq 4294967292 (expected 4294967294)
+Accepting later-than-expected ESP packet with seq 4294967295 (expected 4294967294)
+Discarding ancient ESP packet with seq 0 (expected 4294967296)
+Discarding ancient ESP packet with seq 4294967230 (expected 4294967296)
+Accepting out-of-order ESP packet with seq 4294967231 (expected 4294967296)
+Discarding replayed ESP packet with seq 4294967233
+Accepting out-of-order ESP packet with seq 4294967232 (expected 4294967296)
+UniVPN direct hook tests passed (no TUN)
+UniVPN native session tests passed (mocked TUN/netlink, pipe only)
+Native pipe CLI authentication success/rejection passed (loopback TLS, authenticate-only, no TUN)
+
+Patch 0007 validation (2026-11-03 UTC):
+- Fresh official source SHA-256 verified; all seven pinned patches applied cleanly.
+- Full packaged build_native.sh completed successfully from the fresh tree.
+- Actual executable: all nine existing loopback TLS regression tests passed.
+- Actual executable: inherited-FD CLI success/rejected authentication tests passed,
+  both authenticate-only, yielding no-network and never config.
+- Actual native parser/emitter unit test passed with syscall-wrapped TUN and
+  netlink. Covers exclusive TUN flag, alias request/ACK failure, FD validation,
+  CLOEXEC, nonblocking mode, duplicate options, invalid JSON fields, route bound,
+  full/closed pipes, no-network vs closed, and sticky terminal reuse rejection.
+- Native session unit test plus meridian-session.c passed AddressSanitizer and
+  UndefinedBehaviorSanitizer with ASAN_OPTIONS=detect_leaks=0. Other linked native
+  objects were not instrumented for this focused test; leak checking not claimed.
+- Generated native-config.jsonl and native-no-network.jsonl fixtures came directly
+  from tests/univpn-session --emit-fixture, not from hand-transcribed JSON.
+- Source comparison confirms prepared source matches tested files.
+- No real gateway, credentials, kernel TUN, privileged netlink, host routes/DNS,
+  administrator privileges, or denied Unix-domain sockets were used.
+- Real privileged interface acquisition/alias mutation/rollback remains untested.
+- Production activation still requires independently verified containment and
+  lease/recovery providers; these native tests do not establish readiness.

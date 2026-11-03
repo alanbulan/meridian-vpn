@@ -1,0 +1,1 @@
+{"version":1,"event":"config","session":"0123456789abcdef0123456789abcdef","interface":"tun-test","index":17,"alias":"meridian-0123456789abcdef0123456789abcdef","addresses":["10.23.0.2/24"],"routes":["10.24.0.0/16"],"dns":[],"endpoint":"127.0.0.1"}

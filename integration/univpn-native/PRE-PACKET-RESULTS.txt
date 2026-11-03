@@ -1,0 +1,54 @@
+FINAL CANONICAL EIGHT-PATCH BUILD VALIDATION
+
+test_authentication_rejected (__main__.Integration.test_authentication_rejected) ... ok
+test_authentication_success (__main__.Integration.test_authentication_success) ... ok
+test_data_channel_must_match_control_identity (__main__.Integration.test_data_channel_must_match_control_identity) ... ok
+test_ipv4_tcp_udp_icmp_frames (__main__.Integration.test_ipv4_tcp_udp_icmp_frames) ... ok
+test_malformed_data_frame_terminates (__main__.Integration.test_malformed_data_frame_terminates) ... ok
+test_preconnected_auth_failure_closes_unused_data (__main__.Integration.test_preconnected_auth_failure_closes_unused_data) ... ok
+test_preconnected_data_channel_identity (__main__.Integration.test_preconnected_data_channel_identity) ... ok
+test_preconnected_different_peer_port (__main__.Integration.test_preconnected_different_peer_port) ... ok
+test_preconnected_invalid_pairs (__main__.Integration.test_preconnected_invalid_pairs) ... ok
+test_preconnected_reversed_options (__main__.Integration.test_preconnected_reversed_options) ... ok
+test_preconnected_tls_and_ipv4 (__main__.Integration.test_preconnected_tls_and_ipv4) ... ok
+test_preconnected_untrusted_certificate (__main__.Integration.test_preconnected_untrusted_certificate) ... ok
+test_preconnected_wrong_tls_hostname (__main__.Integration.test_preconnected_wrong_tls_hostname) ... ok
+test_untrusted_certificate_rejected (__main__.Integration.test_untrusted_certificate_rejected) ... ok
+test_watchdog_incomplete_frame (__main__.Integration.test_watchdog_incomplete_frame) ... ok
+test_watchdog_silent_control (__main__.Integration.test_watchdog_silent_control) ... ok
+test_watchdog_silent_data (__main__.Integration.test_watchdog_silent_data) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 111.998s
+
+OK
+
+UniVPN direct hook tests passed (no TUN)
+UniVPN native session tests passed (mocked TUN/netlink, pipe only)
+TLS allocation-failure descriptor cleanup: 4/4 passed (no network)
+Native pipe CLI authentication success/rejection passed (loopback TLS, authenticate-only, no TUN)
+Combined session pipe + inherited dual TLS passed (zero TUN opens)
+UniVPN codec tests passed
+
+Additional final verification:
+- All eight patches replay cleanly onto SHA-verified upstream; tested files match
+  replayed source, including canonical session0007 and shared openssl.c changes.
+- 10 Meridian authentication-only regression fixtures passed on this exact runtime
+  (PEM, encrypted PEM, PKCS8, PKCS12, password/trust rejection and cancellation).
+- Executable SHA256: c817c61156ce322c92e54831955fd52adb6708d3fd209a11a64fb504362f9e0a
+- libopenconnect SHA256: 418aab8a941f8bdd1281987caad269e2afcb86014b0a5be3021f4e02ba002b6e
+- Codec tests passed ASAN+UBSAN with leak detection disabled.
+- Native session test plus meridian-session.c passed ASAN+UBSAN with leak detection
+  disabled; other linked native objects are not fully sanitizer-instrumented.
+- LeakSanitizer remains unsupported in the runner; leak checking is NOT claimed.
+- Combined session + inherited dual TLS fixture uses real loopback TLS and a private
+  pipe; link guard forbids TUN opens and asserts zero attempts. No-network is a
+  statement about interface acquisition, not absence of the two TCP connections.
+- FD-mode test interposer refuses connect/getaddrinfo. It is a test guard, not a
+  production sandbox. TLS still verifies original gateway hostname and certificate.
+- No real credentials/gateway, kernel TUN, privileged netlink, namespace creation,
+  administrator privileges, host routes/DNS, or denied Unix socket operations.
+- Optional existing Unix IPC integration remains blocked/skipped after sandbox EPERM.
+- Preconnected TCP timing is tested only with the mock gateway. Live deployment,
+  TUN adoption, namespace/capability/seccomp policy and launcher wiring remain
+  separate unverified work; native flags do not establish production readiness.

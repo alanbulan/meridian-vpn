@@ -1,0 +1,834 @@
+{
+  "date": "2026-11-03",
+  "default_counts": {
+    "pass": 147,
+    "skip": 18
+  },
+  "default_tests": [
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestListRedactedByDefaultAndExplicitPrivateOutput",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestMissingConfigListIsEmptyButValidationFails",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestValidateSchemaAndOptionalCertificateChecks",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestUntrustedValidationErrorsAreNotPrinted",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestDiagnosticsDoesNotReadConfigAndUsesExitStatus",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestImportPreviewDeduplicatesWithoutWriting",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestImportWritesOnlyNewMergedConfigAndPreservesSettings",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestImportRefusesOverwriteAndMissingSource",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestImportLimitFailureWritesNothing",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestExportSelectedProfileAndPrivateMode",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestExportRefusesOverwriteAndInvalidIndex",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestSaveNewConfigNeverReplacesSymlinkOrHardlink",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestOutputParentMustExist",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestHelpVersionAndRejectedCommands",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/cmd/meridianctl",
+      "test": "TestBrokenOutputIsFailure",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestReadOnlyAndLifecycle",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestXDGDefaultsReadOnly",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestDesktopExecEscapingAndNoArguments",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestRejectUnsafeExecutableStrings",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestRejectInvalidConfigAndExecutables",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestExecutableSymlinkResolvedAndRechecked",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestForeignAndEditedEntriesPreserved",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestForeignFileTypesPreserved",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestUnsafeDirectoriesRejected",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestDifferentExecutableRequiresDisable",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestConcurrentManagersPublishOnlyCompleteEntries",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestAtomicPublishNeverReplacesExistingDestination",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestDirectoryLockNeverBlocksStatusOrMutation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestExecutableUnsafeAncestorRejected",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/autostart",
+      "test": "TestDesktopFileValidatorWhenRequested",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestStoreRejectsOversizeHiddenSuffix",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestValidationBoundariesAndControls",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestConfigLimitsDoNotMutateSavedFile",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestFailedRenameRemovesPrivateTempFile",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestProfileLimitBeforeMutation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestAuthenticationDuplicateEmptyAndControlFields",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestTerminalSessionCannotAdvertiseConnected",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestPartialStartCleansReturnedSession",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestReplaceAdapterPreservesHistoryAndRejectsActive",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestShutdownDeadlineDoesNotClaimCleanup",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestUnexpectedTunnelLossPreservesFailure",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRunnerChild",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestExecRunnerBoundsOutputAndCancelsHungProcess",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestTypedNilAndMissingAdapterFailClosed",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCancelledAuthenticationNeverAddsProfile",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestUncertainAddAttemptsUUIDOnlyCleanup",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMalformedInventoryCannotProveCleanup",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectAuthenticationOnly",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectRejectsBadPassword",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectRejectsUntrustedCertificate",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectCancellation",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectClientCertificate",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectRejectsClientCertificate",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectRejectsKeyPassphrase",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectClientCertificateCancellation",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCertificateRejectsFIFOAndSymlink",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestClientCertificateRejectsFIFOAndSymlink",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestClientCertificateValidation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestClientReferencesPersistWithoutSecrets",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestAdditionalGatewaysValidation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestKeyPassphraseRejectsConfigInjection",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestNetworkManagerConsumesClientCertificateAndPrivateFD",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCertificateAuthenticationRequiresSecureRunner",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestPrivateConfigPipeClosesOnLaunchFailure",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestEngineCopiesAndClearsCertificateCredentials",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestLegacyAdapterDoesNotIgnoreCertificateOrInteractiveAuthentication",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestClientCertificatePreflightBlocksAllCommands",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestProfileValidation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestStoreCRUDAndPermissions",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestStoreRejectsSecretAndCorruption",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestArgsNoShellOrSecret",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestVerifiedLifecycle",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestBackendErrorRedacted",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestClosedReadinessNeverConnected",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestOpenConnectBlockedWithoutBroker",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestDisconnectDuringStart",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestInvalidSavePreservesLastGoodConfig",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCredentialFDSubprocess",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCredentialSecretsReachOnlyPrivateSubprocessDescriptors",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCredentialSubprocessCancellation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestAdvancedProfilePersistenceAndArguments",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestAdvancedFieldsRejectInjectionAndUnsupportedValues",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCertificateValidationFailBeforeAnyCommand",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMetricsCachedAvailableAndReset",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMetricsUnavailableAndCounterValidation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestProxyNeedsExplicitSystemAuthConsentBeforeAnyProcess",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectEmptyResolveAssignment",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestProxyConsentCannotPersistOrImport",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestDirectAuthenticationDisablesAmbientProxy",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestCommandEnvironmentDropsProxyCredentials",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFAChallengeRetry",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFARejectsUntrustedCertificate",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFACancelPrompt",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFARoundBound",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFARejectsUnsupportedForm",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFAClientCertificate",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFAHostnameResolution",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealMFAConfiguredGroup",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFAFramedChallenge",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFAAnswerValidationAndClearing",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFARejectsMalformedFrames",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFAInitialPasswordUsedOnlyOnce",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFAUnavailableFailsClosed",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFACancelClosesInheritedOutput",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFAPartialFrame",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFAResolverHint",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFADiscoveryRejectsUnsafePaths",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestMFADiscoveryTrustChain",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestNetworkManagerLifecycleNoSecretsInArgv",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestNetworkManagerFailureCleansOwnProfile",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestNetworkManagerCleanupFailureIsExplicit",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestAuthenticationParserNeverEvaluates",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestNetworkManagerRejectsUnsupportedBeforeAnyProcess",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestEngineShutdownPreservesCleanupFailure",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/core",
+      "test": "TestRealOpenConnectEncryptedPKCS8",
+      "default_result": "skip"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestReadinessUsesOnlyBoundedReadOnlyProbe",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestUnsupportedPlatformDoesNotProbe",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestOptionalMFAReadinessNeverBlocksBasicBackendOrLeaksDetails",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestCancelledReportSkipsOptionalMFAProbe",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestMissingDependenciesAndPluginAreExplicit",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestServiceProbeFailsClosedAndNeverLeaksOutput",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestRelativeExecutablePathsAreRejected",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestOversizedPluginMetadataFailsClosed",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestMetadataTokensAreBounded",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestReadBoundedFileRejectsOversizeDirectoryAndSymlink",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestBoundedOutputCancelsBeforeOverflow",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestSubprocessProbeBoundsAndIsolatesEnvironment",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestProbeHelper",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/diagnostics",
+      "test": "TestLinuxDescriptorRejectsSymlinkAndOpensFIFOWithoutWaiting",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestNativeNavigationAndProfilePersistence",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestCancelAndInvalidSave",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestCorruptFileNeverOverwritten",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestChineseDefaultAndVisibleSafetyAtMinimumSize",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestCredentialCancelAndConsentGate",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestFailedSaveKeepsDraftAndCommittedConfig",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestAppearanceSwitchPersistsWithoutProfileOrCredentialLoss",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestReferenceLayoutSearchFiltersWithoutMutatingProfiles",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestTraySaveFailureRollsBackMemory",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestDiagnosticsDismissesCredentialPanel",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestShutdownBlocksConnectAndClearsCredentials",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestRecheckPreservesEngineAndLogs",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestRecheckResultIgnoredAfterShutdown",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestThemeSaveFailureDoesNotChangeAppearance",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestFollowSystemLanguageIsExplicitAndPersists",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestSidebarConnectVisibleAtMinimumClientHeightWithAdvancedEditor",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestAuthChallengeCancelAndFreshResponse",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestShutdownDiscardsAuthentication",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestImportMergeDeduplicatesWithoutOverwriting",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestImportRejectsSecretAndPreservesFile",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestExportDoesNotContainMemorySecretsOrConsent",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestExportProtectsActiveConfigAndLogsAreRedacted",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestAdvancedDraftRejectsInvalidMTUAndMissingCA",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestProxyConsentNeverSurvivesNavigation",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestByteFormattingOnlyKnownValues",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestLucideMappings",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestLucideAssetIntegrity",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestEveryLiteralIconReferenceIsMapped",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestLucideNativeRendering",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestTopologyArrowKeepsOfficialAspectRatio",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestTrayIconPNG",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestLossReminderRequiresConnectedAndConfirmedCleanup",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestRecoveryPreferencePersists",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestStartupConfirmationCancelNeverCreatesEntry",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestSwitchWaitsForCleanupAndRequiresFreshAuthentication",
+      "default_result": "pass"
+    },
+    {
+      "package": "mygo-vpn/internal/desktop",
+      "test": "TestGatewayAndCertificateDraftPersistence",
+      "default_result": "pass"
+    }
+  ]
+}

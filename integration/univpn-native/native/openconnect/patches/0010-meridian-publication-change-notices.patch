@@ -1,0 +1,349 @@
+Date: 2026-11-03
+Subject: Add dated publication notices without changing native behavior
+
+diff --git a/Makefile.am b/Makefile.am
+--- a/Makefile.am
++++ b/Makefile.am
+@@ -1,3 +1,8 @@
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ SUBDIRS = tests
+ # We kind of want openconnect to be built before we try to test it
+ # We also want to have wintun library when running wintun tests, if applicable
+diff --git a/library.c b/library.c
+--- a/library.c
++++ b/library.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/mainloop.c b/mainloop.c
+--- a/mainloop.c
++++ b/mainloop.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/meridian-session.c b/meridian-session.c
+--- a/meridian-session.c
++++ b/meridian-session.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* Meridian private UniVPN lifecycle pipe. LGPL-2.1-or-later.
+  * This is authenticated native configuration, never broker readiness or rollback proof. */
+ #include <config.h>
+diff --git a/openconnect-internal.h b/openconnect-internal.h
+--- a/openconnect-internal.h
++++ b/openconnect-internal.h
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/openssl.c b/openssl.c
+--- a/openssl.c
++++ b/openssl.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/script.c b/script.c
+--- a/script.c
++++ b/script.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/ssl.c b/ssl.c
+--- a/ssl.c
++++ b/ssl.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/tests/Makefile.am b/tests/Makefile.am
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -1,3 +1,8 @@
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ 
+ certsdir=$(srcdir)/certs
+ 
+diff --git a/tests/univpn-codec.c b/tests/univpn-codec.c
+--- a/tests/univpn-codec.c
++++ b/tests/univpn-codec.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later */
+ #include "../univpn-codec.h"
+ #include <assert.h>
+diff --git a/tests/univpn-fd-cleanup.c b/tests/univpn-fd-cleanup.c
+--- a/tests/univpn-fd-cleanup.c
++++ b/tests/univpn-fd-cleanup.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later. Socket-acquisition/allocator fault injection: NO network. */
+ #include <config.h>
+ #include "openconnect-internal.h"
+diff --git a/tests/univpn-fd-session.c b/tests/univpn-fd-session.c
+--- a/tests/univpn-fd-session.c
++++ b/tests/univpn-fd-session.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later. Synthetic credentials; dual TLS + session pipe, NO TUN. */
+ #include <config.h>
+ #include "openconnect-internal.h"
+diff --git a/tests/univpn-fd-session.py b/tests/univpn-fd-session.py
+--- a/tests/univpn-fd-session.py
++++ b/tests/univpn-fd-session.py
+@@ -1,4 +1,9 @@
+ #!/usr/bin/env python3
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ """Both real TLS channels + native lifecycle pipe; no interface or privileged call."""
+ import importlib.util, json, os, pathlib, socket, subprocess, sys
+ spec=importlib.util.spec_from_file_location('mock',pathlib.Path(__file__).with_name('univpn-integration.py'))
+diff --git a/tests/univpn-hook.c b/tests/univpn-hook.c
+--- a/tests/univpn-hook.c
++++ b/tests/univpn-hook.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later. Direct hook execution tests; never creates a TUN. */
+ #include <config.h>
+ #include "openconnect-internal.h"
+diff --git a/tests/univpn-integration.py b/tests/univpn-integration.py
+--- a/tests/univpn-integration.py
++++ b/tests/univpn-integration.py
+@@ -1,4 +1,9 @@
+ #!/usr/bin/env python3
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ """Exercise the real native client against a loopback-only mock TLS gateway.
+ No root/TUN device, remote server or private configuration is needed.
+ Run: python3 tests/univpn-integration.py [path-to-openconnect]
+diff --git a/tests/univpn-no-host-network.c b/tests/univpn-no-host-network.c
+--- a/tests/univpn-no-host-network.c
++++ b/tests/univpn-no-host-network.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later. TEST ONLY guard; not a production isolation mechanism. */
+ #define _GNU_SOURCE
+ #include <sys/socket.h>
+diff --git a/tests/univpn-no-network.c b/tests/univpn-no-network.c
+--- a/tests/univpn-no-network.c
++++ b/tests/univpn-no-network.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later. TEST ONLY interposition, not a security sandbox. */
+ #define _GNU_SOURCE
+ #include <sys/socket.h>
+diff --git a/tests/univpn-packet-integration.py b/tests/univpn-packet-integration.py
+--- a/tests/univpn-packet-integration.py
++++ b/tests/univpn-packet-integration.py
+@@ -1,4 +1,9 @@
+ #!/usr/bin/env python3
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ """Native inherited packet channel: real local IPC/TLS, no host TUN/netlink."""
+ import array, importlib.util, json, os, pathlib, select, signal, socket, struct, subprocess, sys, time, unittest
+ spec=importlib.util.spec_from_file_location('mock',pathlib.Path(__file__).with_name('univpn-integration.py'))
+diff --git a/tests/univpn-session-integration.py b/tests/univpn-session-integration.py
+--- a/tests/univpn-session-integration.py
++++ b/tests/univpn-session-integration.py
+@@ -1,4 +1,9 @@
+ #!/usr/bin/env python3
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ """Native pipe CLI with real loopback TLS authentication, never TUN setup."""
+ import importlib.util
+ import json
+diff --git a/tests/univpn-session.c b/tests/univpn-session.c
+--- a/tests/univpn-session.c
++++ b/tests/univpn-session.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* LGPL-2.1-or-later. Actual native lifecycle code, mocked kernel only. */
+ #include <config.h>
+ #include "openconnect-internal.h"
+diff --git a/tun.c b/tun.c
+--- a/tun.c
++++ b/tun.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /*
+  * OpenConnect (SSL + DTLS) VPN client
+  *
+diff --git a/univpn-codec.h b/univpn-codec.h
+--- a/univpn-codec.h
++++ b/univpn-codec.h
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* UniVPN wire bounds shared by the client and standalone tests.
+  * Copyright (C) 2026 UniVPN Connect contributors. LGPL-2.1-or-later. */
+ #ifndef OPENCONNECT_UNIVPN_CODEC_H
+diff --git a/univpn.c b/univpn.c
+--- a/univpn.c
++++ b/univpn.c
+@@ -1,3 +1,9 @@
++/* Modified version for Meridian; publication notices added 2026-11-03.
++ * This file differs from pinned upstream OpenConnect through the documented
++ * UniVPN and Meridian patch series. Original authorship and license notices
++ * remain unchanged. Earlier patch dates are preserved where recorded; this
++ * date identifies the notice addition, not an invented original change date.
++ */
+ /* Experimental Huawei UniVPN IPv4 over two TLS channels.
+  * Copyright (C) 2026 UniVPN Connect contributors. LGPL-2.1-or-later.
+  * Wire observations are documented in www/huawei.xml. */
+diff --git a/www/Makefile.am b/www/Makefile.am
+--- a/www/Makefile.am
++++ b/www/Makefile.am
+@@ -1,3 +1,8 @@
++# Modified version for Meridian; publication notices added 2026-11-03.
++# This file differs from pinned upstream OpenConnect through the documented
++# UniVPN and Meridian patch series. Original authorship and license notices
++# remain unchanged. Earlier patch dates are preserved where recorded; this
++# date identifies the notice addition, not an invented original change date.
+ #
+ 
+ SUBDIRS = styles inc images
+diff --git a/www/contribute.xml b/www/contribute.xml
+--- a/www/contribute.xml
++++ b/www/contribute.xml
+@@ -1,3 +1,8 @@
++<!-- Modified version for Meridian; publication notices added 2026-11-03.
++This file differs from pinned upstream OpenConnect through the documented
++UniVPN and Meridian patch series. Original authorship and license notices
++remain unchanged. Earlier patch dates are preserved where recorded; this
++date identifies the notice addition, not an invented original change date. -->
+ <PAGE>
+ 	<INCLUDE file="inc/header.tmpl" />
+ 
+diff --git a/www/huawei.xml b/www/huawei.xml
+--- a/www/huawei.xml
++++ b/www/huawei.xml
+@@ -1,3 +1,8 @@
++<!-- Modified version for Meridian; publication notices added 2026-11-03.
++This file differs from pinned upstream OpenConnect through the documented
++UniVPN and Meridian patch series. Original authorship and license notices
++remain unchanged. Earlier patch dates are preserved where recorded; this
++date identifies the notice addition, not an invented original change date. -->
+ <PAGE>
+ 	<INCLUDE file="inc/header.tmpl" />
+ 

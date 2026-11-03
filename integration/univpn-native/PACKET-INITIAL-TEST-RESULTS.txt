@@ -1,0 +1,15 @@
+test_ancillary_rights_rejected (__main__.Packet.test_ancillary_rights_rejected) ... ok
+test_auth_failure_never_claims_interface_cleanup (__main__.Packet.test_auth_failure_never_claims_interface_cleanup) ... ok
+test_missing_session_rejected (__main__.Packet.test_missing_session_rejected) ... ok
+test_missing_transport_rejected (__main__.Packet.test_missing_transport_rejected) ... ok
+test_named_local_socket_rejected_without_binding (__main__.Packet.test_named_local_socket_rejected_without_binding) ... ok
+test_offer_and_packets (__main__.Packet.test_offer_and_packets) ... ok
+test_oversized_message_is_terminal (__main__.Packet.test_oversized_message_is_terminal) ... ok
+test_peer_close_is_terminal (__main__.Packet.test_peer_close_is_terminal) ... ok
+test_script_mode_rejected (__main__.Packet.test_script_mode_rejected) ... ok
+test_zero_message_is_terminal (__main__.Packet.test_zero_message_is_terminal) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 2.537s
+
+OK

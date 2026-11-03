@@ -1,0 +1,34 @@
+=== RUN   TestRealOpenConnectAuthenticationOnly
+    authfixture_integration_test.go:206: PASS: real TLS challenge/reply, stdin password, cookie tuple; zero tunnel CONNECT requests
+--- PASS: TestRealOpenConnectAuthenticationOnly (0.03s)
+=== RUN   TestRealOpenConnectRejectsBadPassword
+    authfixture_integration_test.go:224: PASS: invalid synthetic password rejected; no cookie and no tunnel
+--- PASS: TestRealOpenConnectRejectsBadPassword (0.03s)
+=== RUN   TestRealOpenConnectRejectsUntrustedCertificate
+    authfixture_integration_test.go:244: PASS: untrusted CA rejected before HTTP credentials
+--- PASS: TestRealOpenConnectRejectsUntrustedCertificate (0.03s)
+=== RUN   TestRealOpenConnectCancellation
+    authfixture_integration_test.go:279: PASS: cancellation terminated real client during pending authentication
+--- PASS: TestRealOpenConnectCancellation (0.03s)
+=== RUN   TestRealOpenConnectClientCertificate
+=== RUN   TestRealOpenConnectClientCertificate/PEM
+    authfixture_integration_test.go:320: PASS: real mTLS certificate-only authentication, inherited private FDs, no username/password, no tunnel
+=== RUN   TestRealOpenConnectClientCertificate/encrypted-PEM
+    authfixture_integration_test.go:320: PASS: real mTLS certificate-only authentication, inherited private FDs, no username/password, no tunnel
+--- PASS: TestRealOpenConnectClientCertificate (0.05s)
+    --- PASS: TestRealOpenConnectClientCertificate/PEM (0.02s)
+    --- PASS: TestRealOpenConnectClientCertificate/encrypted-PEM (0.02s)
+=== RUN   TestRealOpenConnectRejectsClientCertificate
+    authfixture_integration_test.go:342: PASS: untrusted client certificate rejected at TLS; no cookie or tunnel
+--- PASS: TestRealOpenConnectRejectsClientCertificate (0.03s)
+=== RUN   TestRealOpenConnectRejectsKeyPassphrase
+    authfixture_integration_test.go:363: PASS: missing/wrong encrypted-key passphrase rejected, no HTTP credentials or tunnel
+--- PASS: TestRealOpenConnectRejectsKeyPassphrase (0.04s)
+=== RUN   TestRealOpenConnectClientCertificateCancellation
+    authfixture_integration_test.go:399: PASS: cancelled pending certificate authentication promptly terminates real child
+--- PASS: TestRealOpenConnectClientCertificateCancellation (0.03s)
+=== RUN   TestRealOpenConnectEncryptedPKCS8
+    pkcs8_fixture_test.go:114: PASS: real encrypted PKCS#8 mTLS with private FD passphrase; wrong/missing passphrase and mismatched certificate rejected
+--- PASS: TestRealOpenConnectEncryptedPKCS8 (0.10s)
+PASS
+ok  	mygo-vpn/internal/core	0.365s

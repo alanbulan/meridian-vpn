@@ -1,0 +1,11 @@
+$ go version
+go version go1.27.3 linux/amd64
+$ go test -count=1 ./internal/core ./internal/processcontainment
+ok  	mygo-vpn/internal/core	2.308s
+ok  	mygo-vpn/internal/processcontainment	0.056s
+exit=0
+$ go test -race -count=1 ./internal/processcontainment
+ok  	mygo-vpn/internal/processcontainment	1.066s
+exit=0
+$ go vet ./internal/processcontainment
+exit=0

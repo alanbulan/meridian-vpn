@@ -1,0 +1,22 @@
+test_authentication_rejected (__main__.Integration.test_authentication_rejected) ... ok
+test_authentication_success (__main__.Integration.test_authentication_success) ... ok
+test_data_channel_must_match_control_identity (__main__.Integration.test_data_channel_must_match_control_identity) ... ok
+test_ipv4_tcp_udp_icmp_frames (__main__.Integration.test_ipv4_tcp_udp_icmp_frames) ... ok
+test_malformed_data_frame_terminates (__main__.Integration.test_malformed_data_frame_terminates) ... ok
+test_preconnected_auth_failure_closes_unused_data (__main__.Integration.test_preconnected_auth_failure_closes_unused_data) ... ok
+test_preconnected_data_channel_identity (__main__.Integration.test_preconnected_data_channel_identity) ... ok
+test_preconnected_different_peer_port (__main__.Integration.test_preconnected_different_peer_port) ... ok
+test_preconnected_invalid_pairs (__main__.Integration.test_preconnected_invalid_pairs) ... ok
+test_preconnected_reversed_options (__main__.Integration.test_preconnected_reversed_options) ... ok
+test_preconnected_tls_and_ipv4 (__main__.Integration.test_preconnected_tls_and_ipv4) ... ok
+test_preconnected_untrusted_certificate (__main__.Integration.test_preconnected_untrusted_certificate) ... ok
+test_preconnected_wrong_tls_hostname (__main__.Integration.test_preconnected_wrong_tls_hostname) ... ok
+test_untrusted_certificate_rejected (__main__.Integration.test_untrusted_certificate_rejected) ... ok
+test_watchdog_incomplete_frame (__main__.Integration.test_watchdog_incomplete_frame) ... ok
+test_watchdog_silent_control (__main__.Integration.test_watchdog_silent_control) ... ok
+test_watchdog_silent_data (__main__.Integration.test_watchdog_silent_data) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 113.023s
+
+OK

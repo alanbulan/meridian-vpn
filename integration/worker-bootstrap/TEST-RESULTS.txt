@@ -1,0 +1,11 @@
+make: Entering directory '/workspace/scratch/a5f6e938602a/recovery/source/meridian/integration/worker-bootstrap'
+rm -f build/meridian-worker-bootstrap build/test-bootstrap
+mkdir -p build
+cc -std=c11 -O2 -Wall -Wextra -Werror -fstack-protector-strong -D_FORTIFY_SOURCE=3 -static -Wl,-z,relro,-z,now,-z,noexecstack -o build/meridian-worker-bootstrap bootstrap.c
+readelf -l build/meridian-worker-bootstrap > build/elf-program-headers.txt
+! grep -q INTERP build/elf-program-headers.txt
+mkdir -p build
+cc -std=c11 -O2 -Wall -Wextra -Werror -fstack-protector-strong -D_FORTIFY_SOURCE=3 -o build/test-bootstrap test_bootstrap.c
+./build/test-bootstrap
+PASS: 9 stage failures, exec-return failure, syscall/ABI/FD policy tests (no kernel sandbox operations)
+make: Leaving directory '/workspace/scratch/a5f6e938602a/recovery/source/meridian/integration/worker-bootstrap'

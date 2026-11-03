@@ -1,0 +1,65 @@
+{"Time":"2026-11-02T22:33:00.187203714-08:00","Action":"start","Package":"mygo-vpn/internal/fdtransport"}
+{"Time":"2026-11-02T22:33:00.200956765-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestPrepare"}
+{"Time":"2026-11-02T22:33:00.201037387-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestPrepare","Output":"=== RUN   TestPrepare\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.20107243-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestPrepare","Output":"--- PASS: TestPrepare (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201076927-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestPrepare","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.201083817-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose"}
+{"Time":"2026-11-02T22:33:00.20108581-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose","Output":"=== RUN   TestRejectAndClose\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201093462-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/duplicate"}
+{"Time":"2026-11-02T22:33:00.201095445-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/duplicate","Output":"=== RUN   TestRejectAndClose/duplicate\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201101093-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/duplicate","Output":"--- PASS: TestRejectAndClose/duplicate (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201104298-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/duplicate","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.201110187-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/inspect"}
+{"Time":"2026-11-02T22:33:00.201111969-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/inspect","Output":"=== RUN   TestRejectAndClose/inspect\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201231624-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/inspect","Output":"--- PASS: TestRejectAndClose/inspect (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201264334-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/inspect","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.201279677-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/datagram"}
+{"Time":"2026-11-02T22:33:00.20128193-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/datagram","Output":"=== RUN   TestRejectAndClose/datagram\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.20143444-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/datagram","Output":"--- PASS: TestRejectAndClose/datagram (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201463204-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/datagram","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.201518437-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/protocol"}
+{"Time":"2026-11-02T22:33:00.20152072-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/protocol","Output":"=== RUN   TestRejectAndClose/protocol\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201650676-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/protocol","Output":"--- PASS: TestRejectAndClose/protocol (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201663716-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/protocol","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.201744708-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/peer"}
+{"Time":"2026-11-02T22:33:00.201756496-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/peer","Output":"=== RUN   TestRejectAndClose/peer\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201759921-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/peer","Output":"--- PASS: TestRejectAndClose/peer (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.201958175-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/peer","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.201969181-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/same"}
+{"Time":"2026-11-02T22:33:00.201971445-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/same","Output":"=== RUN   TestRejectAndClose/same\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202022021-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/same","Output":"--- PASS: TestRejectAndClose/same (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202036383-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/same","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202050744-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/zero"}
+{"Time":"2026-11-02T22:33:00.202052597-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/zero","Output":"=== RUN   TestRejectAndClose/zero\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202093178-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/zero","Output":"--- PASS: TestRejectAndClose/zero (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.20210773-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose/zero","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202129743-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose","Output":"--- PASS: TestRejectAndClose (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202145587-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestRejectAndClose","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.20216076-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestBadPolicyNoDescriptors"}
+{"Time":"2026-11-02T22:33:00.202162593-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestBadPolicyNoDescriptors","Output":"=== RUN   TestBadPolicyNoDescriptors\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202229784-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestBadPolicyNoDescriptors","Output":"--- PASS: TestBadPolicyNoDescriptors (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202234311-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestBadPolicyNoDescriptors","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202237546-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestPipeRejectedWithoutClosingInput"}
+{"Time":"2026-11-02T22:33:00.20224007-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestPipeRejectedWithoutClosingInput","Output":"=== RUN   TestPipeRejectedWithoutClosingInput\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.20238607-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestPipeRejectedWithoutClosingInput","Output":"--- PASS: TestPipeRejectedWithoutClosingInput (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202391888-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestPipeRejectedWithoutClosingInput","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202410106-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestClosedBundle"}
+{"Time":"2026-11-02T22:33:00.202411798-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestClosedBundle","Output":"=== RUN   TestClosedBundle\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202450747-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestClosedBundle","Output":"--- PASS: TestClosedBundle (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202464177-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestClosedBundle","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202477748-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestFirstDescriptorFailure"}
+{"Time":"2026-11-02T22:33:00.2024793-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestFirstDescriptorFailure","Output":"=== RUN   TestFirstDescriptorFailure\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202526171-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestFirstDescriptorFailure","Output":"--- PASS: TestFirstDescriptorFailure (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.20253891-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestFirstDescriptorFailure","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202555455-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestZeroPortAndMissingInputs"}
+{"Time":"2026-11-02T22:33:00.202557188-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestZeroPortAndMissingInputs","Output":"=== RUN   TestZeroPortAndMissingInputs\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.20259879-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestZeroPortAndMissingInputs","Output":"--- PASS: TestZeroPortAndMissingInputs (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202627974-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestZeroPortAndMissingInputs","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202647624-08:00","Action":"run","Package":"mygo-vpn/internal/fdtransport","Test":"TestBundleOwnership"}
+{"Time":"2026-11-02T22:33:00.202649617-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestBundleOwnership","Output":"=== RUN   TestBundleOwnership\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202706613-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Test":"TestBundleOwnership","Output":"--- PASS: TestBundleOwnership (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.202719843-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Test":"TestBundleOwnership","Elapsed":0}
+{"Time":"2026-11-02T22:33:00.202749778-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-11-02T22:33:00.204318518-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Output":"coverage: 75.8% of statements\n"}
+{"Time":"2026-11-02T22:33:01.206793539-08:00","Action":"output","Package":"mygo-vpn/internal/fdtransport","Output":"ok  \tmygo-vpn/internal/fdtransport\t1.019s\tcoverage: 75.8% of statements\n"}
+{"Time":"2026-11-02T22:33:01.207283968-08:00","Action":"pass","Package":"mygo-vpn/internal/fdtransport","Elapsed":1.02}

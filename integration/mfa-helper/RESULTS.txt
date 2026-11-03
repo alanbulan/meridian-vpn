@@ -1,0 +1,59 @@
+=== RUN   TestRealMFAChallengeRetry
+    mfa_integration_test.go:128: PASS: real libopenconnect form callback, password then OTP/select, invalid-code retry, session-bound answers, cookie; zero tunnel CONNECT
+--- PASS: TestRealMFAChallengeRetry (0.05s)
+=== RUN   TestRealMFARejectsUntrustedCertificate
+    mfa_integration_test.go:145: PASS: TLS validation cannot be bypassed; no authentication request or tunnel
+--- PASS: TestRealMFARejectsUntrustedCertificate (0.04s)
+=== RUN   TestRealMFACancelPrompt
+    mfa_integration_test.go:181: PASS: pending MFA canceled, helper terminated, no tunnel
+--- PASS: TestRealMFACancelPrompt (0.05s)
+=== RUN   TestRealMFARoundBound
+    mfa_integration_test.go:196: PASS: repeated challenges stop at eight forms, no tunnel
+--- PASS: TestRealMFARoundBound (0.05s)
+=== RUN   TestRealMFARejectsUnsupportedForm
+=== RUN   TestRealMFARejectsUnsupportedForm/sso
+=== RUN   TestRealMFARejectsUnsupportedForm/external-sso
+=== RUN   TestRealMFARejectsUnsupportedForm/oversized
+--- PASS: TestRealMFARejectsUnsupportedForm (0.10s)
+    --- PASS: TestRealMFARejectsUnsupportedForm/sso (0.03s)
+    --- PASS: TestRealMFARejectsUnsupportedForm/external-sso (0.03s)
+    --- PASS: TestRealMFARejectsUnsupportedForm/oversized (0.03s)
+=== RUN   TestRealMFAClientCertificate
+=== RUN   TestRealMFAClientCertificate/PEM
+=== RUN   TestRealMFAClientCertificate/encrypted-PEM
+--- PASS: TestRealMFAClientCertificate (0.10s)
+    --- PASS: TestRealMFAClientCertificate/PEM (0.03s)
+    --- PASS: TestRealMFAClientCertificate/encrypted-PEM (0.05s)
+=== RUN   TestRealMFAHostnameResolution
+    mfa_integration_test.go:262: PASS: real hostname TLS, original SNI/connect hostname and authenticated numeric RESOLVE retained; no tunnel
+--- PASS: TestRealMFAHostnameResolution (0.04s)
+=== RUN   TestRealMFAConfiguredGroup
+=== RUN   TestRealMFAConfiguredGroup/engineering
+=== RUN   TestRealMFAConfiguredGroup/Engineering
+=== RUN   TestRealMFAConfiguredGroup/missing
+--- PASS: TestRealMFAConfiguredGroup (0.10s)
+    --- PASS: TestRealMFAConfiguredGroup/engineering (0.03s)
+    --- PASS: TestRealMFAConfiguredGroup/Engineering (0.03s)
+    --- PASS: TestRealMFAConfiguredGroup/missing (0.03s)
+=== RUN   TestMFAFramedChallenge
+--- PASS: TestMFAFramedChallenge (0.00s)
+=== RUN   TestMFAAnswerValidationAndClearing
+--- PASS: TestMFAAnswerValidationAndClearing (0.00s)
+=== RUN   TestMFARejectsMalformedFrames
+--- PASS: TestMFARejectsMalformedFrames (0.00s)
+=== RUN   TestMFAInitialPasswordUsedOnlyOnce
+--- PASS: TestMFAInitialPasswordUsedOnlyOnce (0.00s)
+=== RUN   TestMFAUnavailableFailsClosed
+--- PASS: TestMFAUnavailableFailsClosed (0.00s)
+=== RUN   TestMFACancelClosesInheritedOutput
+--- PASS: TestMFACancelClosesInheritedOutput (0.10s)
+=== RUN   TestMFAPartialFrame
+--- PASS: TestMFAPartialFrame (0.00s)
+=== RUN   TestMFAResolverHint
+--- PASS: TestMFAResolverHint (0.00s)
+=== RUN   TestMFADiscoveryRejectsUnsafePaths
+--- PASS: TestMFADiscoveryRejectsUnsafePaths (0.00s)
+=== RUN   TestMFADiscoveryTrustChain
+--- PASS: TestMFADiscoveryTrustChain (0.00s)
+PASS
+ok  	mygo-vpn/internal/core	1.642s

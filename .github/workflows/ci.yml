@@ -1,0 +1,113 @@
+name: Native build and tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.target }} / build and unit tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+            ext: ''
+          - runner: windows-2022
+            target: windows-amd64
+            ext: '.exe'
+          - runner: macos-15
+            target: darwin-arm64
+            ext: ''
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify toolchain and module integrity
+        run: |
+          go version
+          go env GOOS GOARCH
+          go mod download
+          go mod verify
+      - name: Unit tests (not live VPN acceptance)
+        run: |
+          mkdir -p reports
+          set -o pipefail
+          go test -count=1 -json ./... | tee reports/tests.jsonl
+      - name: Static analysis
+        run: go vet ./...
+      - name: Native GUI and CLI build
+        run: |
+          mkdir -p build
+          go build -buildvcs=false -trimpath -tags mygo_noinspector -ldflags '-s -w -X github.com/egoist/mygo.production=1' -o build/meridian${{ matrix.ext }} ./cmd/meridian
+          go build -buildvcs=false -trimpath -ldflags '-s -w' -o build/meridianctl${{ matrix.ext }} ./cmd/meridianctl
+      - name: Run native CLI without configuration or network changes
+        run: |
+          ./build/meridianctl${{ matrix.ext }} version
+          ./build/meridianctl${{ matrix.ext }} help
+      - name: Write honest test summary
+        if: always()
+        run: python3 scripts/ci-summary.py reports/tests.jsonl
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: tests-${{ matrix.target }}
+          path: reports/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload unsigned development binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: meridian-dev-${{ matrix.target }}
+          path: build/meridian*
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-security:
+    name: Linux / race and offline security regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Race detector (CGO is test instrumentation only)
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -count=1 ./...
+      - name: Bootstrap static build and injected tests only
+        run: make -C integration/worker-bootstrap all test
+      - name: Offline provisioning tests (no install or activation)
+        run: python3 -m unittest discover -s integration/provisioning -v

@@ -1,0 +1,409 @@
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -166,6 +166,7 @@
+ enum {
+ 	OPT_AUTHENTICATE = 0x100,
+ 	OPT_MERIDIAN_CONTROL_FD,
++	OPT_MERIDIAN_PACKET_FD,
+ 	OPT_MERIDIAN_DATA_FD,
+ 	OPT_AUTHGROUP,
+ 	OPT_BASEMTU,
+@@ -240,6 +241,7 @@
+ static const struct option long_options[] = {
+ #ifdef __linux__
+ 	OPTION("meridian-control-fd", 1, OPT_MERIDIAN_CONTROL_FD),
++	OPTION("meridian-packet-fd", 1, OPT_MERIDIAN_PACKET_FD),
+ 	OPTION("meridian-data-fd", 1, OPT_MERIDIAN_DATA_FD),
+ #endif
+ #ifndef _WIN32
+@@ -2304,6 +2306,9 @@
+ 			vpninfo->certinfo[1].password = dup_config_arg();
+ 			break;
+ #ifdef __linux__
++		case OPT_MERIDIAN_PACKET_FD:
++			if (config_file || meridian_packet_fd(vpninfo, config_arg)) { fprintf(stderr,"Invalid Meridian packet descriptor\n"); exit(1); }
++			break;
+ 		case OPT_MERIDIAN_CONTROL_FD:
+ 		case OPT_MERIDIAN_DATA_FD: {
+ 			char *end; long fd;
+diff --git a/library.c b/library.c
+--- a/library.c
++++ b/library.c
+@@ -192,6 +192,7 @@
+ #else
+ 	vpninfo->tun_fd = -1;
+ #endif
++	vpninfo->meridian_packet_fd = -1;
+ 	vpninfo->ssl_fd = -1;
+ 	vpninfo->univpn_control_fd = -1;
+ 	vpninfo->univpn_data_fd = -1;
+@@ -783,6 +784,7 @@
+ 
+ void openconnect_vpninfo_free(struct openconnect_info *vpninfo)
+ {
++	if (vpninfo->meridian_packet_fd >= 0) { closesocket(vpninfo->meridian_packet_fd); vpninfo->meridian_packet_fd = -1; }
+ 	if (vpninfo->univpn_control_fd >= 0) { closesocket(vpninfo->univpn_control_fd); vpninfo->univpn_control_fd = -1; }
+ 	if (vpninfo->univpn_data_fd >= 0) { closesocket(vpninfo->univpn_data_fd); vpninfo->univpn_data_fd = -1; }
+ 	if (vpninfo->univpn_preconnected_fd >= 0) { closesocket(vpninfo->univpn_preconnected_fd); vpninfo->univpn_preconnected_fd = -1; }
+@@ -1583,6 +1585,7 @@
+ 	intptr_t tun_fd;
+ 	char *legacy_ifname;
+ 
++	if (vpninfo->meridian_packet_mode) return meridian_packet_setup(vpninfo);
+ 	UTF8CHECK(vpnc_script);
+ 	UTF8CHECK(ifname);
+ 
+diff --git a/openconnect-internal.h b/openconnect-internal.h
+--- a/openconnect-internal.h
++++ b/openconnect-internal.h
+@@ -420,6 +420,7 @@
+ 	struct univpn_state *univpn;
+ 	int univpn_control_fd, univpn_data_fd, univpn_preconnected_fd;
+ 	int univpn_fd_mode;
++	int meridian_packet_fd, meridian_packet_mode, meridian_packet_active;
+ 	int meridian_fd, meridian_index, meridian_live, meridian_emitted, meridian_marked, meridian_acquired, meridian_closed;
+ 	char meridian_session[33];
+ 	const struct vpn_proto *proto;
+@@ -1394,6 +1395,8 @@
+ int check_http_status(const char *buf, int len);
+ 
+ 
++int meridian_packet_fd(struct openconnect_info *, const char *);
++int meridian_packet_setup(struct openconnect_info *);
+ int meridian_session_fd(struct openconnect_info *, const char *);
+ int meridian_session_id(struct openconnect_info *, const char *);
+ int meridian_session_validate(struct openconnect_info *);
+diff --git a/univpn.c b/univpn.c
+--- a/univpn.c
++++ b/univpn.c
+@@ -75,6 +75,8 @@
+ {
+ 	struct univpn_state *s = v->univpn;
+ 	if (!s) return;
++	if (v->meridian_packet_fd >= 0) { closesocket(v->meridian_packet_fd); v->meridian_packet_fd=-1; }
++	if (v->meridian_packet_active && v->tun_fd >= 0) os_shutdown_tun(v);
+ 	if (v->univpn_control_fd >= 0) { closesocket(v->univpn_control_fd); v->univpn_control_fd = -1; }
+ 	if (v->univpn_data_fd >= 0) { closesocket(v->univpn_data_fd); v->univpn_data_fd = -1; }
+ 	if (v->univpn_preconnected_fd >= 0) { closesocket(v->univpn_preconnected_fd); v->univpn_preconnected_fd = -1; }
+@@ -243,6 +245,7 @@
+ 	unsigned char first[340] = {0}, hash[32];
+ 	unsigned type, len; const unsigned char *value; size_t pos; int ret, found = 0;
+ 	char mac[18];
++	if (v->meridian_packet_mode && v->univpn) return -EINVAL;
+ 	if (!v->univpn_fd_mode && (v->univpn_control_fd >= 0 || v->univpn_data_fd >= 0) && univpn_adopt_fds(v)) {
+ 		vpn_progress(v, PRG_ERR, "Invalid Meridian preconnected socket pair\n"); return -EINVAL;
+ 	}
+diff --git a/meridian-session.c b/meridian-session.c
+--- a/meridian-session.c
++++ b/meridian-session.c
+@@ -6,10 +6,47 @@
+ #include <ctype.h>
+ #include <sys/stat.h>
+ #ifdef __linux__
++#include <sys/un.h>
++#endif
++#ifdef __linux__
+ #include <net/if.h>
+ #include <linux/rtnetlink.h>
+ #include <sys/time.h>
+ #endif
++
++/* A packet relay socket is not a host TUN and conveys no interface ownership. */
++int meridian_packet_fd(struct openconnect_info *v, const char *arg)
++{
++#ifdef __linux__
++ unsigned long n=0; struct stat st; struct sockaddr_un peer,local; socklen_t len=sizeof(peer), llen=sizeof(local), ilen=sizeof(int); int type,proto;
++ if(v->meridian_closed || v->meridian_packet_mode || !arg || !*arg || arg[0]=='0') return -EINVAL;
++ for(const char *p=arg;*p;p++) { if(*p<'0'||*p>'9'||n>(INT_MAX-(unsigned)(*p-'0'))/10) return -EINVAL; n=n*10+(*p-'0'); }
++ if(n<3 || n>=FD_SETSIZE || fstat(n,&st) || !S_ISSOCK(st.st_mode) ||
++    getsockopt(n,SOL_SOCKET,SO_TYPE,&type,&ilen) || type!=SOCK_SEQPACKET ||
++    getsockopt(n,SOL_SOCKET,SO_PROTOCOL,&proto,&ilen) || proto!=0 ||
++    getsockname(n,(struct sockaddr *)&local,&llen) || local.sun_family!=AF_UNIX || llen!=sizeof(sa_family_t) ||
++    getpeername(n,(struct sockaddr *)&peer,&len) || peer.sun_family!=AF_UNIX || len!=sizeof(sa_family_t)) return -EINVAL;
++ if(fcntl(n,F_SETFD,FD_CLOEXEC)) return -EINVAL;
++ v->meridian_packet_fd=n;v->meridian_packet_mode=1;return 0;
++#else
++ return -EOPNOTSUPP;
++#endif
++}
++int meridian_packet_setup(struct openconnect_info *v)
++{
++#ifdef __linux__
++ if(meridian_session_validate(v) || !v->meridian_packet_mode || v->meridian_packet_fd<0 ||
++    !v->meridian_live || !v->univpn || v->ssl_fd<0 || v->aux_ssl_fd<0 || v->tun_fd>=0 || v->meridian_emitted) return -EINVAL;
++ char *name=strdup("(packet-relay)");if(!name)return -ENOMEM;
++ free(v->ifname);v->ifname=name;
++ int fd=v->meridian_packet_fd;v->meridian_packet_fd=-1;
++ int ret=openconnect_setup_tun_fd(v,fd);
++ if(ret) { close(fd);v->tun_fd=-1;return ret; }
++ v->meridian_packet_active=1;return 0;
++#else
++ return -EOPNOTSUPP;
++#endif
++}
+ 
+ int meridian_session_fd(struct openconnect_info *v, const char *arg)
+ {
+@@ -38,6 +75,9 @@
+ int meridian_session_validate(struct openconnect_info *v)
+ {
+  if (v->meridian_closed) return -EINVAL;
++ if(v->meridian_packet_mode && (!v->meridian_fd || !v->meridian_session[0] ||
++    (!v->univpn_fd_mode && (v->univpn_control_fd<3 || v->univpn_data_fd<3)) ||
++    (v->meridian_packet_fd>=0 && (v->meridian_packet_fd==v->meridian_fd || v->meridian_packet_fd==v->univpn_control_fd || v->meridian_packet_fd==v->univpn_data_fd)))) return -EINVAL;
+  if (!v->meridian_fd && !v->meridian_session[0]) return 0;
+ #ifdef __linux__
+  if (!v->meridian_fd || !v->meridian_session[0] || v->proto->proto!=PROTO_UNIVPN || v->use_tun_script) return -EINVAL;
+@@ -53,7 +93,7 @@
+  struct sockaddr_nl kernel={.nl_family=AF_NETLINK}, from;
+  struct timeval timeout={.tv_sec=1}; char reply[4096], alias[64];
+  socklen_t fromlen=sizeof(from); int fd, n, ret=-EIO;
+- if (!v->meridian_live || !v->meridian_index || meridian_session_validate(v)) return -EINVAL;
++ if (v->meridian_packet_mode || !v->meridian_live || !v->meridian_index || meridian_session_validate(v)) return -EINVAL;
+  fd=socket(AF_NETLINK,SOCK_RAW|SOCK_CLOEXEC,NETLINK_ROUTE); if(fd<0) return -errno;
+  if (setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout))) goto out;
+  memset(&req,0,sizeof(req));
+@@ -96,7 +136,9 @@
+  unsigned prefix=0; uint32_t bits; int count=0;
+  if(meridian_session_validate(v)) return -EINVAL;
+  if(!v->meridian_fd) return 0;
+- if(meridian_session_validate(v) || !v->meridian_live || !v->univpn || v->ssl_fd<0 || v->aux_ssl_fd<0 || v->tun_fd<0 || v->meridian_index<=0 || !v->meridian_marked || v->meridian_emitted || !safe(v->ifname) || !safe(v->ip_info.addr) || !v->ip_info.netmask || !v->peer_addr) return -EINVAL;
++ if(meridian_session_validate(v) || !v->meridian_live || !v->univpn || v->ssl_fd<0 || v->aux_ssl_fd<0 || v->tun_fd<0 || v->meridian_emitted || !safe(v->ip_info.addr) || !v->ip_info.netmask || !v->peer_addr) return -EINVAL;
++ if(v->meridian_packet_mode) { if(!v->meridian_packet_active)return -EINVAL; }
++ else if(v->meridian_index<=0 || !v->meridian_marked || !safe(v->ifname))return -EINVAL;
+  if(inet_pton(AF_INET,v->ip_info.netmask,&mask)!=1) return -EINVAL;
+  bits=ntohl(mask.s_addr); while(bits&0x80000000u) {prefix++;bits<<=1;} if(bits) return -EINVAL;
+  if(v->peer_addr->sa_family==AF_INET) {
+@@ -105,6 +147,9 @@
+   if(!inet_ntop(AF_INET6,&((struct sockaddr_in6 *)v->peer_addr)->sin6_addr,endpoint,sizeof(endpoint))) return -EINVAL;
+  } else return -EINVAL;
+ #define ADD(...) do { if(append(buf,&used,__VA_ARGS__)) return -E2BIG; } while(0)
++ if(v->meridian_packet_mode)
++  ADD("{\"version\":2,\"event\":\"offer\",\"session\":\"%s\",\"addresses\":[\"%s/%u\"],\"routes\":[",v->meridian_session,v->ip_info.addr,prefix);
++ else
+  ADD("{\"version\":1,\"event\":\"config\",\"session\":\"%s\",\"interface\":\"%s\",\"index\":%d,\"alias\":\"meridian-%s\",\"addresses\":[\"%s/%u\"],\"routes\":[",v->meridian_session,v->ifname,v->meridian_index,v->meridian_session,v->ip_info.addr,prefix);
+  for(struct oc_split_include *r=v->ip_info.split_includes;r;r=r->next) {
+   if(++count>128 || !safe(r->route)) return -E2BIG;
+@@ -124,7 +169,7 @@
+ void meridian_session_close(struct openconnect_info *v)
+ {
+  if(v->meridian_fd) {
+-  char buf[128]; int n=snprintf(buf,sizeof(buf),"{\"version\":1,\"event\":\"%s\",\"session\":\"%s\"}\n",v->meridian_acquired ? "closed" : "no-network",v->meridian_session);
++  char buf[128]; int n=snprintf(buf,sizeof(buf),"{\"version\":%d,\"event\":\"%s\",\"session\":\"%s\"}\n",v->meridian_packet_mode?2:1,v->meridian_packet_mode?"relay-closed":(v->meridian_acquired ? "closed" : "no-network"),v->meridian_session);
+   if(v->meridian_session[0]) (void)write(v->meridian_fd,buf,n);
+   close(v->meridian_fd); v->meridian_fd=0; v->meridian_closed=1;
+  }
+diff --git a/tun.c b/tun.c
+--- a/tun.c
++++ b/tun.c
+@@ -215,7 +215,7 @@
+ 	struct ifreq ifr;
+ 	int tunerr;
+ 
+-	if (meridian_session_validate(vpninfo)) return -EINVAL;
++	if (vpninfo->meridian_packet_mode || meridian_session_validate(vpninfo)) return -EINVAL;
+ 	memset(&ifr, 0, sizeof(ifr));
+ 	ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+ 	if (vpninfo->meridian_fd) ifr.ifr_flags |= IFF_TUN_EXCL;
+@@ -463,7 +463,7 @@
+ 	}
+ 
+ #ifdef HAVE_VHOST
+-	if (!setup_vhost(vpninfo, tun_fd))
++	if (!vpninfo->meridian_packet_mode && !setup_vhost(vpninfo, tun_fd))
+ 		return 0;
+ #endif
+ 
+@@ -519,6 +519,14 @@
+ 		prefix_size = sizeof(int);
+ #endif
+ 
++	if (vpninfo->meridian_packet_mode) {
++		struct iovec iov={.iov_base=pkt->data,.iov_len=pkt->len};
++		struct msghdr msg={.msg_iov=&iov,.msg_iovlen=1};
++		len=recvmsg(vpninfo->tun_fd,&msg,MSG_DONTWAIT);
++		if(len<0 && (errno==EAGAIN || errno==EWOULDBLOCK || errno==EINTR))return -1;
++		if(len<=0 || (msg.msg_flags&(MSG_TRUNC|MSG_CTRUNC))) { vpninfo->quit_reason="Meridian packet relay closed or invalid message";return -1; }
++		pkt->len=len;return 0;
++	}
+ 	/* Sanity. Just non-blocking reads on a select()able file descriptor... */
+ 	len = read(vpninfo->tun_fd, pkt->data - prefix_size, pkt->len + prefix_size);
+ 	if (len <= prefix_size)
+@@ -557,6 +565,12 @@
+ 		*(int *)data = htonl(type);
+ 	}
+ #endif
++	if(vpninfo->meridian_packet_mode) {
++		int n=send(vpninfo->tun_fd,data,len,MSG_DONTWAIT|MSG_NOSIGNAL);
++		if(n==len)return 0;
++		if(n<0 && (errno==EAGAIN || errno==EWOULDBLOCK || errno==EINTR)) { monitor_write_fd(vpninfo,tun);return -1; }
++		vpninfo->quit_reason="Meridian packet relay send failed";return -1;
++	}
+ 	if (write(vpninfo->tun_fd, data, len) < 0) {
+ 		/* Handle death of "script" socket */
+ 		if (vpninfo->script_tun && errno == ENOTCONN) {
+@@ -581,6 +595,10 @@
+ 
+ void os_shutdown_tun(struct openconnect_info *vpninfo)
+ {
++	if(vpninfo->meridian_packet_mode) {
++		if(vpninfo->tun_fd>=0) { unmonitor_fd(vpninfo,tun);close(vpninfo->tun_fd);vpninfo->tun_fd=-1; }
++		vpninfo->meridian_packet_active=0;return;
++	}
+ 	if (vpninfo->script_tun) {
+ 		/* nuke the whole process group */
+ 		kill(-vpninfo->script_tun, SIGHUP);
+diff --git a/mainloop.c b/mainloop.c
+--- a/mainloop.c
++++ b/mainloop.c
+@@ -108,7 +108,7 @@
+ {
+ 	int ret;
+ 
+-	if (vpninfo->setup_tun) {
++	if (vpninfo->setup_tun && !vpninfo->meridian_packet_mode) {
+ 		vpninfo->setup_tun(vpninfo->cbdata);
+ 		if (tun_is_up(vpninfo))
+ 			return 0;
+diff --git a/tests/univpn-no-host-network.c b/tests/univpn-no-host-network.c
+new file mode 100644
+--- /dev/null
++++ b/tests/univpn-no-host-network.c
+@@ -0,0 +1,37 @@
++/* LGPL-2.1-or-later. TEST ONLY guard; not a production isolation mechanism. */
++#define _GNU_SOURCE
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <netdb.h>
++#include <errno.h>
++#include <dlfcn.h>
++#include <fcntl.h>
++#include <stdarg.h>
++#include <stdlib.h>
++#include <string.h>
++static void forbidden(void) { abort(); }
++int connect(int fd,const struct sockaddr *a,socklen_t n) { forbidden();return -1; }
++int getaddrinfo(const char *n,const char *s,const struct addrinfo *h,struct addrinfo **r) { forbidden();return EAI_FAIL; }
++int socket(int family,int type,int protocol) {
++ if(family==AF_NETLINK || family==AF_INET || family==AF_INET6)forbidden();
++ int (*real)(int,int,int)=dlsym(RTLD_NEXT,"socket");return real(family,type,protocol);
++}
++int open(const char *path,int flags,...) {
++ if(!strcmp(path,"/dev/net/tun")||!strcmp(path,"/dev/tun")||!strcmp(path,"/dev/vhost-net"))forbidden();
++ int (*real)(const char *,int,...)=dlsym(RTLD_NEXT,"open");
++ if(flags&O_CREAT) {va_list ap;va_start(ap,flags);int mode=va_arg(ap,int);va_end(ap);return real(path,flags,mode);}
++ return real(path,flags);
++}
++int unshare(int flags) {forbidden();return -1;}
++int setns(int fd,int kind) {forbidden();return -1;}
++
++/* Fault injection only: no named socket is actually bound or listened on. */
++int getsockname(int fd,struct sockaddr *addr,socklen_t *len) {
++ int type;socklen_t n=sizeof(type);
++ if(getenv("UNIVPN_TEST_NAMED_LOCAL") && !getsockopt(fd,SOL_SOCKET,SO_TYPE,&type,&n) && type==SOCK_SEQPACKET) {
++  struct sockaddr_un fake={.sun_family=AF_UNIX};strcpy(fake.sun_path,"test-name");
++  socklen_t need=sizeof(sa_family_t)+strlen(fake.sun_path)+1;
++  if(*len<need)return -1;memcpy(addr,&fake,need);*len=need;return 0;
++ }
++ int (*real)(int,struct sockaddr *,socklen_t *)=dlsym(RTLD_NEXT,"getsockname");return real(fd,addr,len);
++}
+diff --git a/tests/univpn-packet-integration.py b/tests/univpn-packet-integration.py
+new file mode 100644
+--- /dev/null
++++ b/tests/univpn-packet-integration.py
+@@ -0,0 +1,94 @@
++#!/usr/bin/env python3
++"""Native inherited packet channel: real local IPC/TLS, no host TUN/netlink."""
++import array, importlib.util, json, os, pathlib, select, signal, socket, struct, subprocess, sys, time, unittest
++spec=importlib.util.spec_from_file_location('mock',pathlib.Path(__file__).with_name('univpn-integration.py'))
++mock=importlib.util.module_from_spec(spec);spec.loader.exec_module(mock)
++NONCE='0123456789abcdef0123456789abcdef'
++
++def checksum(data):
++    if len(data)%2:data+=b'\0'
++    value=sum(struct.unpack('!%dH'%(len(data)//2),data))
++    while value>>16:value=(value&65535)+(value>>16)
++    return (~value)&65535
++
++def packet():
++    udp=struct.pack('!HHHH',10000,20000,12,0)+b'test'
++    header=struct.pack('!BBHHHBBH4s4s',0x45,0,32,1,0x4000,64,17,0,socket.inet_aton('10.90.0.2'),socket.inet_aton('198.51.100.1'))
++    return header[:10]+struct.pack('!H',checksum(header))+header[12:]+udp
++
++class Packet(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls):
++        # No named socket/listener. If unsupported/denied, fail this class once.
++        a,b=socket.socketpair(socket.AF_UNIX,socket.SOCK_SEQPACKET);a.close();b.close()
++        mock.Integration.setUpClass()
++        cls.guard=mock.Integration.root/'no-host.so'
++        subprocess.run(['cc','-shared','-fPIC',str(pathlib.Path(__file__).with_name('univpn-no-host-network.c')),'-ldl','-o',str(cls.guard)],check=True)
++    @classmethod
++    def tearDownClass(cls):mock.Integration.tearDownClass()
++    def start(self,auth_ok=True,missing=None):
++        self.gateway=mock.Gateway(mock.Integration.ctx,auth_ok=auth_ok)
++        self.packet,child=socket.socketpair(socket.AF_UNIX,socket.SOCK_SEQPACKET)
++        self.packet.settimeout(5)
++        self.read,write=os.pipe();self.pending=b''
++        sockets=[socket.create_connection(('127.0.0.1',self.gateway.port)) for _ in range(2)]
++        cmd=[mock.BINARY,'--protocol=univpn','--no-proxy','--no-dtls','--non-inter','--user=mockuser','--passwd-on-stdin','--authgroup=localhost','--cafile='+str(mock.Integration.cert),'--meridian-packet-fd='+str(child.fileno())]
++        if missing!='session':cmd+=['--meridian-session-fd='+str(write),'--meridian-session-id='+NONCE]
++        if missing!='transport':cmd+=['--meridian-control-fd='+str(sockets[0].fileno()),'--meridian-data-fd='+str(sockets[1].fileno())]
++        if missing=='script':cmd+=['--script-tun','--script=/bin/false']
++        cmd+=['https://broker-only.invalid:'+str(self.gateway.port)]
++        try:
++            self.proc=subprocess.Popen(cmd,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
++              pass_fds=(write,child.fileno(),*(s.fileno() for s in sockets)),env={**os.environ,'LD_PRELOAD':str(self.guard),**({'UNIVPN_TEST_NAMED_LOCAL':'1'} if missing=='namedlocal' else {})})
++        finally:
++            child.close();os.close(write)
++            for s in sockets:s.close()
++        self.proc.stdin.write(b'mock&+%pass\n');self.proc.stdin.close();self.proc.stdin=None
++    def record(self):
++        until=time.monotonic()+8
++        while b'\n' not in self.pending:
++            left=until-time.monotonic()
++            self.assertGreater(left,0,'native record timeout')
++            self.assertTrue(select.select([self.read],[],[],left)[0],'native record timeout')
++            part=os.read(self.read,32768)
++            self.assertTrue(part,'native pipe closed before record')
++            self.pending+=part;self.assertLessEqual(len(self.pending),32768)
++        line,self.pending=self.pending.split(b'\n',1);return json.loads(line)
++    def offer(self):
++        r=self.record();self.assertEqual(r['version'],2);self.assertEqual(r['event'],'offer');self.assertEqual(r['session'],NONCE)
++        self.assertEqual(set(r),{'version','event','session','addresses','routes','dns','endpoint'})
++        self.assertEqual(r['addresses'],['10.90.0.2/32']);self.assertEqual(r['endpoint'],'127.0.0.1')
++    def ended(self):
++        out,err=self.proc.communicate(timeout=8)
++        self.assertNotEqual(self.proc.returncode,-signal.SIGABRT,'forbidden host operation: '+err.decode(errors='replace'))
++        self.assertEqual(self.record(),{'version':2,'event':'relay-closed','session':NONCE})
++        self.assertEqual(os.read(self.read,1),b'')
++    def tearDown(self):
++        if hasattr(self,'proc') and self.proc.poll() is None:self.proc.kill();self.proc.communicate()
++        if hasattr(self,'packet'):self.packet.close()
++        if hasattr(self,'read'):os.close(self.read)
++        if hasattr(self,'gateway'):self.gateway.close()
++    def test_offer_and_packets(self):
++        self.start();self.offer();p=packet();self.packet.send(p);self.assertEqual(self.packet.recv(65536),p)
++        self.proc.send_signal(signal.SIGINT);self.ended();self.assertEqual(self.gateway.errors,[])
++    def test_peer_close_is_terminal(self):
++        self.start();self.offer();self.packet.close();self.ended()
++    def test_oversized_message_is_terminal(self):
++        self.start();self.offer();self.packet.send(b'x'*2000);self.ended();self.assertEqual(self.gateway.received,[])
++    def test_zero_message_is_terminal(self):
++        self.start();self.offer();self.packet.send(b'');self.ended();self.assertEqual(self.gateway.received,[])
++    def test_ancillary_rights_rejected(self):
++        self.start();self.offer()
++        with open('/dev/null','rb') as f:self.packet.sendmsg([packet()],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array('i',[f.fileno()]))])
++        self.ended();self.assertEqual(self.gateway.received,[])
++    def test_auth_failure_never_claims_interface_cleanup(self):
++        self.start(auth_ok=False);self.ended();self.assertEqual(self.gateway.received,[])
++    def test_missing_session_rejected(self):
++        self.start(missing='session');_,err=self.proc.communicate(timeout=8);self.assertEqual(self.proc.returncode,1,err);self.assertEqual(self.gateway.received,[])
++    def test_missing_transport_rejected(self):
++        self.start(missing='transport');_,err=self.proc.communicate(timeout=8);self.assertEqual(self.proc.returncode,1,err);self.assertEqual(self.gateway.received,[])
++    def test_named_local_socket_rejected_without_binding(self):
++        self.start(missing='namedlocal');_,err=self.proc.communicate(timeout=8);self.assertEqual(self.proc.returncode,1,err);self.assertEqual(self.gateway.received,[])
++    def test_script_mode_rejected(self):
++        self.start(missing='script');_,err=self.proc.communicate(timeout=8);self.assertEqual(self.proc.returncode,1,err);self.assertEqual(self.gateway.received,[])
++if __name__=='__main__':unittest.main(verbosity=2)

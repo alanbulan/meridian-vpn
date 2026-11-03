@@ -1,0 +1,97 @@
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-ssl.lo
+  CC       libopenconnect_la-http.lo
+  CC       libopenconnect_la-textbuf.lo
+  CC       libopenconnect_la-http-auth.lo
+  CC       libopenconnect_la-auth-common.lo
+  CC       libopenconnect_la-auth-html.lo
+  CC       libopenconnect_la-library.lo
+  CC       libopenconnect_la-compat.lo
+  CC       libopenconnect_la-lzs.lo
+  CC       libopenconnect_la-mainloop.lo
+  CC       libopenconnect_la-script.lo
+  CC       libopenconnect_la-ntlm.lo
+  CC       libopenconnect_la-digest.lo
+  CC       libopenconnect_la-mtucalc.lo
+  CC       libopenconnect_la-oncp.lo
+  CC       libopenconnect_la-auth-juniper.lo
+  CC       libopenconnect_la-esp.lo
+  CC       libopenconnect_la-esp-seqno.lo
+  CC       libopenconnect_la-openssl-esp.lo
+  CC       libopenconnect_la-auth.lo
+  CC       libopenconnect_la-cstp.lo
+  CC       libopenconnect_la-hpke.lo
+  CC       libopenconnect_la-multicert.lo
+  CC       libopenconnect_la-dtls.lo
+  CC       libopenconnect_la-openssl-dtls.lo
+  CC       libopenconnect_la-oath.lo
+  CC       libopenconnect_la-gpst.lo
+  CC       libopenconnect_la-auth-globalprotect.lo
+  CC       libopenconnect_la-pulse.lo
+  CC       libopenconnect_la-oidc.lo
+  CC       libopenconnect_la-ppp.lo
+  CC       libopenconnect_la-nullppp.lo
+  CC       libopenconnect_la-f5.lo
+  CC       libopenconnect_la-fortinet.lo
+  CC       libopenconnect_la-jsondump.lo
+  CC       libopenconnect_la-array.lo
+  CC       libopenconnect_la-univpn.lo
+  CC       libopenconnect_la-meridian-session.lo
+  CC       libopenconnect_la-vhost.lo
+  CC       libopenconnect_la-openssl.lo
+  CC       libopenconnect_la-openssl-pkcs11.lo
+  CC       libopenconnect_la-iconv.lo
+  CC       libopenconnect_la-tun.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CC       lzstest.o
+  CC       seqtest.o
+  CC       buftest.o
+  CCLD     serverhash
+  CCLD     seqtest
+  CCLD     lzstest
+  CCLD     buftest
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-meridian-session.o
+  CC       openconnect-xml.o
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-univpn.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CCLD     serverhash
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'
+make  all-recursive
+make[1]: Entering directory '/tmp/univpn-native'
+New version: v9.21-unknown
+  CC       libopenconnect_la-version.lo
+  CC       libopenconnect_la-meridian-session.lo
+  CC       libopenconnect_la-library.lo
+  CCLD     libopenconnect.la
+Making all in tests
+make[2]: Entering directory '/tmp/univpn-native/tests'
+  CCLD     serverhash
+make[2]: Leaving directory '/tmp/univpn-native/tests'
+make[2]: Entering directory '/tmp/univpn-native'
+  CC       openconnect-meridian-session.o
+  CC       openconnect-main.o
+  CCLD     openconnect
+make[2]: Leaving directory '/tmp/univpn-native'
+make[1]: Leaving directory '/tmp/univpn-native'

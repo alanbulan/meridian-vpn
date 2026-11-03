@@ -1,0 +1,643 @@
+diff --git a/openssl.c b/openssl.c
+--- a/openssl.c
++++ b/openssl.c
+@@ -1904,6 +1904,7 @@
+ 			vpn_progress(vpninfo, PRG_ERR,
+ 				     _("Create TLSv1 CTX failed\n"));
+ 			openconnect_report_ssl_errors(vpninfo);
++			closesocket(ssl_sock);
+ 			return -EINVAL;
+ 		}
+ 
+@@ -1958,6 +1959,7 @@
+ 			if (buf_error(buf)) {
+ 				vpn_progress(vpninfo, PRG_ERR,
+ 					     _("Failed to construct OpenSSL cipher list\n"));
++				closesocket(ssl_sock);
+ 				return buf_free(buf);
+ 			}
+ 
+@@ -1986,9 +1988,11 @@
+ 		}
+ 	}
+ 	https_ssl = SSL_new(vpninfo->https_ctx);
++	if (!https_ssl) { closesocket(ssl_sock); return -ENOMEM; }
+ 	workaround_openssl_certchain_bug(vpninfo, https_ssl);
+ 
+ 	https_bio = BIO_new_socket(ssl_sock, BIO_NOCLOSE);
++	if (!https_bio) { SSL_free(https_ssl); closesocket(ssl_sock); return -ENOMEM; }
+ 	BIO_set_nbio(https_bio, 1);
+ 	SSL_set_bio(https_ssl, https_bio, https_bio);
+ 	/*
+diff --git a/tests/univpn-fd-cleanup.c b/tests/univpn-fd-cleanup.c
+new file mode 100644
+--- /dev/null
++++ b/tests/univpn-fd-cleanup.c
+@@ -0,0 +1,30 @@
++/* LGPL-2.1-or-later. Socket-acquisition/allocator fault injection: NO network. */
++#include <config.h>
++#include "openconnect-internal.h"
++#include <openssl/ssl.h>
++#include <assert.h>
++static int failure, acquired=-1, closes;
++SSL_CTX *__real_SSL_CTX_new(const SSL_METHOD *);
++SSL *__real_SSL_new(SSL_CTX *);
++BIO *__real_BIO_new_socket(int,int);
++struct oc_text_buf *__real_buf_alloc(void);
++int __real_close(int);
++int __wrap_connect_https_socket(struct openconnect_info *v) { acquired=open("/dev/null",O_RDONLY);assert(acquired>=0);return acquired; }
++SSL_CTX *__wrap_SSL_CTX_new(const SSL_METHOD *m) { return failure==1?NULL:__real_SSL_CTX_new(m); }
++struct oc_text_buf *__wrap_buf_alloc(void) { return failure==2?NULL:__real_buf_alloc(); }
++SSL *__wrap_SSL_new(SSL_CTX *c) { return failure==3?NULL:__real_SSL_new(c); }
++BIO *__wrap_BIO_new_socket(int fd,int mode) { return failure==4?NULL:__real_BIO_new_socket(fd,mode); }
++int __wrap_close(int fd) { if(fd==acquired)closes++;return __real_close(fd); }
++static void quiet(void *p,int level,const char *fmt,...) {}
++int main(void)
++{
++ for(int i=1;i<=4;i++) {
++  failure=0;closes=0;
++  struct openconnect_info *v=openconnect_vpninfo_new("cleanup-test",NULL,NULL,NULL,quiet,NULL);assert(v);
++  assert(!openconnect_set_protocol(v,"univpn"));assert(!openconnect_parse_url(v,"https://broker-only.invalid"));
++  failure=i;assert(openconnect_open_https(v)<0);failure=0;
++  assert(acquired>=0&&fcntl(acquired,F_GETFD)==-1&&errno==EBADF&&closes==1);
++  acquired=-1;openconnect_vpninfo_free(v);
++ }
++ puts("TLS allocation-failure descriptor cleanup: 4/4 passed (no network)");return 0;
++}
+diff --git a/main.c b/main.c
+--- a/main.c
++++ b/main.c
+@@ -165,6 +165,8 @@
+ 
+ enum {
+ 	OPT_AUTHENTICATE = 0x100,
++	OPT_MERIDIAN_CONTROL_FD,
++	OPT_MERIDIAN_DATA_FD,
+ 	OPT_AUTHGROUP,
+ 	OPT_BASEMTU,
+ 	OPT_CAFILE,
+@@ -236,6 +238,10 @@
+ #endif
+ 
+ static const struct option long_options[] = {
++#ifdef __linux__
++	OPTION("meridian-control-fd", 1, OPT_MERIDIAN_CONTROL_FD),
++	OPTION("meridian-data-fd", 1, OPT_MERIDIAN_DATA_FD),
++#endif
+ #ifndef _WIN32
+ 	OPTION("background", 0, 'b'),
+ 	OPTION("pid-file", 1, OPT_PIDFILE),
+@@ -2297,6 +2303,21 @@
+ 			free(vpninfo->certinfo[1].password);
+ 			vpninfo->certinfo[1].password = dup_config_arg();
+ 			break;
++#ifdef __linux__
++		case OPT_MERIDIAN_CONTROL_FD:
++		case OPT_MERIDIAN_DATA_FD: {
++			char *end; long fd;
++			if (config_file || !*config_arg || config_arg[0]=='0') { fprintf(stderr,"Invalid Meridian socket descriptor\n"); exit(1); }
++			for (const char *p=config_arg; *p; p++) if (*p<'0' || *p>'9') { fprintf(stderr,"Invalid Meridian socket descriptor\n"); exit(1); }
++			errno = 0; fd = strtol(config_arg, &end, 10);
++			int *slot = opt == OPT_MERIDIAN_CONTROL_FD ? &vpninfo->univpn_control_fd : &vpninfo->univpn_data_fd;
++			if (errno || !*config_arg || *end || fd < 3 || fd >= FD_SETSIZE || *slot >= 0) {
++				fprintf(stderr, "Invalid or repeated Meridian socket descriptor\n"); exit(1);
++			}
++			*slot = (int)fd;
++			break;
++		}
++#endif
+ 		case OPT_MERIDIAN_SESSION_FD:
+ 			if (config_file || meridian_session_fd(vpninfo, config_arg)) { fprintf(stderr, "Invalid Meridian session FD\n"); exit(1); }
+ 			break;
+@@ -2401,6 +2422,11 @@
+ 			exit(1);
+ 
+ 		free(url);
++	}
++
++	if ((vpninfo->univpn_control_fd >= 0 || vpninfo->univpn_data_fd >= 0) &&
++	    (vpninfo->cookie || vpninfo->proto->proto != PROTO_UNIVPN)) {
++		fprintf(stderr, "Invalid Meridian preconnected socket pair\n"); exit(1);
+ 	}
+ 
+ 	/* Historically, the path in the URL superseded the one in the
+diff --git a/library.c b/library.c
+--- a/library.c
++++ b/library.c
+@@ -193,6 +193,9 @@
+ 	vpninfo->tun_fd = -1;
+ #endif
+ 	vpninfo->ssl_fd = -1;
++	vpninfo->univpn_control_fd = -1;
++	vpninfo->univpn_data_fd = -1;
++	vpninfo->univpn_preconnected_fd = -1;
+ 	vpninfo->aux_ssl_fd = -1;
+ 	vpninfo->dtls_fd = -1;
+ 	vpninfo->need_poll_cmd_fd = -1;
+@@ -780,6 +783,9 @@
+ 
+ void openconnect_vpninfo_free(struct openconnect_info *vpninfo)
+ {
++	if (vpninfo->univpn_control_fd >= 0) { closesocket(vpninfo->univpn_control_fd); vpninfo->univpn_control_fd = -1; }
++	if (vpninfo->univpn_data_fd >= 0) { closesocket(vpninfo->univpn_data_fd); vpninfo->univpn_data_fd = -1; }
++	if (vpninfo->univpn_preconnected_fd >= 0) { closesocket(vpninfo->univpn_preconnected_fd); vpninfo->univpn_preconnected_fd = -1; }
+ 	univpn_shutdown(vpninfo);
+ 	meridian_session_close(vpninfo);
+ 	openconnect_close_https(vpninfo, 1);
+diff --git a/ssl.c b/ssl.c
+--- a/ssl.c
++++ b/ssl.c
+@@ -332,6 +332,31 @@
+ {
+ 	int ssl_sock = -1;
+ 	int err;
++
++	/* A broker-preconnected UniVPN session may NEVER fall back to DNS or a
++	 * new socket, even after TLS failure/reconnect. Hostname/SNI stay intact. */
++	if (vpninfo->univpn_fd_mode) {
++		if (vpninfo->proto->proto != PROTO_UNIVPN || vpninfo->proxy || vpninfo->univpn_preconnected_fd < 0)
++			return -EPERM;
++		ssl_sock = vpninfo->univpn_preconnected_fd;
++		vpninfo->univpn_preconnected_fd = -1;
++		struct sockaddr_in actual; socklen_t actual_len = sizeof(actual);
++		memset(&actual, 0, sizeof(actual));
++		if (getpeername(ssl_sock, (struct sockaddr *)&actual, &actual_len) ||
++		    actual_len != sizeof(actual) || actual.sin_family != AF_INET ||
++		    !vpninfo->peer_addr || vpninfo->peer_addr->sa_family != AF_INET ||
++		    !match_sockaddr(vpninfo->peer_addr, (struct sockaddr *)&actual)) {
++			closesocket(ssl_sock); return -EPERM;
++		}
++		struct sockaddr *observed = malloc(sizeof(actual));
++		if (!observed) { closesocket(ssl_sock); return -ENOMEM; }
++		memcpy(observed, &actual, sizeof(actual)); free(vpninfo->peer_addr);
++		vpninfo->peer_addr = observed; vpninfo->peer_addrlen = sizeof(actual);
++		set_fd_cloexec(ssl_sock);
++		if (set_sock_nonblock(ssl_sock)) { closesocket(ssl_sock); return -EIO; }
++		set_tcp_nodelay(vpninfo, ssl_sock);
++		return ssl_sock;
++	}
+ 
+ 	/* If we're talking to a server which told us it has dynamic DNS, don't
+ 	   just reuse its previous IP address. If we're talking to a proxy, we
+diff --git a/openconnect-internal.h b/openconnect-internal.h
+--- a/openconnect-internal.h
++++ b/openconnect-internal.h
+@@ -418,6 +418,8 @@
+ struct univpn_state;
+ struct openconnect_info {
+ 	struct univpn_state *univpn;
++	int univpn_control_fd, univpn_data_fd, univpn_preconnected_fd;
++	int univpn_fd_mode;
+ 	int meridian_fd, meridian_index, meridian_live, meridian_emitted, meridian_marked, meridian_acquired, meridian_closed;
+ 	char meridian_session[33];
+ 	const struct vpn_proto *proto;
+@@ -1400,6 +1402,7 @@
+ void meridian_session_close(struct openconnect_info *);
+ 
+ /* univpn.c */
++int univpn_adopt_fds(struct openconnect_info *);
+ int univpn_obtain_cookie(struct openconnect_info *);
+ int univpn_connect(struct openconnect_info *);
+ int univpn_mainloop(struct openconnect_info *, int *, int);
+diff --git a/univpn.c b/univpn.c
+--- a/univpn.c
++++ b/univpn.c
+@@ -4,6 +4,7 @@
+ #include <config.h>
+ #include "openconnect-internal.h"
+ #include "univpn-codec.h"
++#include <sys/stat.h>
+ 
+ struct uv_channel {
+ 	unsigned char rx[UV_HEADER + UV_MAX_PAYLOAD];
+@@ -30,10 +31,53 @@
+ #define UV_IDLE_TIMEOUT 45
+ #define UV_PROGRESS_TIMEOUT 15
+ 
++/* Consume two already-connected IPv4 TCP sockets from the trusted launcher.
++ * Peer routing is fixed by the broker; TLS still authenticates v->hostname.
++ * Reject duplicated underlying sockets as well as duplicated integers. */
++int univpn_adopt_fds(struct openconnect_info *v)
++{
++#ifdef __linux__
++	struct sockaddr_in peer[2]; struct stat st[2]; int fds[2]; char ip[INET_ADDRSTRLEN];
++	if (!v->proto || v->proto->proto != PROTO_UNIVPN || v->proxy || v->univpn_fd_mode || meridian_session_validate(v))
++		return -EINVAL;
++#ifdef LIBPROXY_HDR
++	if (v->proxy_factory) return -EINVAL;
++#endif
++	fds[0] = v->univpn_control_fd; fds[1] = v->univpn_data_fd;
++	if (fds[0] < 3 || fds[1] < 3 || fds[0] >= FD_SETSIZE || fds[1] >= FD_SETSIZE || fds[0] == fds[1] || fds[0] == v->meridian_fd || fds[1] == v->meridian_fd) return -EINVAL;
++	for (int i = 0; i < 2; i++) {
++		int type, proto; socklen_t len = sizeof(type), plen = sizeof(peer[i]);
++		memset(&peer[i], 0, sizeof(peer[i]));
++		if (fstat(fds[i], &st[i]) || !S_ISSOCK(st[i].st_mode) ||
++		    getsockopt(fds[i], SOL_SOCKET, SO_TYPE, &type, &len) || type != SOCK_STREAM ||
++		    getsockopt(fds[i], SOL_SOCKET, SO_PROTOCOL, &proto, &len) || proto != IPPROTO_TCP ||
++		    getpeername(fds[i], (struct sockaddr *)&peer[i], &plen) ||
++		    plen != sizeof(peer[i]) || peer[i].sin_family != AF_INET || ntohs(peer[i].sin_port) != v->port)
++			return -EINVAL;
++	}
++	if ((st[0].st_dev == st[1].st_dev && st[0].st_ino == st[1].st_ino) ||
++	    peer[0].sin_addr.s_addr != peer[1].sin_addr.s_addr || peer[0].sin_port != peer[1].sin_port)
++		return -EINVAL;
++	if (!inet_ntop(AF_INET, &peer[0].sin_addr, ip, sizeof(ip))) return -EINVAL;
++	struct sockaddr *addr = malloc(sizeof(peer[0])); char *gateway = strdup(ip);
++	if (!addr || !gateway) { free(addr); free(gateway); return -ENOMEM; }
++	memcpy(addr, &peer[0], sizeof(peer[0])); free(v->peer_addr); v->peer_addr = addr;
++	v->peer_addrlen = sizeof(peer[0]); free(v->ip_info.gateway_addr); v->ip_info.gateway_addr = gateway;
++	v->univpn_preconnected_fd = fds[0]; v->univpn_control_fd = -1; v->univpn_fd_mode = 1;
++	set_fd_cloexec(fds[0]); set_fd_cloexec(fds[1]);
++	return 0;
++#else
++	return -EOPNOTSUPP;
++#endif
++}
++
+ void univpn_shutdown(struct openconnect_info *v)
+ {
+ 	struct univpn_state *s = v->univpn;
+ 	if (!s) return;
++	if (v->univpn_control_fd >= 0) { closesocket(v->univpn_control_fd); v->univpn_control_fd = -1; }
++	if (v->univpn_data_fd >= 0) { closesocket(v->univpn_data_fd); v->univpn_data_fd = -1; }
++	if (v->univpn_preconnected_fd >= 0) { closesocket(v->univpn_preconnected_fd); v->univpn_preconnected_fd = -1; }
+ 	meridian_session_close(v);
+ 	v->univpn = NULL;
+ 	if (v->aux_ssl_fd >= 0) {
+@@ -199,6 +243,9 @@
+ 	unsigned char first[340] = {0}, hash[32];
+ 	unsigned type, len; const unsigned char *value; size_t pos; int ret, found = 0;
+ 	char mac[18];
++	if (!v->univpn_fd_mode && (v->univpn_control_fd >= 0 || v->univpn_data_fd >= 0) && univpn_adopt_fds(v)) {
++		vpn_progress(v, PRG_ERR, "Invalid Meridian preconnected socket pair\n"); return -EINVAL;
++	}
+ 	if (meridian_session_validate(v)) return -EINVAL;
+ 	if (!domain || strlen(domain) > 255 || v->proxy) { vpn_progress(v, PRG_ERR, "UniVPN invalid domain or unsupported proxy configuration\n"); return -EINVAL; }
+ 	univpn_shutdown(v);
+@@ -301,7 +348,17 @@
+ #define COPY(field) do { if (v->field && !(s->data->field = strdup(v->field))) return -ENOMEM; } while (0)
+ 	COPY(hostname); COPY(unique_hostname); COPY(sni); COPY(cafile); COPY(ciphersuite_config);
+ #undef COPY
+-	s->data->port = v->port; s->data->no_system_trust = v->no_system_trust;
++	s->data->port = v->port;
++	if (v->univpn_fd_mode) {
++		if (v->univpn_data_fd < 0) return -EPERM;
++		s->data->peer_addr = malloc(v->peer_addrlen);
++		if (!s->data->peer_addr) return -ENOMEM;
++		memcpy(s->data->peer_addr, v->peer_addr, v->peer_addrlen);
++		s->data->peer_addrlen = v->peer_addrlen;
++		s->data->univpn_fd_mode = 1;
++		s->data->univpn_preconnected_fd = v->univpn_data_fd; v->univpn_data_fd = -1;
++	}
++	s->data->no_system_trust = v->no_system_trust;
+ 	s->data->no_tls13 = v->no_tls13; s->data->pfs = v->pfs;
+ 	s->data->allow_insecure_crypto = v->allow_insecure_crypto;
+ 	/* Share cancellation only during the child handshake; ownership stays with the parent. */
+diff --git a/tests/univpn-integration.py b/tests/univpn-integration.py
+--- a/tests/univpn-integration.py
++++ b/tests/univpn-integration.py
+@@ -44,10 +44,13 @@
+     return struct.pack('!HH', kind, len(value)) + value
+ 
+ class Gateway:
+-    def __init__(self, ctx, auth_ok=True, malformed=False, data_ctx=None, stalled=None):
++    def __init__(self, ctx, auth_ok=True, malformed=False, data_ctx=None, stalled=None, auth_delay=0):
+         self.ctx, self.auth_ok, self.malformed = ctx, auth_ok, malformed
+         self.stalled = stalled
++        self.auth_delay = auth_delay
+         self.data_ctx, self.count = data_ctx, 0
++        self.closed = 0
++        self.closed_lock = threading.Lock()
+         self.listener = socket.socket()
+         self.listener.bind(('127.0.0.1', 0))
+         self.port = self.listener.getsockname()[1]
+@@ -92,6 +95,7 @@
+                     cmd, auth = receive(sock)
+                     assert cmd == 1 and auth[:9] == b'localhost'
+                     assert b'mockuser\0' in auth and b'mock%26%2B%25pass\0' in auth
++                    time.sleep(self.auth_delay)
+                     self.send(sock, 1, struct.pack('!II', 0 if self.auth_ok else 1, 0) + tlv(3, TOKEN))
+                     if not self.auth_ok:
+                         return
+@@ -128,6 +132,8 @@
+             pass
+         except Exception as exc:
+             self.errors.append(str(exc))
++        finally:
++            with self.closed_lock: self.closed += 1
+     def close(self):
+         self.stop.set()
+         self.listener.close()
+@@ -146,15 +152,18 @@
+         cls.root = pathlib.Path(cls.tmp.name)
+         cls.cert, cls.key = cls.root/'server.pem', cls.root/'server.key'
+         subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+-                        '-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost',
++                        '-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost,DNS:broker-only.invalid',
+                         '-keyout',str(cls.key),'-out',str(cls.cert)], check=True,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++        cls.shim = cls.root/'no-network.so'
++        subprocess.run(['cc','-shared','-fPIC',str(pathlib.Path(__file__).with_name('univpn-no-network.c')),
++                        '-o',str(cls.shim)],check=True)
+         cls.ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+         cls.ctx.load_cert_chain(cls.cert, cls.key)
+     @classmethod
+     def tearDownClass(cls):
+         cls.tmp.cleanup()
+-    def run_client(self, gateway, packet_test=False, cafile=True, watchdog=False):
++    def run_client(self, gateway, packet_test=False, cafile=True, watchdog=False, preconnected=None, hostname=None, data_gateway=None):
+         report = self.root/'result'
+         report.unlink(missing_ok=True)
+         script = self.root/'packet.py'
+@@ -169,15 +178,44 @@
+ time.sleep(60)
+ ''')
+         cmd = [BINARY, '--no-proxy', '--verbose', '--protocol=univpn','--non-inter','--user=mockuser','--passwd-on-stdin',
+-               '--authgroup=localhost','--no-dtls','https://127.0.0.1:'+str(gateway.port)]
++               '--authgroup=localhost','--no-dtls','https://'+(hostname or '127.0.0.1')+':'+str(gateway.port)]
+         if cafile:
+             cmd += ['--cafile='+str(self.cert)]
+         if packet_test:
+             cmd += ['--script-tun','--script', shlex.quote(sys.executable)+' '+shlex.quote(str(script))]
+         else:
+             cmd += ['--authenticate']
+-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+-                                stderr=subprocess.PIPE, env={**os.environ,'MOCK_REPORT':str(report)})
++        sockets = []
++        if preconnected:
++            sockets = [socket.create_connection(('127.0.0.1', g.port)) for g in (gateway, data_gateway or gateway)]
++            control, data = sockets[0].fileno(), sockets[1].fileno()
++            if preconnected == 'same': data = control
++            if preconnected in ('udp','unconnected','listener'):
++                invalid = socket.socket(socket.AF_INET, socket.SOCK_DGRAM if preconnected=='udp' else socket.SOCK_STREAM)
++                if preconnected=='listener': invalid.bind(('127.0.0.1',0)); invalid.listen()
++                sockets.append(invalid); data = invalid.fileno()
++            if preconnected == 'closed': data = 1023
++            if preconnected == 'stdio': data = 0
++            if preconnected == 'file':
++                file = open('/dev/null','rb'); sockets.append(file); data = file.fileno()
++            if preconnected == 'wrongport':
++                cmd = [arg.replace(':'+str(gateway.port),':'+str(gateway.port+1)) if arg.startswith('https://') else arg for arg in cmd]
++            if preconnected == 'proxy': cmd += ['--proxy=http://127.0.0.1:9']
++            if preconnected == 'protocol': cmd = [arg.replace('--protocol=univpn','--protocol=anyconnect') for arg in cmd]
++            if preconnected == 'duplicate':
++                duplicate = sockets[0].dup(); sockets.append(duplicate); data = duplicate.fileno()
++            if preconnected == 'reverse':
++                cmd += ['--meridian-data-fd='+str(data),'--meridian-control-fd='+str(control)]
++            else:
++                if preconnected != 'dataonly': cmd += ['--meridian-control-fd='+str(control)]
++                if preconnected != 'partial': cmd += ['--meridian-data-fd='+str(data)]
++            if preconnected=='repeated': cmd += ['--meridian-control-fd='+str(control)]
++        try:
++            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
++                                    stderr=subprocess.PIPE, env={**os.environ,'MOCK_REPORT':str(report), **({'LD_PRELOAD':str(self.shim)} if preconnected else {})},
++                                    pass_fds=tuple(s.fileno() for s in sockets))
++        finally:
++            for sock in sockets: sock.close()
+         proc.stdin.write(b'mock&+%pass\n'); proc.stdin.close(); proc.stdin = None
+         try:
+             if packet_test:
+@@ -203,6 +241,72 @@
+             self.assertEqual(gateway.errors, [])
+         finally:
+             gateway.close()
++    def test_preconnected_tls_and_ipv4(self):
++        # This hostname is deliberately not resolvable: only inherited sockets
++        # can reach the mock. Certificate hostname validation must still work.
++        sni, sni_times = [], []
++        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
++        ctx.load_cert_chain(self.cert,self.key)
++        ctx.set_servername_callback(lambda sock, name, ctx: (sni.append(name), sni_times.append(time.monotonic())) and None)
++        gateway = Gateway(ctx, auth_delay=.3)
++        try:
++            passed, _, err = self.run_client(gateway, packet_test=True, preconnected='valid' , hostname='broker-only.invalid')
++            self.assertTrue(passed, err)
++            self.assertEqual(gateway.count, 2)
++            self.assertEqual(sni, ['broker-only.invalid','broker-only.invalid'])
++            self.assertGreater(sni_times[1]-sni_times[0], .25)
++            self.assertEqual([p[9] for p in gateway.received], [6,17,1])
++            self.assertEqual(gateway.errors, [])
++        finally: gateway.close()
++    def test_preconnected_wrong_tls_hostname(self):
++        gateway = Gateway(self.ctx)
++        try:
++            _, code, err = self.run_client(gateway, preconnected='valid', hostname='wrong.invalid')
++            self.assertEqual(code, 1, err)
++            self.assertEqual(gateway.received, [])
++            self.assertEqual(gateway.count, 2)
++        finally: gateway.close()
++    def test_preconnected_untrusted_certificate(self):
++        gateway = Gateway(self.ctx)
++        try:
++            _, code, err = self.run_client(gateway, preconnected='valid', cafile=False)
++            self.assertEqual(code, 1, err)
++            self.assertEqual(gateway.count, 2)
++        finally: gateway.close()
++    def test_preconnected_invalid_pairs(self):
++        for mode in ('same', 'duplicate', 'partial', 'closed', 'file', 'wrongport', 'proxy', 'protocol', 'udp', 'unconnected', 'listener', 'repeated', 'dataonly'):
++            with self.subTest(mode=mode):
++                gateway = Gateway(self.ctx)
++                try:
++                    _, code, err = self.run_client(gateway, preconnected=mode)
++                    self.assertEqual(code, 1, err)
++                    self.assertIn('Meridian', err)
++                    self.assertEqual(gateway.received, [])
++                finally: gateway.close()
++    def test_preconnected_different_peer_port(self):
++        gateway, other = Gateway(self.ctx), Gateway(self.ctx)
++        try:
++            _, code, err = self.run_client(gateway, preconnected='valid', data_gateway=other)
++            self.assertEqual(code,1,err)
++            self.assertIn('Invalid Meridian preconnected socket pair',err)
++            self.assertEqual(gateway.received,[])
++            self.assertEqual(other.received,[])
++        finally: gateway.close(); other.close()
++    def test_preconnected_reversed_options(self):
++        gateway = Gateway(self.ctx)
++        try:
++            passed, _, err = self.run_client(gateway, packet_test=True, preconnected='reverse')
++            self.assertTrue(passed,err)
++        finally: gateway.close()
++    def test_preconnected_auth_failure_closes_unused_data(self):
++        gateway = Gateway(self.ctx, auth_ok=False)
++        try:
++            _, code, err = self.run_client(gateway, preconnected='valid')
++            self.assertEqual(code,1,err)
++            until=time.monotonic()+2
++            while gateway.closed<2 and time.monotonic()<until: time.sleep(.01)
++            self.assertEqual(gateway.closed,2,'control and unused data sockets must close')
++        finally: gateway.close()
+     def test_watchdog_silent_control(self):
+         self.check_watchdog('control')
+     def test_watchdog_silent_data(self):
+@@ -249,7 +353,7 @@
+     def test_data_channel_must_match_control_identity(self):
+         second_cert, second_key = self.root/'second.pem', self.root/'second.key'
+         subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
+-                        '-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost',
++                        '-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost,DNS:broker-only.invalid',
+                         '-keyout',str(second_key),'-out',str(second_cert)],check=True,
+                        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+         second_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+@@ -266,6 +370,26 @@
+             self.assertNotIn('AddressSanitizer',err)
+         finally:
+             self.cert = original_cert; gateway.close()
++    def test_preconnected_data_channel_identity(self):
++        second_cert, second_key = self.root/'second.pem', self.root/'second.key'
++        subprocess.run(['openssl','req','-x509','-newkey','rsa:2048','-nodes','-days','1',
++                        '-subj','/CN=localhost','-addext','subjectAltName=IP:127.0.0.1,DNS:localhost,DNS:broker-only.invalid',
++                        '-keyout',str(second_key),'-out',str(second_cert)],check=True,
++                       stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
++        second_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
++        second_ctx.load_cert_chain(second_cert,second_key)
++        bundle = self.root/'both-trusted.pem'
++        bundle.write_bytes(self.cert.read_bytes()+second_cert.read_bytes())
++        gateway = Gateway(self.ctx,data_ctx=second_ctx)
++        original_cert = self.cert; self.cert = bundle
++        try:
++            passed, code, err = self.run_client(gateway,packet_test=True,preconnected="valid",hostname="broker-only.invalid")
++            self.assertFalse(passed)
++            self.assertEqual(code,2,err)
++            self.assertEqual(gateway.received,[])
++            self.assertNotIn('AddressSanitizer',err)
++        finally:
++            self.cert = original_cert; gateway.close()
+     def test_malformed_data_frame_terminates(self):
+         gateway = Gateway(self.ctx, malformed=True)
+         try:
+diff --git a/tests/univpn-session.c b/tests/univpn-session.c
+--- a/tests/univpn-session.c
++++ b/tests/univpn-session.c
+@@ -75,5 +75,5 @@
+  v=openconnect_vpninfo_new("test",NULL,NULL,NULL,quiet,NULL);assert(v);assert(!openconnect_set_protocol(v,"univpn"));
+  assert(!pipe(p));snprintf(fd,sizeof(fd),"%d",p[1]);assert(!meridian_session_fd(v,fd));assert(!meridian_session_id(v,"0123456789abcdef0123456789abcdef"));
+  univpn_shutdown(v);assert(v->meridian_fd); /* Initial auth reset preserves channel. */
+- meridian_session_close(v);n=read(p[0],buf,sizeof(buf)-1);assert(n>0);buf[n]=0;assert(strstr(buf,"\"event\":\"no-network\""));if(fixture) fputs(buf,stdout);assert(read(p[0],buf,sizeof(buf))==0);close(p[0]);int prior=tun_opens;assert(os_setup_tun(v)<0);assert(tun_opens==prior);assert(meridian_session_config(v)<0);assert(univpn_connect(v)<0);assert(meridian_session_fd(v,fd)<0);openconnect_vpninfo_free(v);fprintf(stderr,"UniVPN native session tests passed (mocked TUN/netlink, pipe only)\n");return 0;
++ meridian_session_close(v);n=read(p[0],buf,sizeof(buf)-1);assert(n>0);buf[n]=0;assert(strstr(buf,"\"event\":\"no-network\""));if(fixture) fputs(buf,stdout);assert(read(p[0],buf,sizeof(buf))==0);close(p[0]);int prior=tun_opens;assert(os_setup_tun(v)<0);assert(tun_opens==prior);assert(meridian_session_config(v)<0);assert(univpn_connect(v)<0);assert(univpn_obtain_cookie(v)<0);assert(univpn_adopt_fds(v)<0);assert(meridian_session_fd(v,fd)<0);openconnect_vpninfo_free(v);fprintf(stderr,"UniVPN native session tests passed (mocked TUN/netlink, pipe only)\n");return 0;
+ }
+diff --git a/tests/univpn-session-integration.py b/tests/univpn-session-integration.py
+--- a/tests/univpn-session-integration.py
++++ b/tests/univpn-session-integration.py
+@@ -5,6 +5,7 @@
+ import os
+ import pathlib
+ import subprocess
++import socket
+ import sys
+ spec = importlib.util.spec_from_file_location('mock', pathlib.Path(__file__).with_name('univpn-integration.py'))
+ mock = importlib.util.module_from_spec(spec)
+@@ -12,7 +13,7 @@
+ mock.Integration.setUpClass()
+ nonce = '0123456789abcdef0123456789abcdef'
+ try:
+-    for auth_ok in (False, True):
++    for auth_ok, preconnected in ((False,False),(True,False),(False,True),(True,True)):
+         gateway = mock.Gateway(mock.Integration.ctx, auth_ok=auth_ok)
+         rd, wr = os.pipe()
+         try:
+@@ -21,8 +22,16 @@
+                    '--no-dtls', '--authenticate', '--cafile='+str(mock.Integration.cert),
+                    '--meridian-session-fd='+str(wr), '--meridian-session-id='+nonce,
+                    'https://127.0.0.1:'+str(gateway.port)]
+-            result = subprocess.run(cmd, input=b'mock&+%pass\n', capture_output=True,
+-                                    pass_fds=(wr,), timeout=15)
++            sockets = []
++            if preconnected:
++                sockets = [socket.create_connection(('127.0.0.1',gateway.port)) for _ in range(2)]
++                cmd += ['--meridian-control-fd='+str(sockets[0].fileno()), '--meridian-data-fd='+str(sockets[1].fileno())]
++            try:
++                result = subprocess.run(cmd, input=b'mock&+%pass\n', capture_output=True,
++                                        pass_fds=(wr,)+tuple(s.fileno() for s in sockets), timeout=15,
++                                        env={**os.environ, **({'LD_PRELOAD':str(mock.Integration.shim)} if preconnected else {})})
++            finally:
++                for sock in sockets: sock.close()
+             os.close(wr); wr = -1
+             wire = os.read(rd, 32768)
+             assert os.read(rd, 1) == b''
+diff --git a/tests/univpn-no-network.c b/tests/univpn-no-network.c
+new file mode 100644
+--- /dev/null
++++ b/tests/univpn-no-network.c
+@@ -0,0 +1,7 @@
++/* LGPL-2.1-or-later. TEST ONLY interposition, not a security sandbox. */
++#define _GNU_SOURCE
++#include <sys/socket.h>
++#include <netdb.h>
++#include <errno.h>
++int connect(int fd, const struct sockaddr *addr, socklen_t len) { errno=EPERM; return -1; }
++int getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res) { return EAI_FAIL; }
+diff --git a/tests/univpn-fd-session.c b/tests/univpn-fd-session.c
+new file mode 100644
+--- /dev/null
++++ b/tests/univpn-fd-session.c
+@@ -0,0 +1,38 @@
++/* LGPL-2.1-or-later. Synthetic credentials; dual TLS + session pipe, NO TUN. */
++#include <config.h>
++#include "openconnect-internal.h"
++#include <assert.h>
++static int tun_opens;
++int __real_open(const char *, int, ...);
++int __wrap_open(const char *path, int flags, ...)
++{
++ if (!strcmp(path,"/dev/net/tun") || !strcmp(path,"/dev/tun")) { tun_opens++; errno=EPERM; return -1; }
++ if (flags&O_CREAT) { va_list ap;va_start(ap,flags);int m=va_arg(ap,int);va_end(ap);return __real_open(path,flags,m); }
++ return __real_open(path,flags);
++}
++static void quiet(void *p,int level,const char *fmt,...) {}
++static int auth(void *p, struct oc_auth_form *f)
++{
++ for (struct oc_form_opt *o=f->opts;o;o=o->next) {
++  if (!strcmp(o->name,"username")) assert(!openconnect_set_option_value(o,"mockuser"));
++  if (!strcmp(o->name,"password")) assert(!openconnect_set_option_value(o,"mock&+%pass"));
++ }
++ return 0;
++}
++int main(int argc,char **argv)
++{
++ assert(argc==6);
++ struct openconnect_info *v=openconnect_vpninfo_new("fd-session-test",NULL,NULL,auth,quiet,NULL);assert(v);
++ assert(!openconnect_set_protocol(v,"univpn"));assert(!openconnect_parse_url(v,argv[2]));
++ assert(!openconnect_set_cafile(v,argv[1]));v->authgroup=strdup("localhost");
++ assert(!meridian_session_fd(v,argv[3]));assert(!meridian_session_id(v,"0123456789abcdef0123456789abcdef"));
++ v->univpn_control_fd=atoi(argv[4]);v->univpn_data_fd=atoi(argv[5]);
++ assert(!univpn_obtain_cookie(v));assert(!univpn_connect(v));
++ assert(v->meridian_live && v->univpn_control_fd==-1 && v->univpn_data_fd==-1 && v->univpn_preconnected_fd==-1);
++ assert(tun_opens==0 && !v->meridian_acquired);
++ /* Once consumed, reconnect cannot make an outbound connection or resolve. */
++ assert(connect_https_socket(v)<0);
++ meridian_session_close(v);assert(univpn_connect(v)<0);assert(univpn_obtain_cookie(v)<0);assert(univpn_adopt_fds(v)<0);
++ openconnect_vpninfo_free(v);assert(tun_opens==0);
++ puts("Combined session pipe + inherited dual TLS passed (zero TUN opens)");return 0;
++}
+diff --git a/tests/univpn-fd-session.py b/tests/univpn-fd-session.py
+new file mode 100644
+--- /dev/null
++++ b/tests/univpn-fd-session.py
+@@ -0,0 +1,26 @@
++#!/usr/bin/env python3
++"""Both real TLS channels + native lifecycle pipe; no interface or privileged call."""
++import importlib.util, json, os, pathlib, socket, subprocess, sys
++spec=importlib.util.spec_from_file_location('mock',pathlib.Path(__file__).with_name('univpn-integration.py'))
++mock=importlib.util.module_from_spec(spec);spec.loader.exec_module(mock)
++mock.Integration.setUpClass()
++gateway=mock.Gateway(mock.Integration.ctx,auth_delay=.2)
++rd,wr=os.pipe();sockets=[]
++try:
++    sockets=[socket.create_connection(('127.0.0.1',gateway.port)) for _ in range(2)]
++    cmd=[str(pathlib.Path(__file__).with_name('univpn-fd-session')),str(mock.Integration.cert),
++         'https://broker-only.invalid:'+str(gateway.port),str(wr),*(str(s.fileno()) for s in sockets)]
++    result=subprocess.run(cmd,capture_output=True,pass_fds=(wr,*(s.fileno() for s in sockets)),
++                          env={**os.environ,'LD_PRELOAD':str(mock.Integration.shim)},timeout=15)
++    os.close(wr);wr=-1
++    wire=os.read(rd,32768)
++    assert os.read(rd,1)==b''
++    assert result.returncode==0,result.stderr
++    assert json.loads(wire)=={'version':1,'event':'no-network','session':'0123456789abcdef0123456789abcdef'},wire
++    assert gateway.count==2 and gateway.errors==[],gateway.errors
++    print(result.stdout.decode().strip())
++finally:
++    os.close(rd)
++    if wr>=0:os.close(wr)
++    for sock in sockets:sock.close()
++    gateway.close();mock.Integration.tearDownClass()

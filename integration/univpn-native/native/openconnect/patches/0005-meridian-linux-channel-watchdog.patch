@@ -1,0 +1,188 @@
+diff --git a/univpn.c b/univpn.c
+--- a/univpn.c
++++ b/univpn.c
+@@ -9,6 +9,7 @@
+ 	unsigned char rx[UV_HEADER + UV_MAX_PAYLOAD];
+ 	unsigned char tx[UV_HEADER + UV_MAX_PAYLOAD];
+ 	unsigned rxused, rxwant, txused, txsent;
++	time_t last_frame, partial_since, write_since;
+ };
+ struct univpn_state {
+ 	struct openconnect_info *owner, *data;
+@@ -18,6 +19,17 @@
+ 	time_t started, control_due, data_due;
+ };
+ 
++/* Linux experimental watchdog uses monotonic time, independent of wall-clock changes.
++ * A partial frame never refreshes the complete-frame liveness deadline. */
++static time_t uv_now(void)
++{
++	struct timespec ts;
++	if (clock_gettime(CLOCK_MONOTONIC, &ts)) return 0;
++	return ts.tv_sec;
++}
++#define UV_IDLE_TIMEOUT 45
++#define UV_PROGRESS_TIMEOUT 15
++
+ void univpn_shutdown(struct openconnect_info *v)
+ {
+ 	struct univpn_state *s = v->univpn;
+@@ -57,6 +69,7 @@
+ 	c->tx[5] = cmd; store_be16(c->tx + 6, len);
+ 	if (len) memcpy(c->tx + 8, p, len);
+ 	c->txused = len + 8; c->txsent = 0;
++	c->write_since = uv_now();
+ 	return 0;
+ }
+ /* Keep the exact TLS retry buffer until the backend consumes it. */
+@@ -70,7 +83,7 @@
+ 	c->txsent += n;
+ 	if (c->txsent == c->txused) {
+ 		clear_mem(c->tx, c->txused);
+-		c->txused = c->txsent = 0;
++		c->txused = c->txsent = 0; c->write_since = 0;
+ 		unmonitor_write_fd(tls, ssl);
+ 	}
+ 	return 1;
+@@ -84,6 +97,7 @@
+ 		n = ssl_nonblock_read(tls, 0, c->rx + c->rxused, c->rxwant - c->rxused);
+ 		if (n < 0) return -EIO;
+ 		if (!n) return 0;
++		if (!c->rxused) c->partial_since = uv_now();
+ 		c->rxused += n;
+ 		if (c->rxused != c->rxwant) continue;
+ 		if (c->rxwant == UV_HEADER) {
+@@ -97,6 +111,7 @@
+ {
+ 	clear_mem(c->rx, c->rxused);
+ 	c->rxused = 0; c->rxwant = UV_HEADER;
++	c->last_frame = uv_now(); c->partial_since = 0;
+ }
+ static int uv_exchange(struct openconnect_info *owner, struct openconnect_info *tls,
+ 		       struct uv_channel *c, unsigned expected)
+@@ -290,6 +305,7 @@
+ 	monitor_fd_new(v, aux_ssl); monitor_read_fd(v, aux_ssl); monitor_except_fd(v, aux_ssl);
+ 	monitor_fd_new(v, ssl);
+ 	monitor_read_fd(v, ssl); monitor_except_fd(v, ssl);
++	s->control.last_frame = s->packets.last_frame = uv_now();
+ 	s->started = time(NULL); s->control_due = s->started + 10; s->data_due = s->started + 15;
+ 	vpn_progress(v, PRG_INFO, _("UniVPN IPv4/TLS data channel connected\n"));
+ 	return 0;
+@@ -298,6 +314,17 @@
+ {
+ 	struct univpn_state *s = v->univpn; time_t now = time(NULL); int ret, work = 0;
+ 	if (!s || !s->data || v->ssl_fd < 0) goto failed;
++	/* Bound silence, slow fragmented frames, and blocked writes on both channels.
++	 * Outbound traffic does not prove that the peer is still alive. */
++	time_t mono = uv_now();
++	if (!mono) goto stalled;
++	for (int channel = 0; channel < 2; channel++) {
++		struct uv_channel *c = channel ? &s->packets : &s->control;
++		if (ka_check_deadline(timeout, mono, c->last_frame + UV_IDLE_TIMEOUT) ||
++		    (c->partial_since && ka_check_deadline(timeout, mono, c->partial_since + UV_PROGRESS_TIMEOUT)) ||
++		    (c->txused && c->write_since && ka_check_deadline(timeout, mono, c->write_since + UV_PROGRESS_TIMEOUT)))
++			goto stalled;
++	}
+ 	/* Both sessions may have decrypted bytes even without a new socket event. */
+ 	for (int channel = 0; channel < 2; channel++) {
+ 		struct uv_channel *c = channel ? &s->packets : &s->control;
+@@ -330,12 +357,17 @@
+ 		memcpy(s->packets.tx, "\xc1\x92\xa4\xd6\x01\x66", 6);
+ 		store_be16(s->packets.tx + 6, pkt->len + 8); memset(s->packets.tx + 8, 0, 8);
+ 		memcpy(s->packets.tx + 16, pkt->data, pkt->len); s->packets.txused = pkt->len + 16;
++		s->packets.write_since = uv_now();
+ 		free_pkt(v, pkt);
+ 	}
+ 	ret = uv_write(v, &s->control); if (ret < 0) goto failed; work |= ret;
+ 	ret = uv_write(s->data, &s->packets); if (ret < 0) goto failed; work |= ret;
+ 	if (s->packets.txused) monitor_write_fd(v, aux_ssl); else unmonitor_write_fd(v, aux_ssl);
+ 	return work;
++stalled:
++	v->quit_reason = "UniVPN watchdog expired; fresh authentication required";
++	vpn_progress(v, PRG_ERR, "%s\n", v->quit_reason);
++	return -ETIMEDOUT;
+ failed:
+ 	v->quit_reason = "UniVPN channel closed or invalid frame; fresh authentication required";
+ 	vpn_progress(v, PRG_ERR, "%s\n", v->quit_reason);
+diff --git a/tests/univpn-integration.py b/tests/univpn-integration.py
+--- a/tests/univpn-integration.py
++++ b/tests/univpn-integration.py
+@@ -44,8 +44,9 @@
+     return struct.pack('!HH', kind, len(value)) + value
+ 
+ class Gateway:
+-    def __init__(self, ctx, auth_ok=True, malformed=False, data_ctx=None):
++    def __init__(self, ctx, auth_ok=True, malformed=False, data_ctx=None, stalled=None):
+         self.ctx, self.auth_ok, self.malformed = ctx, auth_ok, malformed
++        self.stalled = stalled
+         self.data_ctx, self.count = data_ctx, 0
+         self.listener = socket.socket()
+         self.listener.bind(('127.0.0.1', 0))
+@@ -101,17 +102,22 @@
+                     while True:
+                         cmd, body = receive(sock)
+                         assert cmd == 6 and body[:32] == TOKEN and len(body) == 36
+-                        self.send(sock, 6, b'')
++                        if self.stalled != 'control':
++                            self.send(sock, 6, b'')
+                 else:
+                     assert first[:5] == MAGIC and first[5] == 0x64
+                     assert exact(sock, 32) == TOKEN
+                     self.send(sock, 0x64, b'\0')
++                    if self.stalled == 'partial':
++                        sock.sendall(frame(0x65)[:3])
+                     if self.malformed:
+                         sock.sendall(b'WRONGHDR')
+                         time.sleep(.2)
+                         return
+                     while True:
+                         cmd, body = receive(sock)
++                        if self.stalled in ('data', 'partial'):
++                            continue
+                         if cmd == 0x65:
+                             self.send(sock, cmd, b'')
+                         else:
+@@ -148,7 +154,7 @@
+     @classmethod
+     def tearDownClass(cls):
+         cls.tmp.cleanup()
+-    def run_client(self, gateway, packet_test=False, cafile=True):
++    def run_client(self, gateway, packet_test=False, cafile=True, watchdog=False):
+         report = self.root/'result'
+         report.unlink(missing_ok=True)
+         script = self.root/'packet.py'
+@@ -175,8 +181,8 @@
+         proc.stdin.write(b'mock&+%pass\n'); proc.stdin.close(); proc.stdin = None
+         try:
+             if packet_test:
+-                end = time.monotonic()+15
+-                while time.monotonic()<end and proc.poll() is None and not report.exists():
++                end = time.monotonic()+(52 if watchdog else 15)
++                while time.monotonic()<end and proc.poll() is None and (watchdog or not report.exists()):
+                     time.sleep(.05)
+                 passed = report.exists()
+                 if proc.poll() is None:
+@@ -194,6 +200,23 @@
+             passed, _, err = self.run_client(gateway, packet_test=True)
+             self.assertTrue(passed, err)
+             self.assertEqual([p[9] for p in gateway.received], [6,17,1])
++            self.assertEqual(gateway.errors, [])
++        finally:
++            gateway.close()
++    def test_watchdog_silent_control(self):
++        self.check_watchdog('control')
++    def test_watchdog_silent_data(self):
++        self.check_watchdog('data')
++    def test_watchdog_incomplete_frame(self):
++        self.check_watchdog('partial')
++    def check_watchdog(self, mode):
++        gateway = Gateway(self.ctx, stalled=mode)
++        started = time.monotonic()
++        try:
++            _, code, err = self.run_client(gateway, packet_test=True, watchdog=True)
++            self.assertEqual(code, 1, err)
++            self.assertIn('watchdog expired', err)
++            self.assertLess(time.monotonic()-started, 51)
+             self.assertEqual(gateway.errors, [])
+         finally:
+             gateway.close()

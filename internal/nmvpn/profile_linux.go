@@ -160,6 +160,8 @@ func profileProperty(section, key string, v dbus.Variant, id Identity) bool {
 			return profileEqual(v, "")
 		case "multi-connect", "autoconnect-priority":
 			return profileEqual(v, int32(0))
+		case "autoconnect-ports", "autoconnect-slaves":
+			return profileEqual(v, int32(-1))
 		}
 	case "vpn":
 		switch key {

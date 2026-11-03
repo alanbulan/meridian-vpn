@@ -63,6 +63,8 @@ func equivalentProfileDefault(section, key string, value dbus.Variant) bool {
 			return profileEqual(value, "")
 		case "multi-connect", "autoconnect-priority":
 			return profileEqual(value, int32(0))
+		case "autoconnect-ports", "autoconnect-slaves":
+			return profileEqual(value, int32(-1))
 		case "permissions", "secondaries":
 			return profileEmpty(value, "as")
 		}

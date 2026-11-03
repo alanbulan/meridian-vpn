@@ -24,6 +24,7 @@ defaults may be absent or explicitly present with the exact value and wire type.
 | connection | read-only | Any validated boolean (`b`) is ignored; NM documents this deprecated property as having no effect. |
 | connection | interface-name, zone, controller, master, port-type, slave-type | Empty string (`s`) only. An actual bound interface is never removed. |
 | connection | multi-connect, autoconnect-priority | int32 zero (`i`) only. |
+| connection | autoconnect-ports, deprecated autoconnect-slaves alias | int32 minus one (`i`) only. Missing and -1 retain global fallback; neither means explicit 0 or 1. Both aliases must independently satisfy this rule. |
 | connection | permissions, secondaries | Empty string array (`as`) only. |
 | vpn | persistent | Boolean false (`b`) only. |
 | vpn | timeout | uint32 zero (`u`) only. |
@@ -64,6 +65,13 @@ wire-test container with the distribution's official libnm/GI packages. It uses
 `NM.SimpleConnection.new_from_dbus`, which normalizes a connection in memory, then
 `to_dbus(ALL)`. It never constructs NM.Client or contacts a bus. The fixture has
 no password, gateway, address or real-world identity.
+
+The first exercised official Debian libnm 1.52.1 output added empty proxy,
+permissions, VPN data/secrets and modern address/route dictionaries, plus
+connection.autoconnect-ports=int32(-1). The last property has a custom client
+serializer that emits even its default; manager serialization differs. Only its
+documented inherited default and the same default of its deprecated alias were
+added to the grammar. Other values and conflicting aliases remain rejected.
 
 The generated `reports/nmvpn-wire/libnm-profile.json` retains each property's
 actual GVariant signature, input dictionary, normalized dictionary and library

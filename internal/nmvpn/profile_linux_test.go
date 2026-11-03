@@ -47,6 +47,7 @@ func TestValidateProfileApprovedEmptyAndDefaultTypes(t *testing.T) {
 		"interface-name": id.Interface, "permissions": []string{}, "secondaries": []string{},
 		"zone": "", "controller": "", "master": "", "port-type": "", "slave-type": "",
 		"multi-connect": int32(0), "autoconnect-priority": int32(0),
+		"autoconnect-ports": int32(-1), "autoconnect-slaves": int32(-1),
 	} {
 		s["connection"][key] = dbus.MakeVariant(value)
 	}

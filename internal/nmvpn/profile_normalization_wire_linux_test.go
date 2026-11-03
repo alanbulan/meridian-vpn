@@ -20,11 +20,11 @@ type nmFixtureVariant struct {
 }
 
 type nmLibnmFixture struct {
-	Version       int                                       `json:"version"`
-	Library       string                                    `json:"libnmVersion"`
-	Source        string                                    `json:"source"`
-	Input         map[string]map[string]nmFixtureVariant     `json:"input"`
-	Normalized    map[string]map[string]nmFixtureVariant     `json:"normalized"`
+	Version    int                                    `json:"version"`
+	Library    string                                 `json:"libnmVersion"`
+	Source     string                                 `json:"source"`
+	Input      map[string]map[string]nmFixtureVariant `json:"input"`
+	Normalized map[string]map[string]nmFixtureVariant `json:"normalized"`
 }
 
 func nmDecodeFixture(t *testing.T, raw map[string]map[string]nmFixtureVariant) map[string]map[string]dbus.Variant {
@@ -173,7 +173,7 @@ func TestNMVPNWireManagerLibnmNormalization(t *testing.T) {
 func TestNMVPNWireManagerNormalizationTampering(t *testing.T) {
 	input, normalized := nmLoadLibnmFixture(t)
 	for _, side := range []string{"connect", "settings"} {
-		for _, attack := range []string{"unknown", "wrong-type", "route-table", "dns-options", "interface", "autoconnect", "ipv6-flag", "username", "nonce", "password-flags", "empty-section"} {
+		for _, attack := range []string{"unknown", "wrong-type", "route-table", "dns-options", "interface", "autoconnect", "ports-zero", "ports-one", "port-alias-conflict", "ipv6-flag", "username", "nonce", "password-flags", "empty-section"} {
 			t.Run(side+"/"+attack, func(t *testing.T) {
 				f, journal, wire, manager := activationWireFixture(t)
 				transform := func(original map[string]map[string]dbus.Variant) map[string]map[string]dbus.Variant {
@@ -191,6 +191,13 @@ func TestNMVPNWireManagerNormalizationTampering(t *testing.T) {
 						out["connection"]["interface-name"] = dbus.MakeVariant(f.plan.Interface)
 					case "autoconnect":
 						out["connection"]["autoconnect"] = dbus.MakeVariant(true)
+					case "ports-zero":
+						out["connection"]["autoconnect-ports"] = dbus.MakeVariant(int32(0))
+					case "ports-one":
+						out["connection"]["autoconnect-ports"] = dbus.MakeVariant(int32(1))
+					case "port-alias-conflict":
+						out["connection"]["autoconnect-ports"] = dbus.MakeVariant(int32(-1))
+						out["connection"]["autoconnect-slaves"] = dbus.MakeVariant(int32(0))
 					case "ipv6-flag":
 						out["ipv6"]["never-default"] = dbus.MakeVariant(true)
 					case "username":

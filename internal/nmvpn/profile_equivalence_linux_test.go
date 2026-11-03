@@ -27,6 +27,8 @@ func equivalentProfileDefaults() []profileDefaultCase {
 		{"connection", "slave-type", ""},
 		{"connection", "multi-connect", int32(0)},
 		{"connection", "autoconnect-priority", int32(0)},
+		{"connection", "autoconnect-ports", int32(-1)},
+		{"connection", "autoconnect-slaves", int32(-1)},
 		{"connection", "permissions", []string{}},
 		{"connection", "secondaries", []string{}},
 		{"vpn", "persistent", false},
@@ -365,6 +367,39 @@ func TestCanonicalValidatedProfilePreservesUnlistedValues(t *testing.T) {
 		delete(out["ipv4"], "future-property")
 		if !reflect.DeepEqual(input["ipv4"]["future-property"], original[i]) {
 			t.Fatal("canonicalization retained input property map")
+		}
+	}
+}
+
+func TestEquivalentProfilesAutoconnectPortAliases(t *testing.T) {
+	base, id := profileFixture()
+	for _, key := range []string{"autoconnect-ports", "autoconnect-slaves"} {
+		for _, value := range []interface{}{int32(0), int32(1), int32(-2), int64(-1), int16(-1), uint32(0), uint32(1), "-1", false} {
+			for _, includeAlias := range []bool{false, true} {
+				actual, _ := profileFixture()
+				if includeAlias {
+					actual["connection"]["autoconnect-ports"] = dbus.MakeVariant(int32(-1))
+					actual["connection"]["autoconnect-slaves"] = dbus.MakeVariant(int32(-1))
+				}
+				actual["connection"][key] = dbus.MakeVariant(value)
+				if ValidateProfile(actual, id) == nil || equivalentProfiles(base, actual, id) || equivalentProfiles(actual, base, id) || equivalentProfiles(actual, actual, id) {
+					t.Fatalf("accepted unsupported or conflicting %s: %T(%v)", key, value, value)
+				}
+			}
+		}
+	}
+	ports, _ := profileFixture()
+	slaves, _ := profileFixture()
+	both, _ := profileFixture()
+	ports["connection"]["autoconnect-ports"] = dbus.MakeVariant(int32(-1))
+	slaves["connection"]["autoconnect-slaves"] = dbus.MakeVariant(int32(-1))
+	both["connection"]["autoconnect-ports"] = dbus.MakeVariant(int32(-1))
+	both["connection"]["autoconnect-slaves"] = dbus.MakeVariant(int32(-1))
+	for _, a := range []map[string]map[string]dbus.Variant{base, ports, slaves, both} {
+		for _, b := range []map[string]map[string]dbus.Variant{base, ports, slaves, both} {
+			if !equivalentProfiles(a, b, id) {
+				t.Fatal("typed default aliases differ")
+			}
 		}
 	}
 }

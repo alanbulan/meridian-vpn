@@ -53,6 +53,7 @@ jobs:
           go env GOOS GOARCH
           go mod download
           go mod verify
+          go mod tidy -diff
       - name: Unit tests (not live VPN acceptance)
         run: |
           mkdir -p reports

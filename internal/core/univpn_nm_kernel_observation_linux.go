@@ -16,7 +16,7 @@ import (
 // an FD-derived device-generation identity. No publication/cleanup authority is
 // acquired, and the mandatory independent HostBinding is not replaced.
 type UniVPNNMKernelObservation struct {
-	Local UniVPNNMLocalSnapshot
+	Local  UniVPNNMLocalSnapshot
 	Kernel packetrelay.TUNKernelObservation
 }
 

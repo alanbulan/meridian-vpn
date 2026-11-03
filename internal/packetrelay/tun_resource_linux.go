@@ -45,7 +45,7 @@ type TUNResource struct {
 	observed bool
 	closed   bool
 	closeErr error
-	relay    *TUNRelay // permanent one-shot ownership, retained after stop
+	relay    *TUNRelay     // permanent one-shot ownership, retained after stop
 	kernel   *tunKernelPin // optional read-only namespace evidence, same cleanup owner
 }
 

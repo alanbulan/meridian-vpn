@@ -29,9 +29,9 @@ func uniVPNKernelFixture(t *testing.T) (*uniVPNLocalFixture, *UniVPNNMLocalBindi
 		t.Fatal(err)
 	}
 	kernel := packetrelay.TUNKernelObservation{
-		TUN: s.TUN,
+		TUN:       s.TUN,
 		Namespace: packetrelay.KernelNamespaceIdentity{Device: 4, Inode: 19},
-		Link: packetrelay.KernelLinkObservation{Name: s.Binding.Identity.Interface, Index: 7, MTU: 1400},
+		Link:      packetrelay.KernelLinkObservation{Name: s.Binding.Identity.Interface, Index: 7, MTU: 1400},
 	}
 	return f, l, kernel
 }

@@ -14,22 +14,22 @@ import (
 // It is sequential consistency, not a device-generation identity, host namespace
 // assertion, ownership lease, applied policy, readiness, or absence proof.
 type TUNKernelObservation struct {
-	TUN TUNObservation
+	TUN       TUNObservation
 	Namespace KernelNamespaceIdentity
-	Link KernelLinkObservation
+	Link      KernelLinkObservation
 }
 
 // The original resource owns this extra read-only namespace pin. The pin never
 // owns/duplicates the TUN descriptor. Resource.Close closes it once, including
 // after a failed observation. All fields are protected by TUNResource.mu.
 type tunKernelPin struct {
-	file *os.File
-	identity KernelNamespaceIdentity
-	initial *TUNKernelObservation
-	invalid error
+	file       *os.File
+	identity   KernelNamespaceIdentity
+	initial    *TUNKernelObservation
+	invalid    error
 	cleanupErr error
-	closed bool
-	closeFile func(*os.File) error
+	closed     bool
+	closeFile  func(*os.File) error
 }
 
 func (p *tunKernelPin) close() error {
@@ -48,10 +48,10 @@ func (p *tunKernelPin) close() error {
 }
 
 type tunKernelObservationOps struct {
-	openNamespace func() (*os.File, KernelNamespaceIdentity, error)
+	openNamespace    func() (*os.File, KernelNamespaceIdentity, error)
 	inspectNamespace func(*os.File) (KernelNamespaceIdentity, error)
-	link func(context.Context, KernelNamespaceIdentity, string) (KernelLinkObservation, error)
-	closeFile func(*os.File) error
+	link             func(context.Context, KernelNamespaceIdentity, string) (KernelLinkObservation, error)
+	closeFile        func(*os.File) error
 }
 
 // ObserveKernelLink only observes this resource's original concrete TUN. It
@@ -75,10 +75,10 @@ func (r *TUNResource) ObserveKernelLink(ctx context.Context) (TUNKernelObservati
 		return TUNKernelObservation{}, errTUNKernelObservation
 	}
 	return r.observeKernelLink(ctx, tunKernelObservationOps{
-		openNamespace: func() (*os.File, KernelNamespaceIdentity, error) { return openTUNNetworkNamespace(d.raw) },
+		openNamespace:    func() (*os.File, KernelNamespaceIdentity, error) { return openTUNNetworkNamespace(d.raw) },
 		inspectNamespace: inspectNetworkNamespace,
-		link: readTUNKernelLink,
-		closeFile: func(f *os.File) error { return f.Close() },
+		link:             readTUNKernelLink,
+		closeFile:        func(f *os.File) error { return f.Close() },
 	})
 }
 
@@ -104,6 +104,9 @@ func (r *TUNResource) observeKernelLink(ctx context.Context, ops tunKernelObserv
 		r.kernel.file, r.kernel.identity, r.kernel.invalid = ops.openNamespace()
 		if r.kernel.file == nil || r.kernel.identity.Inode == 0 {
 			r.kernel.invalid = errors.Join(errTUNKernelObservation, r.kernel.invalid)
+		}
+		if errors.Is(r.kernel.invalid, ErrCleanup) {
+			r.kernel.cleanupErr = r.kernel.invalid
 		}
 	}
 	p := r.kernel

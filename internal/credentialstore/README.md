@@ -57,8 +57,8 @@ transport/decoder is a gate if hostile-provider resilience is required.
 
 ## Dependencies and selection
 
-`github.com/godbus/dbus/v5` is pinned to v5.2.2 (BSD-2-Clause), whose go.mod uses
-`golang.org/x/sys v0.27.0` (Go project's BSD-style license). Include exact upstream
+`github.com/godbus/dbus/v5` is pinned to v5.2.2 (BSD-2-Clause), whose minimum dependency is
+`golang.org/x/sys v0.27.0`. The repository module graph selects `golang.org/x/sys v0.48.0` (Go project's BSD-style license). Include exact upstream
 notices when distributing. This is a new Go dependency, not a bundled daemon.
 The package does not invoke libsecret or vendor its code.
 
@@ -67,7 +67,7 @@ Sources checked on 2026-11-03:
 - [Secret Service specification](https://specifications.freedesktop.org/secret-service/latest-single/)
 - [godbus v5.2.2 module](https://github.com/godbus/dbus/blob/v5.2.2/go.mod)
 - [godbus license](https://github.com/godbus/dbus/blob/v5.2.2/LICENSE)
-- [Go x/sys license](https://cs.opensource.google/go/x/sys/+/refs/tags/v0.27.0:LICENSE)
+- [Go x/sys license](https://cs.opensource.google/go/x/sys/+/refs/tags/v0.48.0:LICENSE)
 
 Rejected shortcuts: libsecret secret-tool returns exit 1 for both missing and
 failed lookup, so cannot expose reliable missing/locked/error semantics.

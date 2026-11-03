@@ -41,6 +41,8 @@ type Snapshot struct {
 // Session.Ready must originate from a trusted broker verifying active VPN state
 // and its expected interface/address. It does not independently audit routes or
 // DNS policy. Process creation or untrusted log output is never readiness.
+// Done signals session termination, not a user-requested disconnect. Stop must
+// confirm cleanup before returning nil, including after Done has fired.
 type Session interface {
 	Ready() <-chan error
 	Done() <-chan error
@@ -200,6 +202,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	credentials.clear()
 	if err != nil || nilInterface(session) {
 		if !nilInterface(session) {
+			e.beginCleanup()
 			if cleanupErr := session.Stop(); cleanupErr != nil {
 				e.complete(CleanupFailed, (&CleanupError{}).Error())
 				return
@@ -210,32 +213,41 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 			e.complete(CleanupFailed, cleanup.Error())
 			return
 		}
+		e.mu.Lock()
 		if ctx.Err() != nil {
-			e.complete(Disconnected, "No VPN tunnel is active")
+			e.completeLocked(Disconnected, "No VPN tunnel is active")
 		} else {
-			e.complete(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.")
+			e.completeLocked(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.")
 		}
+		e.mu.Unlock()
 		return
 	}
 	e.mu.Lock()
 	e.session = session
 	e.mu.Unlock()
-	stop := func(failed bool) {
+	stop := func(failureMessage string) {
+		e.beginCleanup()
 		if err := session.Stop(); err != nil {
 			e.complete(CleanupFailed, (&CleanupError{}).Error())
-		} else if failed {
-			e.complete(Failed, "Tunnel ended without verified readiness")
 		} else {
-			e.complete(Disconnected, "No VPN tunnel is active")
+			// Serialize the cancellation check with Disconnect so a user request
+			// racing with cleanup cannot be overwritten by a failure result.
+			e.mu.Lock()
+			if ctx.Err() == nil && failureMessage != "" {
+				e.completeLocked(Failed, failureMessage)
+			} else {
+				e.completeLocked(Disconnected, "No VPN tunnel is active")
+			}
+			e.mu.Unlock()
 		}
 	}
 	select {
 	case <-ctx.Done():
-		stop(false)
+		stop("")
 		return
 	case err, ok := <-session.Ready():
 		if !ok || err != nil {
-			stop(true)
+			stop("Tunnel ended without verified readiness")
 			return
 		}
 	case err := <-session.Done():
@@ -243,7 +255,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 		if errors.As(err, &ce) {
 			e.complete(CleanupFailed, ce.Error())
 		} else {
-			stop(true)
+			stop("Tunnel ended without verified readiness")
 		}
 		return
 	}
@@ -254,7 +266,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 		if errors.As(err, &ce) {
 			e.complete(CleanupFailed, ce.Error())
 		} else {
-			stop(true)
+			stop("Tunnel ended without verified readiness")
 		}
 		return
 	default:
@@ -269,19 +281,36 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	e.mu.Unlock()
 	select {
 	case <-ctx.Done():
-		stop(false)
+		stop("")
 	case err := <-session.Done():
 		var ce *CleanupError
 		if errors.As(err, &ce) {
 			e.complete(CleanupFailed, ce.Error())
 		} else {
-			stop(err != nil)
+			stop("Tunnel connection was lost; cleanup completed. Sign in again to reconnect.")
 		}
 	}
 }
+
+// beginCleanup stops advertising a usable tunnel while Stop verifies removal.
+// It deliberately leaves cancellation to Disconnect so unexpected loss remains
+// distinguishable from an explicit user cancellation.
+func (e *Engine) beginCleanup() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.state = Disconnecting
+	e.connectedAt = time.Time{}
+	e.message = "Waiting for verified tunnel cleanup"
+}
+
 func (e *Engine) complete(state, msg string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.completeLocked(state, msg)
+}
+
+// completeLocked requires e.mu.
+func (e *Engine) completeLocked(state, msg string) {
 	if e.cancel != nil {
 		e.cancel()
 	}

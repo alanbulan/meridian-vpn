@@ -17,6 +17,6 @@
 |网关修改密码/自动升级/专有配置INI|仅新增安全只读INI结构预览，尚无私有字段映射/导入；其他能力需要对应网关/API/格式版本及合法验证，不能以JSON导入或应用升级冒充|
 |完整系统错误报告、抓包、core dump|当前仅脱敏白名单依赖报告和结构化日志。更广收集可能含账号/网络拓扑/秘密，需要范围选择与二次审阅|
 |Linux CLI连接/断开|本版CLI完成离线配置与只读诊断，尚未实现终端交互认证、会话归属和取消/退出的完整隧道生命周期；不是原手册CLI协议全等替代|
-|macOS/Windows实际VPN后端|只进行界面/CLI交叉编译。平台权限、安全服务/NetworkExtension、签名与真实运行仍需独立实现验收|
+|macOS/Windows实际VPN后端|已在原生runner通过单测、vet、GUI/CLI构建及CLI help/version启动（fa52b2a，详见VALIDATION.md）；这不等于VPN后端或GUI人工验收。平台权限、安全服务/NetworkExtension、签名与真实隧道仍需独立实现验收|
 
 完整来源页码与每个字段的模型、消费方和测试见 `REFERENCE-COVERAGE.md` 及 `reference/UNIVPN-FEATURE-AUDIT.md`。

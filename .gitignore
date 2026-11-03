@@ -1,3 +1,6 @@
 /build/
 *.log
 .DS_Store
+
+# Python offline CI tooling
+__pycache__/

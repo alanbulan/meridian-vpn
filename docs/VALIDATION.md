@@ -43,7 +43,7 @@
 
 没有真实企业网关、TUN、内网访问或路由/DNS恢复闭环。NM阶段命令/状态/清理由受控runner验证。没有联软专有协议互通、完整SSO/终端合规、IPv6泄漏或kill switch结论。托盘宿主在云桌面不可用，未运行验收托盘交互。自动启动只测安全代码与原生确认/取消，没有真实登录启动验收。macOS/Windows没有VPN后端或签名/安装/运行验收。
 
-完整当前字段覆盖见REFERENCE-COVERAGE.md，未完成能力及具体原因见REMAINING-WORK.md。不存在“Linux完整VPN实网全部打通”或“三平台全部通过”的结论。
+完整当前字段覆盖见REFERENCE-COVERAGE.md，未完成能力及具体原因见REMAINING-WORK.md。不存在“Linux完整VPN实网全部打通”或“三平台VPN/GUI完整验收通过”的结论；后续原生构建与单测结果见下方明确的提交记录。
 
 `docs/screenshots/`均为真实原生Linux窗口，使用example.com示例配置。旧手绘图标/过期能力截图已移除。
 
@@ -57,3 +57,17 @@
 - 06:12 UTC最终禁用实验功能检查点聚合：默认测试202项顶层PASS、20项SKIP；全项目race、vet、模块完整性、Linux GUI/CLI及Windows AMD64/macOS ARM64 GUI和CLI交叉编译通过。日志见RECOVERY-TEST-RESULTS.jsonl和RECOVERY-RACE-RESULTS.txt。20项跳过包含10项外部OpenConnect认证（已有上方单独实测）、8项MFA、desktop-file-validator、Unix socket IPC。broker关闭等待与精确网关白名单修复已包含在本次测试中。可选libopenconnect MFA和桌面人工QA在本轮尚未重新执行。
 - UniVPN网络控制器：确定性runner测试涵盖严格政策、TUN身份、端点逃逸路由、DNS/route readback及回滚。未执行任何ip/resolvectl真实命令；可信hook源、后代进程隔离及独占网络命名空间租约仍缺失，不能启动实网连接。
 - 原生patch 0006直接exec hook并传播失败；真实脚本函数测试经过TUN打开防护，确认失败pre-init零TUN打开尝试。最终六补丁源码通过9项TLS模拟测试（108.291秒）；该结果不证明hook、cgroup或系统网络集成。
+
+
+## 三平台原生 CI 检查点（2026-11-03 14:07 UTC）
+
+源提交 `fa52b2a383d5e7c2a4a1b6799c41cff01a8de22a` 的 [Actions #2](https://github.com/alanbulan/meridian-vpn/actions/runs/41650135848) 四个 job 全部通过：
+
+- Linux amd64：595 个测试/子测试通过、0 失败、21 跳过。
+- macOS arm64：264 个测试/子测试通过、0 失败、25 跳过。
+- Windows amd64：256 个测试/子测试通过、0 失败、25 跳过。
+- 三平台模块校验、vet、原生 GUI/CLI 编译以及 CLI help/version 启动均通过；Linux 独立 race、bootstrap 静态构建/注入测试、离线 provisioning 均通过。
+
+这些计数包括子测试，不能与较早的顶层测试计数直接比较。Linux 私有FD认证测试只在Linux运行；其他平台保留拒绝不支持传输的测试。POSIX文件权限不被当作Windows ACL保证。缺少外部授权或组件的测试继续明确跳过，不将其计为通过。
+
+以上记录只针对该提交，不自动证明后续提交。没有新增真实企业网关、TUN、路由/DNS修改、GUI人工交互、签名或安装验收。原生构建成功不等于平台VPN后端已实现。

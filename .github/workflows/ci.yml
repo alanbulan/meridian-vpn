@@ -45,6 +45,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Test offline CI reporting and artifact verification
+        run: python3 -m unittest discover -s scripts -v
       - name: Verify toolchain and module integrity
         run: |
           go version
@@ -67,6 +69,8 @@ jobs:
         run: |
           ./build/meridianctl${{ matrix.ext }} version
           ./build/meridianctl${{ matrix.ext }} help
+      - name: Verify binary targets and write checksums
+        run: python3 scripts/build-manifest.py build ${{ matrix.target }}
       - name: Write honest test summary
         if: always()
         run: python3 scripts/ci-summary.py reports/tests.jsonl
@@ -82,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: meridian-dev-${{ matrix.target }}
-          path: build/meridian*
+          path: build/
           if-no-files-found: error
           retention-days: 7
 
@@ -111,3 +115,67 @@ jobs:
         run: make -C integration/worker-bootstrap all test
       - name: Offline provisioning tests (no install or activation)
         run: python3 -m unittest discover -s integration/provisioning -v
+
+  linux-loopback:
+    name: Linux / ${{ matrix.suite }} localhost fixtures
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [auth, native]
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official CI build dependencies (no VPN activation)
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git python3 build-essential pkg-config \
+            libopenconnect-dev openconnect openssl autoconf automake \
+            libtool libtool-bin gettext libssl-dev libxml2-dev zlib1g-dev
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare unprivileged fixture user and dependency evidence
+        run: |
+          useradd --create-home --shell /bin/bash meridian-ci
+          mkdir -p reports/loopback-${{ matrix.suite }}
+          dpkg-query -W > reports/loopback-${{ matrix.suite }}/packages.txt
+          go version > reports/loopback-${{ matrix.suite }}/go-version.txt
+          chown -R meridian-ci:meridian-ci "$GITHUB_WORKSPACE"
+      - name: Test fixture runner evidence checks
+        run: python3 -m unittest discover -s integration/loopback -v
+      - name: Run unprivileged synthetic authentication fixtures
+        if: matrix.suite == 'auth'
+        run: |
+          runuser -u meridian-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
+            GOPATH=/home/meridian-ci/go GOCACHE=/home/meridian-ci/.cache/go-build \
+            MERIDIAN_OPENCONNECT_TEST_BINARY="$(command -v openconnect)" \
+            MERIDIAN_MFA_HELPER_TEST_BINARY="$GITHUB_WORKSPACE/build/meridian-auth-helper" \
+            bash -e -c '
+              sh integration/mfa-helper/build.sh "$PWD/build/meridian-auth-helper"
+              python3 integration/loopback/run.py auth --reports reports/loopback-auth
+            '
+      - name: Run unprivileged native loopback and syscall-wrapped fixtures
+        if: matrix.suite == 'native'
+        run: |
+          runuser -u meridian-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
+            python3 integration/loopback/run.py native --reports reports/loopback-native \
+              --native-build "$GITHUB_WORKSPACE/build/loopback-native"
+      - name: Upload localhost-only fixture evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: loopback-${{ matrix.suite }}-evidence
+          path: reports/loopback-${{ matrix.suite }}/
+          if-no-files-found: warn
+          retention-days: 7

@@ -145,9 +145,11 @@ flowchart TB
 - `go test -count=1 -json ./...` 与 `go vet ./...`。
 - 目标平台 GUI / CLI 编译，以及不读取配置的 CLI `help` / `version` 启动。
 - 独立输出测试记录和未签名开发二进制，保存 7 天。
+- 打包前核对 ELF / PE / Mach-O 的目标架构；制品附带 `SHA256SUMS` 和 `build-manifest.json`，记录源提交、平台、大小与哈希。
 - Linux 追加 race 检查、静态 bootstrap 构建/注入测试、离线 provisioning 单元测试。
+- 独立 Debian trixie CI 容器以普通用户执行合成 localhost 认证与 native 回环/注入夹具；不挂载TUN、不运行VPN系统服务。
 
-工作流汇总单独列出跳过项，跳过不计为通过。GUI 单元测试使用 MyGo `ui.NewTester`，不能代替真实窗口、托盘、输入法、系统授权弹窗或登录启动验收。CI 不创建实际 TUN、不修改路由/DNS、不连接企业网关、不安装或运行特权 UniVPN 服务。
+工作流汇总单独列出跳过项，跳过不计为通过；包级编译失败、缺失日志与缺少包终态会标为失败或未验证。GUI 单元测试使用 MyGo `ui.NewTester`，不能代替真实窗口、托盘、输入法、系统授权弹窗或登录启动验收。CI 不创建实际 TUN、不修改路由/DNS、不连接企业网关、不安装或运行特权 UniVPN 服务。
 
 ```sh
 go test -count=1 ./...
@@ -155,11 +157,14 @@ go vet ./...
 CGO_ENABLED=1 go test -race -count=1 ./...
 make -C integration/worker-bootstrap all test
 python3 -m unittest discover -s integration/provisioning -v
+python3 -m unittest discover -s scripts -v
 ```
 
 发布 GUI / CLI 使用 `CGO_ENABLED=0`；race 检测需要的 cgo 仅用于测试插桩。可选认证 helper 是单独的 C 程序，不能称为全 Go VPN 协议实现。
 
-本地合成认证、回环 TLS 和原生 C 回归的复现入口分别见 [authfixture](integration/authfixture/README.md)、[mfa-helper](integration/mfa-helper/README.md)、[univpn-native](integration/univpn-native/README.md)。这些测试不在基础 CI 中自动启用；外部依赖必须独立核验。
+本地合成认证、回环 TLS 和原生 C 回归的复现入口分别见 [authfixture](integration/authfixture/README.md)、[mfa-helper](integration/mfa-helper/README.md)、[univpn-native](integration/univpn-native/README.md)。统一入口见 [loopback](integration/loopback/README.md)。独立CI job从Debian官方仓库准备依赖并记录版本；18项认证用例必须全部实际通过，缺失或跳过均失败。原生用例使用仓库内校验过的源码归档与补丁，不联网下载该源码。依赖安装仅发生在临时CI容器，runner本身不安装软件；本地运行需自行准备依赖并明确选择套件。
+
+下载制品后可在解压目录运行 `sha256sum -c SHA256SUMS`（macOS 使用 `shasum -a 256 -c SHA256SUMS`），并将清单源提交与对应 Actions 运行核对。哈希用于检测下载损坏或字节差异，不是签名、发行者身份认证或安全审计。
 
 历史验证记录保存在 [VALIDATION.md](docs/VALIDATION.md)，属于对应检查点，不自动继承到后续代码。最新运行是否通过，以具体 commit 的 Actions 日志为准。
 

@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -36,9 +37,15 @@ def main():
             if member.issym() or member.islnk():
                 parser.error('Unexpected source archive link')
             member.name=str(path);source.extract(member,destination)
+    # This extracted tree is deliberately not a Git checkout. Without a
+    # discovery ceiling, git apply finds Meridian's parent .git and silently
+    # skips paths outside the extraction subdirectory while returning success.
+    git_env = {key: value for key, value in os.environ.items()
+               if not key.startswith('GIT_')}
+    git_env['GIT_CEILING_DIRECTORIES'] = str(destination.parent)
     for patch in patches:
-        subprocess.run(['git','apply','--check',str(patch)],cwd=destination,check=True)
-        subprocess.run(['git','apply',str(patch)],cwd=destination,check=True)
+        subprocess.run(['git','apply','--check',str(patch)],cwd=destination,env=git_env,check=True)
+        subprocess.run(['git','apply',str(patch)],cwd=destination,env=git_env,check=True)
     print('Pinned source and patches ready: '+str(destination))
 
 

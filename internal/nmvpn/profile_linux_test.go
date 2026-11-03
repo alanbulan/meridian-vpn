@@ -14,22 +14,28 @@ func profileFixture() (map[string]map[string]dbus.Variant, Identity) {
 	id := Identity{UUID: "12345678-1234-1234-1234-123456789abc", Interface: "meridian0"}
 	return map[string]map[string]dbus.Variant{
 		"connection": {"uuid": dbus.MakeVariant(id.UUID), "type": dbus.MakeVariant("vpn")},
-		"vpn": {"service-type": dbus.MakeVariant(PluginService)},
-		"ipv4": {"method": dbus.MakeVariant("auto"), "never-default": dbus.MakeVariant(true), "ignore-auto-dns": dbus.MakeVariant(true)},
-		"ipv6": {"method": dbus.MakeVariant("disabled")},
+		"vpn":        {"service-type": dbus.MakeVariant(PluginService)},
+		"ipv4":       {"method": dbus.MakeVariant("auto"), "never-default": dbus.MakeVariant(true), "ignore-auto-dns": dbus.MakeVariant(true)},
+		"ipv6":       {"method": dbus.MakeVariant("disabled")},
 	}, id
 }
 
 func TestValidateProfileMinimalAndImmutable(t *testing.T) {
 	s, id := profileFixture()
 	before, _ := profileFixture()
-	if err := ValidateProfile(s, id); err != nil { t.Fatal(err) }
-	if !reflect.DeepEqual(s, before) { t.Fatal("validator changed input") }
+	if err := ValidateProfile(s, id); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(s, before) {
+		t.Fatal("validator changed input")
+	}
 	for section, values := range before {
 		for key := range values {
 			x, id := profileFixture()
 			delete(x[section], key)
-			if ValidateProfile(x, id) == nil { t.Fatalf("accepted missing %s.%s", section, key) }
+			if ValidateProfile(x, id) == nil {
+				t.Fatalf("accepted missing %s.%s", section, key)
+			}
 		}
 	}
 }
@@ -41,35 +47,57 @@ func TestValidateProfileApprovedEmptyAndDefaultTypes(t *testing.T) {
 		"interface-name": id.Interface, "permissions": []string{}, "secondaries": []string{},
 		"zone": "", "controller": "", "master": "", "port-type": "", "slave-type": "",
 		"multi-connect": int32(0), "autoconnect-priority": int32(0),
-	} { s["connection"][key] = dbus.MakeVariant(value) }
+	} {
+		s["connection"][key] = dbus.MakeVariant(value)
+	}
 	for key, value := range map[string]interface{}{
 		"persistent": false, "timeout": uint32(0), "data": map[string]string{}, "secrets": map[string]string{},
-	} { s["vpn"][key] = dbus.MakeVariant(value) }
+	} {
+		s["vpn"][key] = dbus.MakeVariant(value)
+	}
 	for _, family := range []string{"ipv4", "ipv6"} {
 		for key, value := range map[string]interface{}{
 			"ignore-auto-routes": false, "gateway": "", "route-table": uint32(0),
 			"route-metric": int64(-1), "dns-priority": int32(0),
 			"dns-data": []string{}, "dns-search": []string{}, "dns-options": []string{},
 			"route-data": []map[string]dbus.Variant{}, "address-data": []map[string]dbus.Variant{}, "routing-rules": []map[string]dbus.Variant{},
-		} { s[family][key] = dbus.MakeVariant(value) }
+		} {
+			s[family][key] = dbus.MakeVariant(value)
+		}
 	}
 	s["ipv4"]["dns"] = dbus.MakeVariant([]uint32{})
 	s["ipv4"]["addresses"] = dbus.MakeVariant([][]uint32{})
 	s["ipv4"]["routes"] = dbus.MakeVariant([][]uint32{})
 	s["ipv6"]["dns"] = dbus.MakeVariant([][]byte{})
-	s["ipv6"]["addresses"] = dbus.MakeVariant([]struct { Address []byte; Prefix uint32; Gateway []byte }{})
-	s["ipv6"]["routes"] = dbus.MakeVariant([]struct { Address []byte; Prefix uint32; Gateway []byte; Metric uint32 }{})
+	s["ipv6"]["addresses"] = dbus.MakeVariant([]struct {
+		Address []byte
+		Prefix  uint32
+		Gateway []byte
+	}{})
+	s["ipv6"]["routes"] = dbus.MakeVariant([]struct {
+		Address []byte
+		Prefix  uint32
+		Gateway []byte
+		Metric  uint32
+	}{})
 	s["proxy"] = map[string]dbus.Variant{"method": dbus.MakeVariant(int32(0))}
-	if err := ValidateProfile(s, id); err != nil { t.Fatal(err) }
+	if err := ValidateProfile(s, id); err != nil {
+		t.Fatal(err)
+	}
 	// Actual decoded D-Bus structs are represented by []interface{} in godbus.
 	for key, signature := range map[string]string{"addresses": "a(ayuay)", "routes": "a(ayuayu)"} {
 		s["ipv6"][key] = dbus.MakeVariantWithSignature([][]interface{}{}, dbus.ParseSignatureMust(signature))
 	}
-	if err := ValidateProfile(s, id); err != nil { t.Fatal(err) }
+	if err := ValidateProfile(s, id); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestValidateProfileRejectsChangesAndWrongTypes(t *testing.T) {
-	cases := []struct { section, key string; value interface{} }{
+	cases := []struct {
+		section, key string
+		value        interface{}
+	}{
 		{"connection", "uuid", "12345678-1234-1234-1234-123456789abd"},
 		{"connection", "type", "wireguard"}, {"connection", "interface-name", "other0"},
 		{"connection", "id", strings.Repeat("x", 257)}, {"connection", "id", "bad\x00name"},
@@ -108,12 +136,20 @@ func TestValidateProfileRejectsChangesAndWrongTypes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.section+"/"+tc.key, func(t *testing.T) {
 			s, id := profileFixture()
-			if s[tc.section] == nil { s[tc.section] = map[string]dbus.Variant{} }
+			if s[tc.section] == nil {
+				s[tc.section] = map[string]dbus.Variant{}
+			}
 			s[tc.section][tc.key] = dbus.MakeVariant(tc.value)
 			err := ValidateProfile(s, id)
-			if err == nil { t.Fatal("accepted unsupported profile") }
-			if err.Error() != "unsupported or unapproved NM VPN profile" { t.Fatal("non-generic error") }
-			if !reflect.DeepEqual(s[tc.section][tc.key].Value(), tc.value) { t.Fatal("mutated rejected input") }
+			if err == nil {
+				t.Fatal("accepted unsupported profile")
+			}
+			if err.Error() != "unsupported or unapproved NM VPN profile" {
+				t.Fatal("non-generic error")
+			}
+			if !reflect.DeepEqual(s[tc.section][tc.key].Value(), tc.value) {
+				t.Fatal("mutated rejected input")
+			}
 		})
 	}
 }
@@ -125,35 +161,58 @@ func TestValidateProfileRejectsMalformedVariantsAndIdentity(t *testing.T) {
 	} {
 		s, id := profileFixture()
 		s["ipv4"]["method"] = v
-		if ValidateProfile(s, id) == nil { t.Fatal("accepted malformed variant") }
+		if ValidateProfile(s, id) == nil {
+			t.Fatal("accepted malformed variant")
+		}
 	}
 	s, id := profileFixture()
 	for _, badID := range []Identity{{}, {UUID: id.UUID, Interface: "lo"}, {UUID: id.UUID, Interface: "toolonginterfacename"}} {
-		if ValidateProfile(s, badID) == nil { t.Fatal("accepted invalid identity") }
+		if ValidateProfile(s, badID) == nil {
+			t.Fatal("accepted invalid identity")
+		}
 	}
-	if ValidateProfile(nil, id) == nil { t.Fatal("accepted nil profile") }
+	if ValidateProfile(nil, id) == nil {
+		t.Fatal("accepted nil profile")
+	}
 	s["proxy"] = map[string]dbus.Variant{}
-	if ValidateProfile(s, id) == nil { t.Fatal("accepted proxy without method") }
+	if ValidateProfile(s, id) == nil {
+		t.Fatal("accepted proxy without method")
+	}
 }
 
 func TestValidateProfileBoundsAndEmptyTypeSpoofing(t *testing.T) {
 	for _, extra := range []string{"802-3-ethernet", "user", "wireguard"} {
 		s, id := profileFixture()
 		s[extra] = map[string]dbus.Variant{}
-		if ValidateProfile(s, id) == nil { t.Fatal("accepted unknown empty section") }
+		if ValidateProfile(s, id) == nil {
+			t.Fatal("accepted unknown empty section")
+		}
 	}
-	for _, test := range []struct { family, key, sig string; value interface{} }{
+	for _, test := range []struct {
+		family, key, sig string
+		value            interface{}
+	}{
 		{"ipv4", "dns", "au", []string{}},
 		{"ipv4", "route-data", "aa{sv}", []string{}},
 		{"ipv6", "routes", "a(ayuayu)", []uint32{}},
 		{"ipv6", "routes", "a(ayuayu)", [][]interface{}{{}}},
-		{"ipv6", "addresses", "a(ayuay)", []struct { A []byte; P int32; G []byte }{}},
+		{"ipv6", "addresses", "a(ayuay)", []struct {
+			A []byte
+			P int32
+			G []byte
+		}{}},
 	} {
 		s, id := profileFixture()
 		s[test.family][test.key] = dbus.MakeVariantWithSignature(test.value, dbus.ParseSignatureMust(test.sig))
-		if ValidateProfile(s, id) == nil { t.Fatal("accepted spoofed or nonempty array") }
+		if ValidateProfile(s, id) == nil {
+			t.Fatal("accepted spoofed or nonempty array")
+		}
 	}
 	s, id := profileFixture()
-	for i := 0; i < 33; i++ { s["connection"][strings.Repeat("x", i+1)] = dbus.MakeVariant(false) }
-	if ValidateProfile(s, id) == nil { t.Fatal("accepted oversized dictionary") }
+	for i := 0; i < 33; i++ {
+		s["connection"][strings.Repeat("x", i+1)] = dbus.MakeVariant(false)
+	}
+	if ValidateProfile(s, id) == nil {
+		t.Fatal("accepted oversized dictionary")
+	}
 }

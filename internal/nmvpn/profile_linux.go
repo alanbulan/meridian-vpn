@@ -48,7 +48,10 @@ func ValidateProfile(settings map[string]map[string]dbus.Variant, id Identity) e
 			return bad
 		}
 	}
-	for _, requirement := range []struct{ section, key string; value interface{} }{
+	for _, requirement := range []struct {
+		section, key string
+		value        interface{}
+	}{
 		{"connection", "uuid", id.UUID},
 		{"connection", "type", "vpn"},
 		{"vpn", "service-type", PluginService},
@@ -171,10 +174,14 @@ func profileProperty(section, key string, v dbus.Variant, id Identity) bool {
 	case "ipv4", "ipv6":
 		switch key {
 		case "method":
-			if section == "ipv4" { return profileEqual(v, "auto") }
+			if section == "ipv4" {
+				return profileEqual(v, "auto")
+			}
 			return profileEqual(v, "disabled")
 		case "never-default", "ignore-auto-dns":
-			if section == "ipv4" { return profileEqual(v, true) }
+			if section == "ipv4" {
+				return profileEqual(v, true)
+			}
 			_, ok := v.Value().(bool)
 			return ok && v.Signature().String() == "b"
 		case "ignore-auto-routes":
@@ -192,13 +199,19 @@ func profileProperty(section, key string, v dbus.Variant, id Identity) bool {
 		case "route-data", "address-data", "routing-rules":
 			return profileEmpty(v, "aa{sv}")
 		case "dns":
-			if section == "ipv4" { return profileEmpty(v, "au") }
+			if section == "ipv4" {
+				return profileEmpty(v, "au")
+			}
 			return profileEmpty(v, "aay")
 		case "routes":
-			if section == "ipv4" { return profileEmpty(v, "aau") }
+			if section == "ipv4" {
+				return profileEmpty(v, "aau")
+			}
 			return profileEmpty(v, "a(ayuayu)")
 		case "addresses":
-			if section == "ipv4" { return profileEmpty(v, "aau") }
+			if section == "ipv4" {
+				return profileEmpty(v, "aau")
+			}
 			return profileEmpty(v, "a(ayuay)")
 		}
 	case "proxy":

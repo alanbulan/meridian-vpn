@@ -20,10 +20,10 @@ var errUniVPNPacketPair = errors.New("packet pair provider unavailable or alread
 // Do not copy. Use a new provider for each separately authorized generation.
 // This provider is not enabled in the normal application.
 type UniVPNPacketPairProvider struct {
-	self *UniVPNPacketPairProvider
-	mu sync.Mutex
+	self      *UniVPNPacketPairProvider
+	mu        sync.Mutex
 	attempted bool
-	err error
+	err       error
 }
 
 var _ UniVPNPacketProvider = (*UniVPNPacketPairProvider)(nil)
@@ -46,10 +46,14 @@ func (p *UniVPNPacketPairProvider) AcquirePacket(ctx context.Context, session st
 
 // Only private tests can replace acquisition; the public entry is concrete.
 func (p *UniVPNPacketPairProvider) acquire(ctx context.Context, session string, open func(context.Context) (*os.File, *packetrelay.DatagramPackets, error)) (*os.File, packetrelay.PacketIO, error) {
-	if p == nil || p.self != p { return nil, nil, errUniVPNPacketPair }
+	if p == nil || p.self != p {
+		return nil, nil, errUniVPNPacketPair
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.attempted { return nil, nil, errors.Join(errUniVPNPacketPair, p.err) }
+	if p.attempted {
+		return nil, nil, errors.Join(errUniVPNPacketPair, p.err)
+	}
 	p.attempted = true
 	if ctx == nil || !validUniVPNPacketSession(session) || open == nil {
 		p.err = errUniVPNPacketPair
@@ -60,14 +64,20 @@ func (p *UniVPNPacketPairProvider) acquire(ctx context.Context, session string, 
 		return nil, nil, p.err
 	}
 	native, peer, err := open(ctx)
-	if err == nil && (native == nil || peer == nil) { err = errUniVPNPacketPair }
+	if err == nil && (native == nil || peer == nil) {
+		err = errUniVPNPacketPair
+	}
 	err = errors.Join(err, ctx.Err())
 	if err != nil {
 		// OpenPacketPair already cleans its own failures. Still retain and
 		// close any successful return if cancellation won just afterwards.
 		var closeErr error
-		if native != nil { closeErr = errors.Join(closeErr, native.Close()) }
-		if peer != nil { closeErr = errors.Join(closeErr, peer.Close()) }
+		if native != nil {
+			closeErr = errors.Join(closeErr, native.Close())
+		}
+		if peer != nil {
+			closeErr = errors.Join(closeErr, peer.Close())
+		}
 		if closeErr != nil || errors.Is(err, packetrelay.ErrCleanup) {
 			err = errors.Join(err, closeErr, &CleanupError{})
 		}
@@ -78,9 +88,13 @@ func (p *UniVPNPacketPairProvider) acquire(ctx context.Context, session string, 
 }
 
 func validUniVPNPacketSession(s string) bool {
-	if len(s) != 32 { return false }
+	if len(s) != 32 {
+		return false
+	}
 	for _, c := range s {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') { return false }
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
 	}
 	return true
 }

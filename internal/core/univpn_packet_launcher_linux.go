@@ -142,7 +142,9 @@ func wireUniVPNPacket(cmd *exec.Cmd, native *os.File) error {
 		return errors.New("packet channel requires session and TCP descriptors")
 	}
 	nativeFD, err := uniVPNPacketDescriptor(native)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	seen := map[uintptr]bool{nativeFD: true}
 	for _, f := range cmd.ExtraFiles {
 		fd, err := uniVPNPacketDescriptor(f)
@@ -189,9 +191,13 @@ func closeUniVPNPacketLaunch(native uniVPNPacketNative, relay packetrelay.Packet
 // origins. Callers own these files and must not close them concurrently with
 // command wiring; the descriptor number is not retained as cleanup authority.
 func uniVPNPacketDescriptor(f *os.File) (uintptr, error) {
-	if f == nil { return 0, errors.New("missing packet launch descriptor") }
+	if f == nil {
+		return 0, errors.New("missing packet launch descriptor")
+	}
 	raw, err := f.SyscallConn()
-	if err != nil { return 0, err }
+	if err != nil {
+		return 0, err
+	}
 	var fd uintptr
 	err = raw.Control(func(value uintptr) { fd = value })
 	return fd, err

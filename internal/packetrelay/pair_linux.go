@@ -33,8 +33,8 @@ func OpenPacketPair(ctx context.Context) (*os.File, *DatagramPackets, error) {
 			_, err := validateDatagramFile(f)
 			return err
 		},
-		wrapRelay: NewDatagramPackets,
-		closeFile: (*os.File).Close,
+		wrapRelay:  NewDatagramPackets,
+		closeFile:  (*os.File).Close,
 		closeRelay: (*DatagramPackets).Close,
 	})
 }
@@ -42,11 +42,11 @@ func OpenPacketPair(ctx context.Context) (*os.File, *DatagramPackets, error) {
 // Per-call injection exists only for package tests. Production always supplies
 // the exact syscall and concrete validators above; there is no public fd input.
 type packetPairOps struct {
-	pair func(int, int, int) ([2]int, error)
+	pair           func(int, int, int) ([2]int, error)
 	validateNative func(*os.File) error
-	wrapRelay func(*os.File) (*DatagramPackets, error)
-	closeFile func(*os.File) error
-	closeRelay func(*DatagramPackets) error
+	wrapRelay      func(*os.File) (*DatagramPackets, error)
+	closeFile      func(*os.File) error
+	closeRelay     func(*DatagramPackets) error
 }
 
 func openPacketPair(ctx context.Context, ops packetPairOps) (native *os.File, relay *DatagramPackets, resultErr error) {
@@ -72,15 +72,21 @@ func openPacketPair(ctx context.Context, ops packetPairOps) (native *os.File, re
 	// cancellation check. There is no raw close after this ownership transfer.
 	var peer *DatagramPackets
 	defer func() {
-		if resultErr == nil { return }
+		if resultErr == nil {
+			return
+		}
 		var closeErr error
-		if files[0] != nil { closeErr = errors.Join(closeErr, ops.closeFile(files[0])) }
+		if files[0] != nil {
+			closeErr = errors.Join(closeErr, ops.closeFile(files[0]))
+		}
 		if peer != nil {
 			closeErr = errors.Join(closeErr, ops.closeRelay(peer))
 		} else if files[1] != nil {
 			closeErr = errors.Join(closeErr, ops.closeFile(files[1]))
 		}
-		if closeErr != nil { resultErr = errors.Join(resultErr, ErrCleanup, closeErr) }
+		if closeErr != nil {
+			resultErr = errors.Join(resultErr, ErrCleanup, closeErr)
+		}
 		native, relay = nil, nil
 	}()
 	if files[0] == nil || files[1] == nil || ctx.Err() != nil {

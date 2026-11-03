@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 // DatagramPackets owns a broker-side, connected, nonblocking, unnamed AF_UNIX
@@ -79,19 +80,10 @@ func validateDatagramFile(f *os.File) (syscall.RawConn, error) {
 			opErr = errors.New("packet channel requires protocol zero")
 			return
 		}
-		var a syscall.Sockaddr
-		a, opErr = syscall.Getsockname(int(fd))
-		if opErr != nil {
+		if opErr = unnamedUnixFD(int(fd), false); opErr != nil {
 			return
 		}
-		if opErr = unnamedUnix(a); opErr != nil {
-			return
-		}
-		a, opErr = syscall.Getpeername(int(fd))
-		if opErr != nil {
-			return
-		}
-		if opErr = unnamedUnix(a); opErr != nil {
+		if opErr = unnamedUnixFD(int(fd), true); opErr != nil {
 			return
 		}
 		flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFL, 0)
@@ -194,9 +186,16 @@ func sendMessage(fd int, b []byte) (int, error) {
 	return syscall.SendmsgN(fd, b, nil, nil, syscall.MSG_DONTWAIT|syscall.MSG_NOSIGNAL)
 }
 
-func unnamedUnix(a syscall.Sockaddr) error {
-	u, ok := a.(*syscall.SockaddrUnix)
-	if !ok || u == nil || u.Name != "" {
+// Getsockname/Getpeername discard socklen and can represent both an unnamed
+// socketpair and the empty abstract name as "@". An unnamed Linux AF_UNIX
+// endpoint contains only sa_family, with no sun_path bytes at all.
+func unnamedUnixFD(fd int, peer bool) error {
+	var addr syscall.RawSockaddrUnix
+	size := uint32(unsafe.Sizeof(addr))
+	if err := rawUnixName(fd, peer, &addr, &size); err != 0 {
+		return err
+	}
+	if addr.Family != syscall.AF_UNIX || size != uint32(unsafe.Offsetof(addr.Path)) {
 		return errors.New("packet channel requires unnamed AF_UNIX endpoints")
 	}
 	return nil

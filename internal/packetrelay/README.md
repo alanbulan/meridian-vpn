@@ -84,9 +84,10 @@ From repository root with its pinned toolchain environment loaded:
     go vet ./internal/packetrelay
 
 Tests use in-memory packet endpoints, injected recvmsg/sendmsg/poller callbacks,
-temporary regular files, and real anonymous local AF_UNIX socketpairs. They do
-not create named sockets, IP connections, devices, namespaces, routes or DNS
-configuration. Actual TUN descriptor compatibility and native-worker integration
+temporary regular files, and local AF_UNIX socketpairs. Address-rejection tests
+bind a pair endpoint to an abstract or temporary pathname to verify rejection;
+there is no listener or IP connection. Tests do not create devices, namespaces,
+routes or DNS configuration. Actual TUN descriptor compatibility and native-worker integration
 remain unverified.
 
 ## Separate retained TUN acquisition precursor
@@ -214,7 +215,12 @@ Private per-call seams test syscall/validation/wrapping/cancellation failures an
 uncertain closes. Launcher integration uses the actual pair and native duplicate,
 checks descriptor flags after command wiring, and exchanges local packets. No
 command or VPN worker is started. These are local IPC tests, not TUN or gateway
-acceptance.
+acceptance. The address validator reuses the raw sockaddr-length fix from PR #3
+(commit `8f651ec`): Go's converted `SockaddrUnix` name cannot distinguish an unnamed
+endpoint from an empty abstract name. The exact kernel-reported family-only
+length is required for both local and peer endpoints; empty abstract, other
+abstract, pathname and unconnected sockets remain rejected. Linux 386 and s390x
+use the reviewed socketcall ABI branch. CI cross-compiles 386, arm64 and s390x.
 
 Sources: [socketpair semantics](https://man7.org/linux/man-pages/man2/socketpair.2.html),
 [atomic socket flags](https://man7.org/linux/man-pages/man2/socket.2.html),

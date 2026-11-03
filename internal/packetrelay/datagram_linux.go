@@ -15,13 +15,16 @@ import (
 // DatagramPackets owns an inherited, connected, nonblocking, unnamed AF_UNIX
 // SOCK_SEQPACKET socket. It never creates, binds, listens on, connects, or changes
 // flags on a socket. This is the child's packet channel, never its host TUN.
+// Do not copy it or use it after transferring ownership to a TUNRelay.
 type DatagramPackets struct {
+	self *DatagramPackets
 	file     *os.File
 	raw      syscall.RawConn
 	recv     func(int, []byte) (int, int, error)
 	send     func(int, []byte) (int, error)
 	once     sync.Once
 	closeErr error
+	relayClaim tunRelayClaim // local retained relay ownership, never reset
 }
 
 // NewDatagramPackets verifies transport type and connection before ownership
@@ -96,7 +99,9 @@ func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
 	if err = f.SetWriteDeadline(time.Time{}); err != nil {
 		return nil, fmt.Errorf("unpollable packet socket: %w", err)
 	}
-	return &DatagramPackets{file: f, raw: raw, recv: receiveMessage, send: sendMessage}, nil
+	d := &DatagramPackets{file: f, raw: raw, recv: receiveMessage, send: sendMessage}
+	d.self = d
+	return d, nil
 }
 
 // No ancillary buffer is supplied: SCM_RIGHTS are not accepted. Linux closes

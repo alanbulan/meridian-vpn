@@ -309,5 +309,8 @@ NM state observations, retained trusted file pins, and original native-process
 identity observations. These are deliberately not HostAuthority/HostBinding
 implementations. An NM property, root UID, executable hash or matching namespace
 identifier never grants exclusive host-network ownership, readiness or cleanup
-authority. Applied/global/dispatcher policy and actual TUN/relay handles remain
-independent missing requirements; normal application enablement is unchanged.
+authority. The separate packetrelay precursor now has concrete TUN acquisition
+and retained local relay ownership, exercised only through private fake I/O. It
+does not correlate those handles to this NM transaction or native generation.
+Applied/global/dispatcher policy, independent absence readback and authorized
+real-kernel acceptance remain missing; normal application enablement is unchanged.

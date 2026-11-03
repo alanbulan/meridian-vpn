@@ -110,7 +110,7 @@ not a persistent lock. The returned name must match, and later `TUNGETIFF` must
 report exactly TUN/no-PI without persistence, multiqueue or virtual headers.
 Poller deadline support and descriptor CLOEXEC/nonblocking state are checked.
 Only the original handle is retained; no raw file, FD, PacketIO, duplication or
-replacement endpoint is exposed. This slice does not start a relay.
+replacement endpoint is exposed. Acquisition alone does not start a relay.
 
 Ownership is recorded before the mutating ioctl. Even an ioctl error can follow
 a successful kernel mutation, so the constructor does not replay it. Every
@@ -122,14 +122,53 @@ metadata survives local close, without turning metadata into fresh authority.
 
 This is only local TUN acquisition. It does not establish the intended host
 namespace, correlate an NM receipt or native generation, acquire an exclusive
-host lease, attest offload/kernel policy, start or join a relay, publish NM
+host lease, attest offload/kernel policy, publish NM
 configuration, expose Ready, or prove link/routes/DNS absence. Privileged actors
 can change network state; equal sequential observations cannot prevent that.
 Context checks cannot interrupt a kernel syscall. Complete namespace binding,
-applied/global/dispatcher policy, retained relay integration, independent cleanup
+applied/global/dispatcher policy, native/NM relay integration, independent cleanup
 readback and authorized real-kernel/real-NM acceptance remain deployment gates.
 
 Primary sources: [Linux TUN documentation](https://docs.kernel.org/networking/tuntap.html),
 [Linux TUN implementation](https://github.com/torvalds/linux/blob/master/drivers/net/tun.c),
 [Linux TUN UAPI](https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_tun.h),
 and [x/sys ifreq](https://github.com/golang/sys/blob/v0.48.0/unix/ifreq_linux.go).
+
+## Retained local TUN/relay binding precursor
+
+`BindTUNRelay` now binds a successfully acquired `TUNResource` to the concrete
+`DatagramPackets` child endpoint. Binding claims both original objects once,
+without I/O or forwarding. Ownership transfers **only on successful binding**;
+a rejected duplicate leaves the supplied objects with their existing owner and
+cannot close an active alias. Claims never reset after stop or failure. There is
+no generic endpoint injection in this public API, raw TUN exposure, duplication,
+reopen-by-name, replacement or restart. Only package-private tests inject I/O.
+
+`Start` consumes one attempt before checking context, separately authorized
+packet policy, and a fresh original-descriptor observation. Failure closes both
+owned handles and preserves their cleanup evidence. Success launches the existing
+two-pump policy-filtered `Run`; it is not a readiness signal. The private TUN
+adapter reads/writes only the original file and closes through its original
+close-once owner. It never holds the TUN lifecycle mutex across blocking I/O.
+
+`Stop` before start permanently prevents forwarding. During a run it cancels and
+joins that original run without holding the lifecycle lock. `Wait` observes the
+same completion without canceling it. A wait timeout is not a successful join;
+the owner remains available to join later, and actual close errors remain sticky
+as `ErrCleanup`. The operational error (including ordinary cancellation) is
+available separately from `Stop`'s local-cleanup result. Closing or detecting drift
+on the original TUN wakes the run, which closes the child and joins both pumps;
+TUN `Close` itself does not prove that join, so the relay owner must Stop/Wait.
+
+The opaque `TUNRelayBinding` checks only the exact retained process-local owner.
+It survives failed start, stop, observation drift and cleanup uncertainty without
+performing live I/O. It cannot authenticate an NM receipt or native generation,
+survive process restart, authorize resource lookup or cleanup by name, or prove
+host network absence. It is intentionally not `UniVPNNMHostBinding`.
+
+All new execution tests use in-memory devices/endpoints, including bidirectional
+filter failures, partial startup, duplicate ownership, concurrent start/stop,
+blocked I/O, sticky close errors and late completion after a timeout. No real TUN,
+socket, network namespace, NM activation or native worker is used by these tests.
+Application/NM wiring, host namespace and applied policy, independent absence
+readback and authorized real-kernel/real-gateway acceptance remain open.

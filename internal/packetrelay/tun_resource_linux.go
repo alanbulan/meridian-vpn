@@ -33,16 +33,19 @@ type TUNObservation struct {
 
 // TUNResource owns one newly created, nonpersistent single-queue Linux TUN.
 // It exposes no descriptor, PacketIO, duplication, adoption or reconnect API.
-// It is not an NM HostAuthority/HostBinding and does not start packet forwarding.
+// It is not an NM HostAuthority/HostBinding. BindTUNRelay can attach one local
+// relay owner, but acquisition alone does not start packet forwarding.
 // Do not copy it. Close is mandatory even when AcquireTUN returns an error and
 // a non-nil resource. No method asserts readiness, exclusivity, or host cleanup.
 type TUNResource struct {
+	self *TUNResource
 	mu       sync.Mutex
 	device   tunResourceDevice
 	initial  TUNObservation
 	observed bool
 	closed   bool
 	closeErr error
+	relay    *TUNRelay // permanent one-shot ownership, retained after stop
 }
 
 // The alternate device exists only for package tests. Production always opens
@@ -51,6 +54,8 @@ type tunResourceDevice interface {
 	create(string) error
 	observe() (TUNObservation, error)
 	pollable() error
+	readPacket([]byte) (int, error)
+	writePacket([]byte) (int, error)
 	close() error
 }
 
@@ -89,6 +94,7 @@ func acquireTUN(ctx context.Context, name string, open func() (tunResourceDevice
 		return nil, err
 	}
 	r := &TUNResource{device: device}
+	r.self = r
 	fail := func(err error) (*TUNResource, error) {
 		if errors.Is(err, ErrCleanup) {
 			r.closeErr = errors.Join(r.closeErr, err)
@@ -167,6 +173,8 @@ func (r *TUNResource) Observe(ctx context.Context) (TUNObservation, error) {
 // Close performs only original-descriptor cleanup, at most once. A close error
 // is sticky: Linux may already have released the numeric FD, so retrying it can
 // close an unrelated resource. Neither nil nor an error proves network absence.
+// Closing wakes an attached relay, but does not itself join its pumps. Its owner
+// must use TUNRelay.Stop or Wait to establish local completion.
 func (r *TUNResource) Close() error {
 	if r == nil {
 		return nil
@@ -339,3 +347,6 @@ func (d *tunFileDevice) pollable() error {
 }
 
 func (d *tunFileDevice) close() error { return d.file.Close() }
+
+func (d *tunFileDevice) readPacket(b []byte) (int, error) { return d.file.Read(b) }
+func (d *tunFileDevice) writePacket(b []byte) (int, error) { return d.file.Write(b) }

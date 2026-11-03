@@ -21,7 +21,7 @@ type fakeTUNDevice struct {
 	createErr, observeErr, pollErr, closeErr         error
 	value                                            TUNObservation
 	onCreate, onObserve, onPoll                      func()
-	packets *fakePackets
+	packets                                          *fakePackets
 }
 
 func newFakeTUN() *fakeTUNDevice {
@@ -53,15 +53,21 @@ func (d *fakeTUNDevice) pollable() error {
 }
 func (d *fakeTUNDevice) close() error {
 	d.closeCalls++
-	if d.packets != nil { _ = d.packets.Close() }
+	if d.packets != nil {
+		_ = d.packets.Close()
+	}
 	return d.closeErr
 }
 func (d *fakeTUNDevice) readPacket(b []byte) (int, error) {
-	if d.packets == nil { return 0, io.EOF }
+	if d.packets == nil {
+		return 0, io.EOF
+	}
 	return d.packets.ReadPacket(b)
 }
 func (d *fakeTUNDevice) writePacket(b []byte) (int, error) {
-	if d.packets == nil { return 0, io.ErrClosedPipe }
+	if d.packets == nil {
+		return 0, io.ErrClosedPipe
+	}
 	return d.packets.WritePacket(b)
 }
 func acquireFakeTUN(ctx context.Context, d *fakeTUNDevice) (*TUNResource, error) {

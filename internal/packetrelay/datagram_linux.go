@@ -17,13 +17,13 @@ import (
 // flags on a socket. This is the child's packet channel, never its host TUN.
 // Do not copy it or use it after transferring ownership to a TUNRelay.
 type DatagramPackets struct {
-	self *DatagramPackets
-	file     *os.File
-	raw      syscall.RawConn
-	recv     func(int, []byte) (int, int, error)
-	send     func(int, []byte) (int, error)
-	once     sync.Once
-	closeErr error
+	self       *DatagramPackets
+	file       *os.File
+	raw        syscall.RawConn
+	recv       func(int, []byte) (int, int, error)
+	send       func(int, []byte) (int, error)
+	once       sync.Once
+	closeErr   error
 	relayClaim tunRelayClaim // local retained relay ownership, never reset
 }
 

@@ -38,7 +38,7 @@ type TUNObservation struct {
 // Do not copy it. Close is mandatory even when AcquireTUN returns an error and
 // a non-nil resource. No method asserts readiness, exclusivity, or host cleanup.
 type TUNResource struct {
-	self *TUNResource
+	self     *TUNResource
 	mu       sync.Mutex
 	device   tunResourceDevice
 	initial  TUNObservation
@@ -348,5 +348,5 @@ func (d *tunFileDevice) pollable() error {
 
 func (d *tunFileDevice) close() error { return d.file.Close() }
 
-func (d *tunFileDevice) readPacket(b []byte) (int, error) { return d.file.Read(b) }
+func (d *tunFileDevice) readPacket(b []byte) (int, error)  { return d.file.Read(b) }
 func (d *tunFileDevice) writePacket(b []byte) (int, error) { return d.file.Write(b) }

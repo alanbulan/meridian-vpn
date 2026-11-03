@@ -14,10 +14,10 @@ var errTUNRelay = errors.New("TUN relay unavailable or already consumed")
 // A copied binding is still the same identity. The zero value is invalid. It is
 // not serializable recovery authority, an NM receipt, a native session identity,
 // a host lease, a liveness assertion, or evidence that networking is absent.
-type TUNRelayBinding struct { owner *TUNRelay }
+type TUNRelayBinding struct{ owner *TUNRelay }
 
 type tunRelayClaim struct {
-	mu sync.Mutex
+	mu    sync.Mutex
 	owner *TUNRelay
 }
 
@@ -27,15 +27,15 @@ type tunRelayClaim struct {
 // Do not copy it. Stop/Wait must establish completion before discarding it.
 // All handles and historical identity remain retained after any failure.
 type TUNRelay struct {
-	self *TUNRelay
-	mu sync.Mutex
-	tun *TUNResource
-	child PacketIO
-	done chan struct{}
-	attempted bool
-	cancel context.CancelFunc
-	counts Counts
-	runErr error
+	self       *TUNRelay
+	mu         sync.Mutex
+	tun        *TUNResource
+	child      PacketIO
+	done       chan struct{}
+	attempted  bool
+	cancel     context.CancelFunc
+	counts     Counts
+	runErr     error
 	cleanupErr error
 }
 
@@ -74,14 +74,18 @@ func bindTUNRelay(tun *TUNResource, child PacketIO, claim *tunRelayClaim) (*TUNR
 
 // Binding is historical identity and remains available after local shutdown.
 func (r *TUNRelay) Binding() TUNRelayBinding {
-	if r == nil || r.self != r || r.done == nil { return TUNRelayBinding{} }
+	if r == nil || r.self != r || r.done == nil {
+		return TUNRelayBinding{}
+	}
 	return TUNRelayBinding{owner: r}
 }
 
 // CheckBinding checks exact retained-owner identity without live I/O. It never
 // resolves a name or treats a matching observation as authority over a new TUN.
 func (r *TUNRelay) CheckBinding(b TUNRelayBinding) error {
-	if r == nil || r.self != r || r.done == nil || b.owner != r { return errTUNRelay }
+	if r == nil || r.self != r || r.done == nil || b.owner != r {
+		return errTUNRelay
+	}
 	return nil
 }
 
@@ -93,21 +97,35 @@ func (r *TUNRelay) CheckBinding(b TUNRelayBinding) error {
 // Context covers the run's whole lifetime. Kernel syscalls and short mutex waits
 // cannot be interrupted by it. No complete host-policy attestation is provided.
 func (r *TUNRelay) Start(ctx context.Context, policy *Policy) error {
-	if r == nil || r.self != r || r.done == nil { return errTUNRelay }
+	if r == nil || r.self != r || r.done == nil {
+		return errTUNRelay
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.attempted { return errTUNRelay }
+	if r.attempted {
+		return errTUNRelay
+	}
 	r.attempted = true
 	fail := func(err error) error {
 		r.finishBeforeRunLocked(err)
 		return r.runErr
 	}
-	if ctx == nil || policy == nil { return fail(errTUNRelay) }
-	if err := ctx.Err(); err != nil { return fail(err) }
+	if ctx == nil || policy == nil {
+		return fail(errTUNRelay)
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
 	frozen, err := NewPolicy(policy.cfg)
-	if err != nil { return fail(err) }
-	if _, err = r.tun.Observe(ctx); err != nil { return fail(err) }
-	if err = ctx.Err(); err != nil { return fail(err) }
+	if err != nil {
+		return fail(err)
+	}
+	if _, err = r.tun.Observe(ctx); err != nil {
+		return fail(err)
+	}
+	if err = ctx.Err(); err != nil {
+		return fail(err)
+	}
 	run, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
 	go func() {
@@ -115,7 +133,9 @@ func (r *TUNRelay) Start(ctx context.Context, policy *Policy) error {
 		cancel()
 		r.mu.Lock()
 		r.counts, r.runErr = counts, runErr
-		if errors.Is(runErr, ErrCleanup) { r.cleanupErr = runErr }
+		if errors.Is(runErr, ErrCleanup) {
+			r.cleanupErr = runErr
+		}
 		close(r.done)
 		r.mu.Unlock()
 	}()
@@ -124,7 +144,9 @@ func (r *TUNRelay) Start(ctx context.Context, policy *Policy) error {
 
 func (r *TUNRelay) finishBeforeRunLocked(cause error) {
 	closeErr := errors.Join(r.tun.Close(), r.child.Close())
-	if closeErr != nil { r.cleanupErr = errors.Join(ErrCleanup, closeErr) }
+	if closeErr != nil {
+		r.cleanupErr = errors.Join(ErrCleanup, closeErr)
+	}
 	r.runErr = errors.Join(cause, r.cleanupErr)
 	close(r.done)
 }
@@ -135,7 +157,9 @@ func (r *TUNRelay) finishBeforeRunLocked(cause error) {
 // A wait timeout returns ErrCleanup without erasing the owner or completion
 // channel; later Stop/Wait can join that SAME run. Actual close errors are sticky.
 func (r *TUNRelay) Stop(ctx context.Context) error {
-	if r == nil || r.self != r || r.done == nil || ctx == nil { return errTUNRelay }
+	if r == nil || r.self != r || r.done == nil || ctx == nil {
+		return errTUNRelay
+	}
 	r.mu.Lock()
 	if !r.attempted {
 		r.attempted = true
@@ -144,31 +168,44 @@ func (r *TUNRelay) Stop(ctx context.Context) error {
 		r.cancel()
 	}
 	r.mu.Unlock()
-	if err := r.waitDone(ctx); err != nil { return errors.Join(ErrCleanup, err) }
+	if err := r.waitDone(ctx); err != nil {
+		return errors.Join(ErrCleanup, err)
+	}
 	return r.cleanupErr
 }
 
 // Wait observes completion, without canceling the run. A caller timeout is not
 // a completed relay result. The immutable final result can be read repeatedly.
 func (r *TUNRelay) Wait(ctx context.Context) (Counts, error) {
-	if r == nil || r.self != r || r.done == nil || ctx == nil { return Counts{}, errTUNRelay }
-	if err := r.waitDone(ctx); err != nil { return Counts{}, err }
+	if r == nil || r.self != r || r.done == nil || ctx == nil {
+		return Counts{}, errTUNRelay
+	}
+	if err := r.waitDone(ctx); err != nil {
+		return Counts{}, err
+	}
 	return r.counts, r.runErr
 }
 
 func (r *TUNRelay) waitDone(ctx context.Context) error {
 	// Prefer an already-established terminal result over caller cancellation.
-	select { case <-r.done: return nil; default: }
 	select {
-	case <-r.done: return nil
-	case <-ctx.Done(): return ctx.Err()
+	case <-r.done:
+		return nil
+	default:
+	}
+	select {
+	case <-r.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
 // This private adapter is never given to the native child. The device pointer
 // is immutable after acquisition. Do not hold the lifecycle mutex across I/O:
 // the original Close must be able to unblock both pending reads and writes.
-type tunRelayPackets struct { resource *TUNResource }
-func (p *tunRelayPackets) ReadPacket(b []byte) (int, error) { return p.resource.device.readPacket(b) }
+type tunRelayPackets struct{ resource *TUNResource }
+
+func (p *tunRelayPackets) ReadPacket(b []byte) (int, error)  { return p.resource.device.readPacket(b) }
 func (p *tunRelayPackets) WritePacket(b []byte) (int, error) { return p.resource.device.writePacket(b) }
-func (p *tunRelayPackets) Close() error { return p.resource.Close() }
+func (p *tunRelayPackets) Close() error                      { return p.resource.Close() }

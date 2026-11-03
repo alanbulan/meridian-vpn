@@ -38,7 +38,11 @@ func(p *gnomeChild)stop(){
 }
 func newGNOMEFixture(t *testing.T)*gnomeFixture{
  t.Helper();requireGNOMEContainer(t)
- address:=privateWireBus(t)
+ return newGNOMEFixtureAt(t,privateWireBus(t))
+}
+
+func newGNOMEFixtureAt(t *testing.T,address string)*gnomeFixture{
+ t.Helper();requireGNOMEContainer(t)
  root,err:=os.MkdirTemp("","meridian-gnome-");if err!=nil{t.Fatal("cannot create isolated keyring directory")}
  t.Cleanup(func(){_=os.RemoveAll(root)})
  for _,dir:=range []string{"home","data","config","cache","runtime","control"}{if err=os.Mkdir(filepath.Join(root,dir),0700);err!=nil{t.Fatal("cannot create isolated keyring paths")}}

@@ -24,12 +24,18 @@ import (
 func privateWireBus(t *testing.T) string {
  t.Helper()
  if os.Getenv("MERIDIAN_CREDENTIAL_WIRE_TESTS") != "1" { t.Fatal("wire tests require explicit runner opt-in") }
- executable, err := exec.LookPath("dbus-daemon")
- if err != nil { t.Fatal("dbus-daemon is required, not a skipped acceptance test") }
  dir, err := os.MkdirTemp("", "meridian-secret-wire-")
  if err != nil { t.Fatal("cannot create isolated fixture directory") }
  t.Cleanup(func(){ _ = os.RemoveAll(dir) })
- address := "unix:path="+filepath.Join(dir,"bus")
+ return privateWireBusAt(t, "unix:path="+filepath.Join(dir,"bus"), dir)
+}
+
+// The caller owns the isolated directory and must never supply a host bus path.
+func privateWireBusAt(t *testing.T,address,dir string)string{
+ t.Helper()
+ if os.Getenv("MERIDIAN_CREDENTIAL_WIRE_TESTS")!="1"{t.Fatal("wire tests require explicit runner opt-in")}
+ executable,err:=exec.LookPath("dbus-daemon")
+ if err!=nil{t.Fatal("dbus-daemon is required")}
  // No standard_session_servicedirs, include, servicehelper, or TCP listener.
  config := `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig><type>session</type><listen>`+address+`</listen><auth>EXTERNAL</auth>

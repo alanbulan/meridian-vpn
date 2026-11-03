@@ -301,3 +301,66 @@ jobs:
           path: reports/credential-gnome/
           if-no-files-found: warn
           retention-days: 7
+
+  credential-production:
+    name: Linux / isolated production Secret Service entry
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon gnome-keyring python3 procps util-linux coreutils libc-bin
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run synthetic private-bus fixtures as isolated user
+        run: |
+          useradd --create-home --shell /bin/bash meridian-production-ci
+          chown -R meridian-production-ci:meridian-production-ci "$GITHUB_WORKSPACE"
+          mkdir -p reports/credential-production
+          set -o pipefail
+          GITHUB_ACTIONS=true MERIDIAN_PRODUCTION_CONTAINER_TESTS=1 \
+            bash integration/credentialstore/run-production-tests.sh meridian-production-ci \
+            | tee reports/credential-production/tests.jsonl
+      - name: Verify real provider case actually passed
+        run: |
+          python3 scripts/ci-summary.py reports/credential-production/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-production/tests.jsonl').read_text().splitlines()]
+          expected = {'TestCredentialProductionEntry'}
+          passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
+          assert expected <= passed, 'missing passing real provider case'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'real provider case skipped or failed'
+          PY
+      - name: Clean only this disposable fixture user after timeout or failure
+        if: always()
+        run: |
+          if id meridian-production-ci >/dev/null 2>&1; then
+            uid="$(id -u meridian-production-ci)"
+            # This UID is created for this job only, never a host/login user.
+            pkill -KILL -u "$uid" || test "$?" -eq 1
+            find /tmp -maxdepth 1 -type d -uid "$uid" \( -name 'meridian-secret-wire-*' -o -name 'meridian-gnome-*' \) -exec rm -rf -- {} +
+          fi
+          # Never recursively delete /run/user: bootstrap owns inode-checked rmdir only.
+          # Runner teardown destroys this entire container if the job is killed.
+      - name: Upload synthetic wire test evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-production-evidence
+          path: reports/credential-production/
+          if-no-files-found: warn
+          retention-days: 7

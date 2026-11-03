@@ -82,5 +82,5 @@ rather than being stacked below them. Cancel restores the existing input without
 contacting the provider. Exact target fields remain visible in the scrollable
 form; they are not abbreviated. Minimum-window tests retain the original bounds,
 include English and Chinese, and exercise scrolling to confirm/cancel controls
-with a long synthetic profile name. Native font/rendering acceptance is still
+with a valid long synthetic target. Native font/rendering acceptance is still
 required; headless geometry tests are not a pixel-level UI review.

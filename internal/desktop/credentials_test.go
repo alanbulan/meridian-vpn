@@ -175,15 +175,20 @@ func TestHidingPasswordFormNeverStopsActiveTunnel(t *testing.T){
  noPasswordCall(t,m)
 }
 
-// A long, synthetic display name forces scrolling without hiding or truncating
+// A valid long synthetic target forces scrolling without hiding or truncating
 // the operation's exact identity. Every action must still offer a usable cancel.
 func TestPasswordConfirmationsRemainReachableByScrolling(t *testing.T){
  for _,language:=range []string{"en","zh"}{
   for _,action:=range []credentialstore.Consent{credentialstore.SavePassword,credentialstore.UsePassword,credentialstore.DeletePassword}{
    t.Run(language+"/"+string(rune('0'+action)),func(t *testing.T){
     a,m,_:=passwordTestApp(t);a.Config.Settings.Language=language;a.Password="synthetic"
-    a.Config.Profiles[0].Name=strings.Repeat("Synthetic profile name ",40)
-    a.requestCredentialAction(action);v:=ui.NewTester(a.View,880,580)
+    a.Config.Profiles[0].Name=strings.Repeat("Fixture ",10) // 80 characters, the allowed maximum.
+    a.Config.Profiles[0].Gateway="https://vpn.example/"+strings.Repeat("synthetic/",60)
+    a.GatewayChoice=a.Config.Profiles[0].Gateway
+    if err:=core.ValidateProfile(a.Config.Profiles[0]);err!=nil{t.Fatalf("invalid scrolling fixture: %v",err)}
+    a.requestCredentialAction(action)
+    if a.credentialIntent==nil{t.Fatal("valid scrolling fixture did not create a confirmation")}
+    v:=ui.NewTester(a.View,880,580)
     v.Scroll(650,300,0,10000);v.Frame()
     confirm:="Confirm load only"
     if action==credentialstore.SavePassword{confirm="Confirm save / replace"}

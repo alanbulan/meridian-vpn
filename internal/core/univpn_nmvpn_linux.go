@@ -110,7 +110,7 @@ type UniVPNNMBroker struct {
 	stopTried  bool
 	stopped    bool
 	stopErr    error
-	uncertain  bool // launch/source reported resources whose cleanup was not proven
+	uncertain  bool        // launch/source reported resources whose cleanup was not proven
 	localTried atomic.Bool // one retained local correlation attempt, never reset
 	local      *UniVPNNMLocalBinding
 }

@@ -13,7 +13,7 @@ import (
 // never duplicates, uses or closes either endpoint. It is not host authority.
 type uniVPNPacketProvenance struct {
 	process *uniVPNExecProcess
-	child *packetrelay.DatagramPackets
+	child   *packetrelay.DatagramPackets
 	session string
 	claimed bool // protected by process.packetMu; permanent after local attempt
 }
@@ -30,7 +30,7 @@ func retainUniVPNPacketProvenance(p *uniVPNExecProcess, provider UniVPNPacketPro
 	if !ok || child == nil {
 		return errUniVPNNM
 	}
-	p.packetPair = &uniVPNPacketProvenance{process:p, child:child, session:p.sessionID}
+	p.packetPair = &uniVPNPacketProvenance{process: p, child: child, session: p.sessionID}
 	return nil
 }
 

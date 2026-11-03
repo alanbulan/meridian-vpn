@@ -25,20 +25,20 @@ import (
 // actual unnamed local socketpairs; the process reader uses temporary files.
 // No command is started, real TUN opened, bus contacted, or host policy changed.
 type uniVPNLocalFixture struct {
-	proc          *uniVPNProcFixture
-	b             *UniVPNNMBroker
-	p             *uniVPNExecProcess
-	a             *nmBridgeActivation
-	h             *nmBridgeHost
-	provider      *UniVPNPacketPairProvider
-	native        uniVPNPacketNative
-	child         *packetrelay.DatagramPackets
-	receipt       *nmvpn.ActivationReceipt
-	relay         *packetrelay.TUNRelay
-	correlations  atomic.Int32
-	observations  atomic.Int32
-	checks        atomic.Int32
-	finished      sync.Once
+	proc         *uniVPNProcFixture
+	b            *UniVPNNMBroker
+	p            *uniVPNExecProcess
+	a            *nmBridgeActivation
+	h            *nmBridgeHost
+	provider     *UniVPNPacketPairProvider
+	native       uniVPNPacketNative
+	child        *packetrelay.DatagramPackets
+	receipt      *nmvpn.ActivationReceipt
+	relay        *packetrelay.TUNRelay
+	correlations atomic.Int32
+	observations atomic.Int32
+	checks       atomic.Int32
+	finished     sync.Once
 }
 
 func newUniVPNLocalFixture(t *testing.T) *uniVPNLocalFixture {
@@ -698,16 +698,18 @@ func (w *uniVPNLocalWrapper) wrap(cmd *exec.Cmd, digest string) error {
 	return w.wrapFn(cmd, digest)
 }
 func (*uniVPNLocalWrapper) Prepare(*exec.Cmd) error { panic("unexpected process preparation") }
-func (*uniVPNLocalWrapper) WaitEmpty(context.Context, *exec.Cmd) error { panic("unexpected containment wait") }
+func (*uniVPNLocalWrapper) WaitEmpty(context.Context, *exec.Cmd) error {
+	panic("unexpected containment wait")
+}
 
 func TestUniVPNPacketProvenanceBeforeBootstrapWrapper(t *testing.T) {
 	for _, fail := range []bool{false, true} {
-		t.Run(map[bool]string{false:"success", true:"wrapper failure"}[fail], func(t *testing.T) {
+		t.Run(map[bool]string{false: "success", true: "wrapper failure"}[fail], func(t *testing.T) {
 			f := newUniVPNLocalFixture(t)
 			f.p.packetPair, f.p.packet = nil, f.child
 			root, image := transportPipe(t)
 			calls := 0
-			f.p.isolation = &uniVPNLocalWrapper{wrapFn:func(cmd *exec.Cmd, digest string) error {
+			f.p.isolation = &uniVPNLocalWrapper{wrapFn: func(cmd *exec.Cmd, digest string) error {
 				calls++
 				witness := f.p.packetPair
 				if witness == nil || witness.process != f.p || witness.child != f.child || witness.session != f.p.sessionID || witness.claimed || cmd != f.p.cmd || cmd.Process != nil || digest != f.proc.digest || len(cmd.ExtraFiles) != 4 || cmd.ExtraFiles[3] != f.native.file {

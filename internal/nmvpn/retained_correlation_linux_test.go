@@ -54,7 +54,7 @@ func newRetainedCorrelationFixture(t *testing.T) *retainedCorrelationFixture {
 	b.plugin.Store(p)
 	m := &ActivationManager{
 		bus: b, plugin: p, journal: &retainedCorrelationNoIOJournal{}, bootID: record.BootID,
-		boot: func(context.Context) (string, error) { panic("retained correlation refreshed boot identity") },
+		boot:    func(context.Context) (string, error) { panic("retained correlation refreshed boot identity") },
 		started: true, record: record, profile: profile,
 	}
 	return &retainedCorrelationFixture{r: &ActivationReceipt{manager: m, activation: a}, a: a, m: m, p: p, b: b}

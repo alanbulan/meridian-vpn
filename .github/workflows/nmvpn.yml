@@ -30,19 +30,20 @@ jobs:
         run: |
           mkdir -p reports/nmvpn
           status=0
-          gofmt -d internal/packetrelay/tun_resource_linux.go internal/packetrelay/tun_resource_linux_test.go internal/packetrelay/tun_relay_linux.go internal/packetrelay/tun_relay_linux_test.go internal/packetrelay/datagram_linux.go internal/packetrelay/relay_test.go internal/nmvpn internal/core/univpn_nmvpn_linux.go internal/core/univpn_nmvpn_linux_test.go internal/core/univpn_process_observation_linux.go internal/core/univpn_process_observation_linux_test.go internal/core/univpn_broker_exec_linux.go > reports/nmvpn/format.patch || status=$?
+          gofmt -d internal/packetrelay/tun_resource_linux.go internal/packetrelay/tun_resource_linux_test.go internal/packetrelay/tun_relay_linux.go internal/packetrelay/tun_relay_linux_test.go internal/packetrelay/datagram_linux.go internal/packetrelay/relay_test.go internal/packetrelay/pair_linux.go internal/packetrelay/pair_linux_test.go internal/core/univpn_packet_pair_linux.go internal/core/univpn_packet_pair_linux_test.go internal/core/univpn_packet_launcher_linux.go internal/nmvpn internal/core/univpn_nmvpn_linux.go internal/core/univpn_nmvpn_linux_test.go internal/core/univpn_process_observation_linux.go internal/core/univpn_process_observation_linux_test.go internal/core/univpn_broker_exec_linux.go > reports/nmvpn/format.patch || status=$?
           echo NMVPN_FORMAT_PATCH_BEGIN
           cat reports/nmvpn/format.patch
           echo NMVPN_FORMAT_PATCH_END
           exit "$status"
-      - name: Race-test only in-memory peers and temporary files
+      - name: Race-test private local resources only
         env:
           CGO_ENABLED: '1'
         run: |
           set -o pipefail
           go test -race -count=1 -json ./internal/nmvpn | tee reports/nmvpn/tests.jsonl
-          go test -race -count=1 -run '^(TestUniVPNNMBroker|TestUniVPNProcess)' -json ./internal/core | tee reports/nmvpn/native-binding-tests.jsonl
+          go test -race -count=1 -run '^(TestUniVPNNMBroker|TestUniVPNProcess|TestUniVPNPacketPair|TestPacketLauncher)' -json ./internal/core | tee reports/nmvpn/native-binding-tests.jsonl
           go test -race -count=1 -run '^TestTUN(Resource|Relay)' -json ./internal/packetrelay | tee reports/nmvpn/tun-resource-tests.jsonl
+          go test -race -count=1 -run '^(TestPacketPair|TestDatagram)' -json ./internal/packetrelay | tee reports/nmvpn/packet-pair-tests.jsonl
           go vet ./internal/nmvpn ./internal/core ./internal/packetrelay
       - name: Require canonical formatting
         run: test ! -s reports/nmvpn/format.patch

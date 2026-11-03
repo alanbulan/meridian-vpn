@@ -24,14 +24,14 @@ so. Only synthetic packet/mocked-I/O tests have exercised that new code.
    Inputs are copied. Empty/invalid policy and unspecified MTU fail closed.
 3. Pass the broker-owned host endpoint and the child's **packet channel** to
    `Run`. Child packet channel adapters must preserve message boundaries and
-   report truncation. `NewDatagramPackets` accepts only inherited connected nonblocking unnamed AF_UNIX
+   report truncation. `NewDatagramPackets` accepts only broker-side connected nonblocking unnamed AF_UNIX
    `SOCK_SEQPACKET` descriptors with protocol zero, verified with fstat, socket
-   type/protocol and local/peer address queries. Datagram, named and abstract
+   type/protocol, CLOEXEC and local/peer address queries. Datagram, named and abstract
    sockets are rejected. It uses recvmsg, detects MSG_TRUNC/MSG_CTRUNC,
    accepts no ancillary descriptors, and uses atomic message writes. It never
    creates/connects/binds/listens on a socket. Other transports require adapters; bare streams and pipe reads are not valid packet channels. Each
-   `WritePacket` must consume exactly one packet. This package does not create
-   that channel or launch a child.
+   `WritePacket` must consume exactly one packet. The separate `OpenPacketPair`
+   constructor below creates a private local channel; neither API launches a child.
 4. `Run` owns two distinct endpoints. `Close` must promptly unblock both reads
    and writes, including when the peer is stalled. `Run` closes each endpoint
    exactly once, waits for both pumps, and joins cleanup errors into its result.
@@ -84,9 +84,10 @@ From repository root with its pinned toolchain environment loaded:
     go vet ./internal/packetrelay
 
 Tests use in-memory packet endpoints, injected recvmsg/sendmsg/poller callbacks,
-and temporary regular files only. They do
-not create sockets, devices, namespaces, routes, or DNS configuration. Actual
-TUN descriptor compatibility and native-channel integration remain unverified.
+temporary regular files, and real anonymous local AF_UNIX socketpairs. They do
+not create named sockets, IP connections, devices, namespaces, routes or DNS
+configuration. Actual TUN descriptor compatibility and native-worker integration
+remain unverified.
 
 ## Separate retained TUN acquisition precursor
 
@@ -172,3 +173,50 @@ blocked I/O, sticky close errors and late completion after a timeout. No real TU
 socket, network namespace, NM activation or native worker is used by these tests.
 Application/NM wiring, host namespace and applied policy, independent absence
 readback and authorized real-kernel/real-gateway acceptance remain open.
+
+## Concrete anonymous packet-pair acquisition
+
+`OpenPacketPair` creates exactly one local anonymous `AF_UNIX` `SOCK_SEQPACKET`
+pair with `SOCK_NONBLOCK | SOCK_CLOEXEC` in the original syscall. It accepts no
+existing descriptor, pathname or IP destination and uses no bind/connect, flag-
+setting fallback or retry. Both ends are inspected through retained `RawConn`
+handles, including type, protocol, anonymous local/peer addresses, flags and
+poller support. The native file and concrete `DatagramPackets` peer come from
+that same successful syscall. Matching address strings alone would not prove
+pairing for caller-supplied files.
+
+Every successful raw descriptor becomes an owned `os.File` before validation or
+cancellation checks. Post-acquisition failure closes both original endpoints
+once and returns no partial endpoints. Successful wrapper ownership is respected
+on cleanup. Close errors are returned as `ErrCleanup`; a numerical close is not
+retried. A syscall failure's zero-valued Go result is not an acquired descriptor
+and is never closed. Context covers acquisition only: after successful transfer,
+the caller owns both endpoints even if that context later expires.
+
+`core.NewUniVPNPacketPairProvider` is a resource-free, one-shot provider factory.
+Its first call consumes the attempt before validating the 32-character lowercase
+hex launch label and context. It calls the concrete acquisition above, preserves
+the peer's concrete dynamic type, and maps uncertain cleanup to `core.CleanupError`.
+Repeated, concurrent, zero-value and copied-provider calls cannot acquire another
+pair; prior cleanup failures remain visible. The session label is not an
+identity receipt, reconnect key or permission to adopt another endpoint.
+
+The normal application still does not select this provider. Arbitrary trusted
+`UniVPNPacketProvider` implementations do not gain its pairing guarantee. Later
+production composition must explicitly choose the concrete provider and bind its
+returned endpoint to the authenticated original native generation and TUN/NM
+transaction. This local IPC pair establishes no host lease, readiness, applied
+network policy, or independent host cleanup proof.
+
+Tests exercise real unprivileged anonymous socketpairs, both message directions,
+packet boundaries, truncation, peer EOF and close-unblocks-read/write behavior.
+Private per-call seams test syscall/validation/wrapping/cancellation failures and
+uncertain closes. Launcher integration uses the actual pair and native duplicate,
+checks descriptor flags after command wiring, and exchanges local packets. No
+command or VPN worker is started. These are local IPC tests, not TUN or gateway
+acceptance.
+
+Sources: [socketpair semantics](https://man7.org/linux/man-pages/man2/socketpair.2.html),
+[atomic socket flags](https://man7.org/linux/man-pages/man2/socket.2.html),
+[Go Socketpair wrapper](https://go.dev/src/syscall/syscall_unix.go), and
+[Go preexisting-nonblocking NewFile behavior](https://go.dev/src/os/file_unix.go).

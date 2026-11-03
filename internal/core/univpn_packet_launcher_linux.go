@@ -141,12 +141,15 @@ func wireUniVPNPacket(cmd *exec.Cmd, native *os.File) error {
 	if native == nil || len(cmd.ExtraFiles) != 3 || len(cmd.Args) < 3 || cmd.Args[len(cmd.Args)-2] != "--" {
 		return errors.New("packet channel requires session and TCP descriptors")
 	}
-	seen := map[uintptr]bool{native.Fd(): true}
+	nativeFD, err := uniVPNPacketDescriptor(native)
+	if err != nil { return err }
+	seen := map[uintptr]bool{nativeFD: true}
 	for _, f := range cmd.ExtraFiles {
-		if f == nil || seen[f.Fd()] {
-			return errors.New("packet descriptor collision")
+		fd, err := uniVPNPacketDescriptor(f)
+		if err != nil || seen[fd] {
+			return errors.New("packet descriptor collision or unavailable")
 		}
-		seen[f.Fd()] = true
+		seen[fd] = true
 	}
 	required := map[string]int{"--meridian-session-fd=3": 0, "--meridian-control-fd=4": 0, "--meridian-data-fd=5": 0}
 	for _, a := range cmd.Args[:len(cmd.Args)-2] {
@@ -180,4 +183,16 @@ func closeUniVPNPacketLaunch(native uniVPNPacketNative, relay packetrelay.Packet
 		_ = stop()
 	}
 	return launchErr
+}
+
+// Inspect without File.Fd, which may change blocking behavior for some file
+// origins. Callers own these files and must not close them concurrently with
+// command wiring; the descriptor number is not retained as cleanup authority.
+func uniVPNPacketDescriptor(f *os.File) (uintptr, error) {
+	if f == nil { return 0, errors.New("missing packet launch descriptor") }
+	raw, err := f.SyscallConn()
+	if err != nil { return 0, err }
+	var fd uintptr
+	err = raw.Control(func(value uintptr) { fd = value })
+	return fd, err
 }

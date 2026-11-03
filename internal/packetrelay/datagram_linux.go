@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// DatagramPackets owns an inherited, connected, nonblocking, unnamed AF_UNIX
+// DatagramPackets owns a broker-side, connected, nonblocking, unnamed AF_UNIX
 // SOCK_SEQPACKET socket. It never creates, binds, listens on, connects, or changes
 // flags on a socket. This is the child's packet channel, never its host TUN.
 // Do not copy it or use it after transferring ownership to a TUNRelay.
@@ -28,9 +28,22 @@ type DatagramPackets struct {
 }
 
 // NewDatagramPackets verifies transport type and connection before ownership
-// transfer. Caller retains ownership on failure. Neither the caller nor another
-// descriptor owner may subsequently change the socket configuration or flags.
+// transfer. CLOEXEC is required on every broker-owned endpoint. Caller retains
+// ownership on failure. Neither the caller nor another descriptor owner may
+// subsequently change the socket configuration or flags.
 func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
+	raw, err := validateDatagramFile(f)
+	if err != nil {
+		return nil, err
+	}
+	d := &DatagramPackets{file: f, raw: raw, recv: receiveMessage, send: sendMessage}
+	d.self = d
+	return d, nil
+}
+
+// This read-only validator does not adopt the file. Pair acquisition also uses
+// it on the native end before transferring that file to the launch owner.
+func validateDatagramFile(f *os.File) (syscall.RawConn, error) {
 	if f == nil {
 		return nil, errors.New("nil packet socket")
 	}
@@ -88,6 +101,15 @@ func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
 		}
 		if flags&syscall.O_NONBLOCK == 0 {
 			opErr = errors.New("packet channel must already be nonblocking")
+			return
+		}
+		flags, _, errno = syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFD, 0)
+		if errno != 0 {
+			opErr = errno
+			return
+		}
+		if flags&syscall.FD_CLOEXEC == 0 {
+			opErr = errors.New("packet channel must already be close-on-exec")
 		}
 	})
 	if err = errors.Join(err, opErr); err != nil {
@@ -99,9 +121,7 @@ func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
 	if err = f.SetWriteDeadline(time.Time{}); err != nil {
 		return nil, fmt.Errorf("unpollable packet socket: %w", err)
 	}
-	d := &DatagramPackets{file: f, raw: raw, recv: receiveMessage, send: sendMessage}
-	d.self = d
-	return d, nil
+	return raw, nil
 }
 
 // No ancillary buffer is supplied: SCM_RIGHTS are not accepted. Linux closes

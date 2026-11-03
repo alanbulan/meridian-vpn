@@ -101,3 +101,14 @@ be selected through production APIs.
 - [NM configuration](https://networkmanager.dev/docs/api/latest/NetworkManager.conf.html)
 - [NM dispatcher](https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/NetworkManager-dispatcher.html)
 - [Linux proc filesystem and retained PID descriptors](https://docs.kernel.org/filesystems/proc.html)
+
+## Separate TUN resource implementation
+
+`packetrelay.AcquireTUN` now implements a narrow concrete new-TUN acquisition
+path with retained private descriptors, strict creation/readback flags and
+once-only cleanup. It is not wired to this observer, ActivationReceipt, native
+bridge, or normal application. Its production invocation would change network
+state; only injected tests run in CI. It cannot replace HostAuthority/HostBinding.
+See [its resource contract](../packetrelay/README.md#separate-retained-tun-acquisition-precursor).
+Actual namespace/activation/native-generation correlation, applied/global policy,
+relay ownership and independent network-absence readback remain missing.

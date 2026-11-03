@@ -1,9 +1,11 @@
 # Broker packet boundary
 
 This package is an executable, injected-I/O relay, **not** an activated VPN or a
-standalone privilege broker. It does not open a TUN device, change interfaces,
-routes, DNS, namespaces, privileges, or start/listen on a socket. Only local
-synthetic packet/mocked-I/O tests were run.
+standalone privilege broker. Its relay does not open a TUN device or configure
+networking. A separate, application-disabled Linux `AcquireTUN` resource
+constructor now implements new-device acquisition as described below. Invoking
+that constructor would create an interface, but no test or application path does
+so. Only synthetic packet/mocked-I/O tests have exercised that new code.
 
 ## Integration contract
 
@@ -85,3 +87,49 @@ Tests use in-memory packet endpoints, injected recvmsg/sendmsg/poller callbacks,
 and temporary regular files only. They do
 not create sockets, devices, namespaces, routes, or DNS configuration. Actual
 TUN descriptor compatibility and native-channel integration remain unverified.
+
+## Separate retained TUN acquisition precursor
+
+`AcquireTUN` is a concrete Linux device-acquisition implementation, not a live
+acceptance result. It is not called by the application or native NM bridge. Its
+production path would create an interface and therefore requires independent
+deployment authorization before use. All new tests replace device/syscall
+operations; they never open `/dev/net/tun` or run a real creation ioctl.
+
+The constructor walks only `/dev/net/tun`, without symlinks or caller-supplied
+paths. Root-owned ancestors must not be group/world writable. The node must be
+a root-owned single-link character device with Linux TUN major/minor 10:200.
+World-writable device-node permissions are allowed, as on ordinary Linux installs;
+creation remains subject to kernel capability checks. Descriptors are opened
+CLOEXEC/nonblocking. Only a trusted explicit ASCII interface name is accepted,
+without percent templates, truncation, name lookup or automatic fallback.
+
+The exact `TUNSETIFF` request is `IFF_TUN | IFF_NO_PI | IFF_TUN_EXCL`. A collision
+is an error and never triggers adoption or retry. EXCL is an acquisition check,
+not a persistent lock. The returned name must match, and later `TUNGETIFF` must
+report exactly TUN/no-PI without persistence, multiqueue or virtual headers.
+Poller deadline support and descriptor CLOEXEC/nonblocking state are checked.
+Only the original handle is retained; no raw file, FD, PacketIO, duplication or
+replacement endpoint is exposed. This slice does not start a relay.
+
+Ownership is recorded before the mutating ioctl. Even an ioctl error can follow
+a successful kernel mutation, so the constructor does not replay it. Every
+acquired TUN handle is closed at most once on error/cancellation. A non-nil
+resource is returned alongside an acquisition error to retain its cleanup
+result. Close errors remain sticky as `ErrCleanup`; numeric close is not retried.
+Observed name/mode drift permanently closes the resource. Historical observation
+metadata survives local close, without turning metadata into fresh authority.
+
+This is only local TUN acquisition. It does not establish the intended host
+namespace, correlate an NM receipt or native generation, acquire an exclusive
+host lease, attest offload/kernel policy, start or join a relay, publish NM
+configuration, expose Ready, or prove link/routes/DNS absence. Privileged actors
+can change network state; equal sequential observations cannot prevent that.
+Context checks cannot interrupt a kernel syscall. Complete namespace binding,
+applied/global/dispatcher policy, retained relay integration, independent cleanup
+readback and authorized real-kernel/real-NM acceptance remain deployment gates.
+
+Primary sources: [Linux TUN documentation](https://docs.kernel.org/networking/tuntap.html),
+[Linux TUN implementation](https://github.com/torvalds/linux/blob/master/drivers/net/tun.c),
+[Linux TUN UAPI](https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_tun.h),
+and [x/sys ifreq](https://github.com/golang/sys/blob/v0.48.0/unix/ifreq_linux.go).

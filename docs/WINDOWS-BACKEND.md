@@ -175,3 +175,45 @@ Test no saved password, saved password, connection already active, concurrent
 external dialing, cancellation at each phase, service errors, and route/DNS
 recovery without altering unrelated profiles or credentials. Do not request
 real secrets in chat. No real dialing or system changes were performed here.
+
+
+
+## Read-only existing-profile validation slice
+
+`InspectSystemEntry` now reads the exact selected phonebook and entry with
+`RasGetEntryPropertiesW`. It requires an explicit local fixed-drive `.pbk` path
+and a separately supplied intended gateway. It rejects observed reparse points
+in every path component; a concurrent filesystem replacement remains a race. It never chooses a default entry,
+reads credentials, edits/deletes a profile, or calls `RasDial`. A name/path match
+is not ownership: `EntryEvidence` cannot be used by the owned-entry controller.
+
+The narrow allowlist requires VPN type, L2TP-only (no fallback), PPP/IP,
+MSCHAPv2-only, PSK mode, and required encryption. It rejects alternate targets,
+multilink, scripts, custom dialers/authentication, prerequisite connections,
+ambient-logon options, credential-cache/automatic-reconnect flags and unknown
+options. Gateway comparison accepts equivalent IP spellings and case-insensitive
+DNS names, without DNS lookup, preserving the absolute trailing-dot distinction
+and rejecting ambiguous legacy numeric IPv4 forms. Unsupported or ambiguous profiles fail closed;
+these checks do not promise compatibility with every Windows-created profile.
+
+The opaque snapshot retains the entry's read-only GUID and complete fixed
+properties. `RevalidateSystemEntry` rereads the exact selection and rejects
+observed replacement or configuration drift, including route/DNS properties.
+This is **not an atomic lock or a safe-to-dial certificate**. It cannot close a
+change-after-read race, prove an existing PSK is usable, validate global IPsec
+policy, or prove that a later dial will not update credential caches. The
+borrowed-handle lifetime, independent connection verification and native
+cancellation requirements above remain open. No production dialing is enabled.
+
+The pointer-free Windows 10 `RASENTRYW` layout is checked by Go fake-reader tests
+and compile-only assertions against the installed Microsoft Windows SDK on x64
+and x86 CI. Cross-compilation also covers Windows 386 and arm64 Go packages;
+arm64 SDK/native-runtime acceptance remains unverified. The tests exercise
+buffer growth/error bounds, malformed UTF-16, protocol/target rejection and
+identity/configuration drift. They never load RAS or read a real phonebook.
+SDK compilation checks layout and constants, not actual native API behavior.
+
+Sources:
+- [RasGetEntryPropertiesW and explicit phonebook/entry buffers](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasgetentrypropertiesw)
+- [RASENTRY fields, protocol fallback and read-only GUID](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377274(v=vs.85))
+- [Microsoft SDK RAS declarations](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/Ras.h)

@@ -180,3 +180,63 @@ jobs:
           path: reports/loopback-${{ matrix.suite }}/
           if-no-files-found: warn
           retention-days: 7
+
+  credential-wire:
+    name: Linux / isolated Secret Service wire fixtures
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 procps
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run synthetic private-bus fixtures as isolated user
+        run: |
+          useradd --create-home --shell /bin/bash meridian-wire-ci
+          chown -R meridian-wire-ci:meridian-wire-ci "$GITHUB_WORKSPACE"
+          runuser -u meridian-wire-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
+            GOPATH=/home/meridian-wire-ci/go GOCACHE=/home/meridian-wire-ci/.cache/go-build \
+            bash integration/credentialstore/run-wire-tests.sh
+      - name: Verify all wire cases actually passed
+        run: |
+          python3 scripts/ci-summary.py reports/credential-wire/tests.jsonl
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(line) for line in Path('reports/credential-wire/tests.jsonl').read_text().splitlines()]
+          expected = {'TestCredentialWireLifecycleAndStates', 'TestCredentialWireDuplicateAndUnknownObject', 'TestCredentialWireCancellation', 'TestCredentialWireOwnerReplacement'}
+          passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
+          assert expected <= passed, 'missing passing wire cases'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'
+          PY
+      - name: Clean only this disposable fixture user after timeout or failure
+        if: always()
+        run: |
+          if id meridian-wire-ci >/dev/null 2>&1; then
+            uid="$(id -u meridian-wire-ci)"
+            # This UID is created for this job only, never a host/login user.
+            pkill -KILL -u "$uid" || test "$?" -eq 1
+            find /tmp -maxdepth 1 -type d -uid "$uid" -name 'meridian-secret-wire-*' -exec rm -rf -- {} +
+          fi
+          # Runner teardown destroys this entire container if the job is killed.
+      - name: Upload synthetic wire test evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: credential-wire-evidence
+          path: reports/credential-wire/
+          if-no-files-found: warn
+          retention-days: 7

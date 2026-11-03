@@ -266,20 +266,42 @@ func TestNMVPNWirePluginProfileEnvelopeRejections(t *testing.T) {
 		name   string
 		mutate func(map[string]map[string]dbus.Variant)
 	}{
-		{"UUID", func(s map[string]map[string]dbus.Variant) { s["connection"]["uuid"] = dbus.MakeVariant("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") }},
-		{"nonce", func(s map[string]map[string]dbus.Variant) { s["vpn"]["data"].Value().(map[string]string)["meridian-activation"] = strings.Repeat("f", 32) }},
-		{"missing nonce", func(s map[string]map[string]dbus.Variant) { delete(s["vpn"]["data"].Value().(map[string]string), "meridian-activation") }},
+		{"UUID", func(s map[string]map[string]dbus.Variant) {
+			s["connection"]["uuid"] = dbus.MakeVariant("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+		}},
+		{"nonce", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["data"].Value().(map[string]string)["meridian-activation"] = strings.Repeat("f", 32)
+		}},
+		{"missing nonce", func(s map[string]map[string]dbus.Variant) {
+			delete(s["vpn"]["data"].Value().(map[string]string), "meridian-activation")
+		}},
 		{"username", func(s map[string]map[string]dbus.Variant) { s["vpn"]["user-name"] = dbus.MakeVariant("mallory") }},
 		{"missing username", func(s map[string]map[string]dbus.Variant) { delete(s["vpn"], "user-name") }},
 		{"username signature", func(s map[string]map[string]dbus.Variant) { s["vpn"]["user-name"] = dbus.MakeVariant(uint32(1)) }},
-		{"saved password", func(s map[string]map[string]dbus.Variant) { s["vpn"]["data"].Value().(map[string]string)["password-flags"] = "0" }},
-		{"missing password flag", func(s map[string]map[string]dbus.Variant) { delete(s["vpn"]["data"].Value().(map[string]string), "password-flags") }},
-		{"unrecognized data", func(s map[string]map[string]dbus.Variant) { s["vpn"]["data"].Value().(map[string]string)["gateway"] = "attacker.invalid" }},
-		{"oversized password", func(s map[string]map[string]dbus.Variant) { s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": strings.Repeat("x", 4096)}) }},
-		{"unrecognized secret", func(s map[string]map[string]dbus.Variant) { s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": nmPluginWirePassword, "token": "not-supported"}) }},
-		{"only unrecognized secret", func(s map[string]map[string]dbus.Variant) { s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"token": "not-supported"}) }},
-		{"secret signature", func(s map[string]map[string]dbus.Variant) { s["vpn"]["secrets"] = dbus.MakeVariant(map[string]dbus.Variant{"password": dbus.MakeVariant(nmPluginWirePassword)}) }},
-		{"newline password", func(s map[string]map[string]dbus.Variant) { s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": "bad\npassword"}) }},
+		{"saved password", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["data"].Value().(map[string]string)["password-flags"] = "0"
+		}},
+		{"missing password flag", func(s map[string]map[string]dbus.Variant) {
+			delete(s["vpn"]["data"].Value().(map[string]string), "password-flags")
+		}},
+		{"unrecognized data", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["data"].Value().(map[string]string)["gateway"] = "attacker.invalid"
+		}},
+		{"oversized password", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": strings.Repeat("x", 4096)})
+		}},
+		{"unrecognized secret", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": nmPluginWirePassword, "token": "not-supported"})
+		}},
+		{"only unrecognized secret", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"token": "not-supported"})
+		}},
+		{"secret signature", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["secrets"] = dbus.MakeVariant(map[string]dbus.Variant{"password": dbus.MakeVariant(nmPluginWirePassword)})
+		}},
+		{"newline password", func(s map[string]map[string]dbus.Variant) {
+			s["vpn"]["secrets"] = dbus.MakeVariant(map[string]string{"password": "bad\npassword"})
+		}},
 		{"network default", func(s map[string]map[string]dbus.Variant) { s["ipv4"]["never-default"] = dbus.MakeVariant(false) }},
 		{"network DNS", func(s map[string]map[string]dbus.Variant) { s["ipv4"]["dns"] = dbus.MakeVariant([]uint32{1}) }},
 	}
@@ -645,8 +667,13 @@ func TestNMVPNWirePluginDisconnectObserverRejectsMalformed(t *testing.T) {
 		{"wrong member", func(m *dbus.Message) { m.Headers[dbus.FieldMember] = dbus.MakeVariant("Connect") }},
 		{"signal", func(m *dbus.Message) { m.Type = dbus.TypeSignal }},
 		{"no reply", func(m *dbus.Message) { m.Flags = dbus.FlagNoReplyExpected }},
-		{"wrong signature", func(m *dbus.Message) { m.Headers[dbus.FieldSignature] = dbus.MakeVariant(dbus.SignatureOf("unexpected")) }},
-		{"body sender spoof", func(m *dbus.Message) { m.Body = []any{f.pin.Owner}; m.Headers[dbus.FieldSignature] = dbus.MakeVariant(dbus.SignatureOf(f.pin.Owner)) }},
+		{"wrong signature", func(m *dbus.Message) {
+			m.Headers[dbus.FieldSignature] = dbus.MakeVariant(dbus.SignatureOf("unexpected"))
+		}},
+		{"body sender spoof", func(m *dbus.Message) {
+			m.Body = []any{f.pin.Owner}
+			m.Headers[dbus.FieldSignature] = dbus.MakeVariant(dbus.SignatureOf(f.pin.Owner))
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := nmPluginDisconnectMessage(f)

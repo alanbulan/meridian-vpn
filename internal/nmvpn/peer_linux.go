@@ -44,7 +44,7 @@ type Broker interface {
 // Disconnect, native exit or bus loss. Implementations with live resources must
 // supply this additional gate; it is called immediately before each signal.
 type PublicationVerifier interface {
- VerifyPublish(context.Context, Binding, Offer) error
+	VerifyPublish(context.Context, Binding, Offer) error
 }
 
 // DBusPeer implements the NM wire half of Peer, conditional on a real trusted
@@ -76,7 +76,11 @@ func NewDBusPeer(ctx context.Context, bus *PinnedBus, broker Broker, binding Bin
 	if bus == nil || nilValue(broker) || validateRecord(Record{Version: 1, Identity: binding.Identity, Phase: "intent"}) != nil || (len(binding.ConnectionPath) > 128 || !settingsPathPattern.MatchString(string(binding.ConnectionPath))) || !validPluginOwner(binding.PluginOwner) || binding.PluginOwner != bus.UniqueName() || binding.Identity.BusID != bus.pin.BusID || binding.Identity.Owner != bus.pin.Owner || offer.Session != binding.Identity.Session || offer.Interface != binding.Identity.Interface {
 		return nil, errPeer
 	}
- if bus.plugin.Load()!=nil {if _,ok:=broker.(PublicationVerifier);!ok{return nil,errPeer}}
+	if bus.plugin.Load() != nil {
+		if _, ok := broker.(PublicationVerifier); !ok {
+			return nil, errPeer
+		}
+	}
 	config, err := Encode(offer, policy)
 	if err != nil {
 		return nil, errPeer
@@ -155,9 +159,13 @@ func (p *DBusPeer) Publish(ctx context.Context, id Identity, member string, valu
 		if p.checkLocked(ctx) != nil {
 			return errPeer
 		}
-  if live,ok:=p.broker.(PublicationVerifier);ok {
-   if live.VerifyPublish(ctx,p.binding,copyOffer(p.offer))!=nil || ctx.Err()!=nil{return errPeer}
-  } else if p.bus.plugin.Load()!=nil{return errPeer}
+		if live, ok := p.broker.(PublicationVerifier); ok {
+			if live.VerifyPublish(ctx, p.binding, copyOffer(p.offer)) != nil || ctx.Err() != nil {
+				return errPeer
+			}
+		} else if p.bus.plugin.Load() != nil {
+			return errPeer
+		}
 		// Advance before I/O: even an uncertain send is never automatically replayed.
 		p.stage++
 		if p.bus.emit(ctx, member, expected) != nil {

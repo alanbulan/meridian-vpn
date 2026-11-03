@@ -51,8 +51,8 @@ type PinnedBus struct {
 	pluginArmed  atomic.Bool
 	initialClaim atomic.Bool
 	closeOnce    sync.Once
-	invalidated chan struct{}
-	plugin atomic.Pointer[Plugin]
+	invalidated  chan struct{}
+	plugin       atomic.Pointer[Plugin]
 }
 
 // OpenPinnedBus takes ownership of a fresh connected Unix stream, before any
@@ -118,7 +118,9 @@ func OpenPinnedBus(ctx context.Context, raw *net.UnixConn, pin BusPin) (*PinnedB
 
 // observe must remain synchronous, nonblocking and free of method calls/locks.
 func (b *PinnedBus) observe(m *dbus.Message) {
-	if p := b.plugin.Load(); p != nil { p.observe(m) }
+	if p := b.plugin.Load(); p != nil {
+		p.observe(m)
+	}
 	if m.Type != dbus.TypeSignal || m.Headers[dbus.FieldSender].Value() != "org.freedesktop.DBus" || m.Headers[dbus.FieldPath].Value() != dbus.ObjectPath("/org/freedesktop/DBus") || m.Headers[dbus.FieldInterface].Value() != "org.freedesktop.DBus" || m.Headers[dbus.FieldMember].Value() != "NameOwnerChanged" {
 		return
 	}
@@ -268,10 +270,14 @@ func (b *PinnedBus) emit(ctx context.Context, member string, values map[string]d
 	if ctx.Err() != nil || b.invalid.Load() || (member != "Config" && member != "Ip4Config") {
 		return errPeer
 	}
- if p:=b.plugin.Load();p!=nil {
-  if p.disconnected.Load() || p.activation.Load()==nil{return errPeer}
-  if (member=="Config" && !p.published.CompareAndSwap(0,1)) || (member=="Ip4Config" && !p.published.CompareAndSwap(1,2)){return errPeer}
- }
+	if p := b.plugin.Load(); p != nil {
+		if p.disconnected.Load() || p.activation.Load() == nil {
+			return errPeer
+		}
+		if (member == "Config" && !p.published.CompareAndSwap(0, 1)) || (member == "Ip4Config" && !p.published.CompareAndSwap(1, 2)) {
+			return errPeer
+		}
+	}
 	if err := b.conn.Emit(PluginPath, PluginInterface+"."+member, values); err != nil {
 		b.markInvalid()
 		return errPeer
@@ -290,5 +296,7 @@ func validPluginOwner(s string) bool {
 // markInvalid also wakes the owned inbound lifecycle without running its cleanup
 // inside godbus's synchronous reader interceptor.
 func (b *PinnedBus) markInvalid() {
- if b.invalid.CompareAndSwap(false, true) && b.invalidated != nil { close(b.invalidated) }
+	if b.invalid.CompareAndSwap(false, true) && b.invalidated != nil {
+		close(b.invalidated)
+	}
 }

@@ -93,7 +93,7 @@ type UniVPNNMBroker struct {
 	binding    nmvpn.Binding
 	offer      nmvpn.Offer
 	source     UniVPNOfferSource
-	launcher   *UniVPNExecLauncher // retain isolation/transport authority after failed launch
+	launcher   *UniVPNExecLauncher                                // retain isolation/transport authority after failed launch
 	authorize  func(context.Context) (UniVPNNMHostBinding, error) // retain provider; never replay
 	process    UniVPNNativeProcess
 	packet     packetrelay.PacketIO
@@ -166,7 +166,7 @@ func StartUniVPNNMBroker(ctx context.Context, activation *nmvpn.Activation, laun
 			}
 			return p, err
 		},
-		source: UniVPNNativeOfferSource{},
+		source:   UniVPNNativeOfferSource{},
 		launcher: &l,
 	})
 }

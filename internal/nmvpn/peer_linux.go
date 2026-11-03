@@ -29,12 +29,22 @@ type Binding struct {
 // The broker must also exclude global NM/dispatcher policy that adds networking.
 // Stop joins only these worker/relay handles. ProveAbsent independently proves
 // link/routes/DNS/workers gone for this generation, not just an NM object's loss.
-// All methods must honor context, retain recovery authority after Stop, and never
+// Verify proves retained provenance even after Disconnect/exit; live-resource
+// admission belongs to PublicationVerifier. All methods must honor context,
+// retain recovery authority after Stop, and never
 // substitute another generation. No production implementation is supplied here.
 type Broker interface {
 	Verify(context.Context, Binding, Offer) error
 	Stop(context.Context, Binding) error
 	ProveAbsent(context.Context, Binding) error
+}
+
+// PublicationVerifier separates live native/link policy checks from permanent
+// generation provenance. Recovery must still verify and stop exact handles after
+// Disconnect, native exit or bus loss. Implementations with live resources must
+// supply this additional gate; it is called immediately before each signal.
+type PublicationVerifier interface {
+ VerifyPublish(context.Context, Binding, Offer) error
 }
 
 // DBusPeer implements the NM wire half of Peer, conditional on a real trusted
@@ -66,6 +76,7 @@ func NewDBusPeer(ctx context.Context, bus *PinnedBus, broker Broker, binding Bin
 	if bus == nil || nilValue(broker) || validateRecord(Record{Version: 1, Identity: binding.Identity, Phase: "intent"}) != nil || (len(binding.ConnectionPath) > 128 || !settingsPathPattern.MatchString(string(binding.ConnectionPath))) || !validPluginOwner(binding.PluginOwner) || binding.PluginOwner != bus.UniqueName() || binding.Identity.BusID != bus.pin.BusID || binding.Identity.Owner != bus.pin.Owner || offer.Session != binding.Identity.Session || offer.Interface != binding.Identity.Interface {
 		return nil, errPeer
 	}
+ if bus.plugin.Load()!=nil {if _,ok:=broker.(PublicationVerifier);!ok{return nil,errPeer}}
 	config, err := Encode(offer, policy)
 	if err != nil {
 		return nil, errPeer
@@ -103,7 +114,7 @@ func (p *DBusPeer) checkLocked(ctx context.Context) error {
 			return errPeer
 		}
 		var settings map[string]map[string]dbus.Variant
-		if p.bus.call(ctx, p.binding.Identity.Owner, p.binding.ConnectionPath, SettingsInterface+".GetSettings", nil, &settings) != nil || ValidateProfile(settings, p.binding.Identity) != nil {
+		if p.bus.call(ctx, p.binding.Identity.Owner, p.binding.ConnectionPath, SettingsInterface+".GetSettings", nil, &settings) != nil || validateCurrentProfile(settings, p.binding.Identity) != nil {
 			return errPeer
 		}
 		present, err := p.activePresent(ctx)
@@ -144,6 +155,9 @@ func (p *DBusPeer) Publish(ctx context.Context, id Identity, member string, valu
 		if p.checkLocked(ctx) != nil {
 			return errPeer
 		}
+  if live,ok:=p.broker.(PublicationVerifier);ok {
+   if live.VerifyPublish(ctx,p.binding,copyOffer(p.offer))!=nil || ctx.Err()!=nil{return errPeer}
+  } else if p.bus.plugin.Load()!=nil{return errPeer}
 		// Advance before I/O: even an uncertain send is never automatically replayed.
 		p.stage++
 		if p.bus.emit(ctx, member, expected) != nil {

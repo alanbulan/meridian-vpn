@@ -51,6 +51,8 @@ type PinnedBus struct {
 	pluginArmed  atomic.Bool
 	initialClaim atomic.Bool
 	closeOnce    sync.Once
+	invalidated chan struct{}
+	plugin atomic.Pointer[Plugin]
 }
 
 // OpenPinnedBus takes ownership of a fresh connected Unix stream, before any
@@ -63,7 +65,7 @@ func OpenPinnedBus(ctx context.Context, raw *net.UnixConn, pin BusPin) (*PinnedB
 	if raw == nil {
 		return nil, errPeer
 	}
-	b := &PinnedBus{raw: raw, pin: pin}
+	b := &PinnedBus{raw: raw, pin: pin, invalidated: make(chan struct{})}
 	fail := func() (*PinnedBus, error) { _ = b.Close(); return nil, errPeer }
 	if !sessionPattern.MatchString(pin.BusID) || !ownerPattern.MatchString(pin.Owner) || len(pin.Owner) > 64 || ctx.Err() != nil {
 		return fail()
@@ -116,36 +118,37 @@ func OpenPinnedBus(ctx context.Context, raw *net.UnixConn, pin BusPin) (*PinnedB
 
 // observe must remain synchronous, nonblocking and free of method calls/locks.
 func (b *PinnedBus) observe(m *dbus.Message) {
+	if p := b.plugin.Load(); p != nil { p.observe(m) }
 	if m.Type != dbus.TypeSignal || m.Headers[dbus.FieldSender].Value() != "org.freedesktop.DBus" || m.Headers[dbus.FieldPath].Value() != dbus.ObjectPath("/org/freedesktop/DBus") || m.Headers[dbus.FieldInterface].Value() != "org.freedesktop.DBus" || m.Headers[dbus.FieldMember].Value() != "NameOwnerChanged" {
 		return
 	}
 	if len(m.Body) != 3 {
-		b.invalid.Store(true)
+		b.markInvalid()
 		return
 	}
 	name, ok := m.Body[0].(string)
 	old, oldOK := m.Body[1].(string)
 	next, nextOK := m.Body[2].(string)
 	if !ok || !oldOK || !nextOK {
-		b.invalid.Store(true)
+		b.markInvalid()
 		return
 	}
 	if name == NMName {
-		b.invalid.Store(true)
+		b.markInvalid()
 		return
 	}
 	if name == PluginService && b.pluginArmed.Load() {
 		if old == "" && next == b.unique && b.initialClaim.CompareAndSwap(false, true) {
 			return
 		}
-		b.invalid.Store(true)
+		b.markInvalid()
 	}
 }
 
 func (b *PinnedBus) direct(m *dbus.Message) {
 	if m.Type == dbus.TypeSignal && m.Headers[dbus.FieldPath].Value() == PluginPath && m.Headers[dbus.FieldInterface].Value() == PluginInterface {
 		member, _ := m.Headers[dbus.FieldMember].Value().(string)
-		if member == "Config" || member == "Ip4Config" {
+		if member == "Config" || member == "Ip4Config" || member == "StateChanged" {
 			m.Headers[dbus.FieldDestination] = dbus.MakeVariant(b.pin.Owner)
 		}
 	}
@@ -164,7 +167,7 @@ func (b *PinnedBus) run(ctx context.Context, fn func(context.Context) error) err
 	}
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
-		b.invalid.Store(true)
+		b.markInvalid()
 		_ = b.raw.Close()
 		if b.conn != nil {
 			_ = b.conn.Close()
@@ -224,9 +227,8 @@ func (b *PinnedBus) check(ctx context.Context, plugin bool) error {
 }
 
 // ClaimPluginName claims only the fixed plugin service, never replacing/queuing
-// another owner. It does not install a service or implement Connect/NeedSecrets.
-// A real broker must export/authenticate those methods on this same connection
-// and bind the activation's immutable incoming Connect before constructing Peer.
+// another owner. ServePlugin exports the narrow incoming ABI on this same
+// connection before claiming it. Claiming a name does not install a service.
 func (b *PinnedBus) ClaimPluginName(ctx context.Context) error {
 	return b.run(ctx, func(ctx context.Context) error {
 		if b.claimed || b.check(ctx, false) != nil {
@@ -235,7 +237,7 @@ func (b *PinnedBus) ClaimPluginName(ctx context.Context) error {
 		b.pluginArmed.Store(true)
 		reply, err := b.conn.RequestName(PluginService, dbus.NameFlagDoNotQueue)
 		if err != nil || reply != dbus.RequestNameReplyPrimaryOwner {
-			b.invalid.Store(true)
+			b.markInvalid()
 			return errPeer
 		}
 		if b.check(ctx, true) != nil {
@@ -248,7 +250,7 @@ func (b *PinnedBus) ClaimPluginName(ctx context.Context) error {
 func (b *PinnedBus) UniqueName() string { return b.unique }
 func (b *PinnedBus) Close() error {
 	b.closeOnce.Do(func() {
-		b.invalid.Store(true)
+		b.markInvalid()
 		if b.raw != nil {
 			_ = b.raw.Close()
 		}
@@ -266,8 +268,12 @@ func (b *PinnedBus) emit(ctx context.Context, member string, values map[string]d
 	if ctx.Err() != nil || b.invalid.Load() || (member != "Config" && member != "Ip4Config") {
 		return errPeer
 	}
+ if p:=b.plugin.Load();p!=nil {
+  if p.disconnected.Load() || p.activation.Load()==nil{return errPeer}
+  if (member=="Config" && !p.published.CompareAndSwap(0,1)) || (member=="Ip4Config" && !p.published.CompareAndSwap(1,2)){return errPeer}
+ }
 	if err := b.conn.Emit(PluginPath, PluginInterface+"."+member, values); err != nil {
-		b.invalid.Store(true)
+		b.markInvalid()
 		return errPeer
 	}
 	if ctx.Err() != nil || b.invalid.Load() {
@@ -279,4 +285,10 @@ func (b *PinnedBus) emit(ctx context.Context, member string, values map[string]d
 // Keep arbitrary text out of bus-name selection, including accidental whitespace.
 func validPluginOwner(s string) bool {
 	return len(s) <= 64 && !strings.ContainsAny(s, " \t\n") && ownerPattern.MatchString(s)
+}
+
+// markInvalid also wakes the owned inbound lifecycle without running its cleanup
+// inside godbus's synchronous reader interceptor.
+func (b *PinnedBus) markInvalid() {
+ if b.invalid.CompareAndSwap(false, true) && b.invalidated != nil { close(b.invalidated) }
 }

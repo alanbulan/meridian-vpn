@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p reports/nmvpn
           status=0
-          gofmt -d internal/nmvpn > reports/nmvpn/format.patch || status=$?
+          gofmt -d internal/nmvpn internal/core/univpn_nmvpn_linux.go internal/core/univpn_nmvpn_linux_test.go > reports/nmvpn/format.patch || status=$?
           echo NMVPN_FORMAT_PATCH_BEGIN
           cat reports/nmvpn/format.patch
           echo NMVPN_FORMAT_PATCH_END
@@ -41,7 +41,8 @@ jobs:
         run: |
           set -o pipefail
           go test -race -count=1 -json ./internal/nmvpn | tee reports/nmvpn/tests.jsonl
-          go vet ./internal/nmvpn
+          go test -race -count=1 -run '^TestUniVPNNMBroker' -json ./internal/core | tee reports/nmvpn/native-binding-tests.jsonl
+          go vet ./internal/nmvpn ./internal/core
       - name: Require canonical formatting
         run: test ! -s reports/nmvpn/format.patch
       - name: Upload offline evidence
@@ -90,6 +91,7 @@ jobs:
           from pathlib import Path
           rows = [json.loads(s) for s in Path('reports/nmvpn-wire/tests.jsonl').read_text().splitlines()]
           expected = {'TestNMVPNWireDirectedLifecycle', 'TestNMVPNWirePinRejections', 'TestNMVPNWireBindingAndProfile', 'TestNMVPNWirePayloadAndOrder', 'TestNMVPNWireOwnerLossAndCancellation', 'TestNMVPNWireAbsenceRequiresBothProofs', 'TestNMVPNWireBlockedAuthCancellation', 'TestNMVPNWireOwnerLossStopsOnlyLocalGeneration', 'TestNMVPNWireUncertainLocalStopForbidsPublication'}
+          expected |= {'TestNMVPNWirePluginDisconnectDuringCredentialHandoff', 'TestNMVPNWirePluginHandshakeAndOneShotSecrets', 'TestNMVPNWirePluginDisconnectObserverRejectsMalformed', 'TestNMVPNWirePluginPendingDisconnectAndOwnerLoss', 'TestNMVPNWirePluginRequiresLivePublicationVerifier', 'TestNMVPNWirePluginImmutableSanitizedSnapshot', 'TestNMVPNWirePluginDirectedLifecycle', 'TestNMVPNWirePluginDisconnectReceiveOrder', 'TestNMVPNWirePluginConcurrentSecretUseAndFailure', 'TestNMVPNWirePluginProfileEnvelopeRejections', 'TestNMVPNWirePluginRejectsUnauthenticatedAndMalformedCalls'}
           passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
           assert expected <= passed, 'a required wire case did not pass'
           assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'

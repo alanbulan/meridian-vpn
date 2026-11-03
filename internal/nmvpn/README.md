@@ -84,9 +84,9 @@ go test -race -count=1 ./internal/nmvpn
 go vet ./internal/nmvpn
 ```
 
-Still missing: the authenticated broker and incoming NM plugin service methods,
-plugin registration/packaging, actual applied-profile/host-policy inspection,
-native offer/worker binding, activation and real host cleanup readback, complete
+Still missing: concrete manager activation-receipt and host-resource authority,
+plugin registration/packaging, actual applied/global/dispatcher policy inspection,
+real host relay/readback, activation and real host cleanup proof, complete
 startup/reboot recovery, `core.Session` integration, DNS/IPv6 support, disposable
 real-NM acceptance, real gateway testing, permissions and deployment review. Passing
 these unit tests does not close those gates.
@@ -117,12 +117,13 @@ or DeactivateConnection. A delivered signal cannot be retracted by cancellation;
 local send success is neither NM acknowledgement nor networking readback. The
 bound assumes Broker methods honor context; mutex contention is not included.
 
-`ValidateProfile` accepts a narrow typed grammar, including empty modern/legacy
-network arrays. Nonempty VPN data/secrets and unrecognized properties are still
-unsupported. GetSettings inspects the current settings object, not the immutable
-profile NM used for Connect. Broker evidence must bind the original authenticated
-Connect, offer, real resource handles and host/global/dispatcher policy. The
-minimal grammar alone cannot prove NM's applied routes or DNS.
+`ValidateProfile` accepts a narrow typed network grammar, including empty
+modern/legacy network arrays. The incoming handler separately validates and
+removes its small credential envelope. GetSettings inspects current settings,
+not the immutable profile NM supplied to Connect. Current-settings checks accept
+only that same bounded envelope, without secrets. Broker evidence still must
+prove the activation receipt, actual handles and host/global/dispatcher policy.
+The minimal grammar alone cannot prove NM's applied routes or DNS.
 
 Cleanup checks NM ActiveConnections independently of broker worker/link/route/DNS
 absence, and never treats timeout or an arbitrary D-Bus error as absence. On NM
@@ -133,11 +134,10 @@ its result is uncertain. The journal stays quarantined regardless: stopping loca
 not prove network cleanup. A broker that cannot prove the local generation must
 refuse; autonomous teardown is not guaranteed in that case.
 
-The fixed service-name claim does not install a service or implement incoming
-Connect/NeedSecrets. The encapsulated connection currently has no external broker
-export API, so real service integration still needs a narrow authenticated
-handler implementation on this same connection. Do not expose the raw Conn as a
-shortcut. Private-bus fixtures model outbound protocol and identity checks only.
+The fixed service-name claim does not install a service. `ServePlugin` exports
+only the incoming methods described below on the same encapsulated connection.
+No raw Conn or arbitrary method-export API is exposed. Private-bus fixtures cover
+inbound and outbound protocol against synthetic NM, not actual interoperability.
 
 Run the opt-in fixture only in a disposable environment with official
 `dbus-daemon`, a compiler for race instrumentation, and the repository Go version:
@@ -157,3 +157,67 @@ MERIDIAN_NMVPN_WIRE_TESTS=1 bash integration/nmvpn/run-wire-tests.sh
 
 - [Pinned godbus connection implementation](https://github.com/godbus/dbus/blob/v5.2.2/conn.go) and [Emit implementation](https://github.com/godbus/dbus/blob/v5.2.2/export.go), including interceptor ordering and output/Close locks.
 - [NM Settings.GetSettings contract](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.Settings.Connection.html)
+
+
+## Authenticated incoming activation and native binding
+
+`ServePlugin` exports before claiming the fixed name. It accepts calls only from
+the pinned NM unique owner, with exact path/interface/member/signature/destination
+and reply semantics. Its closed method table contains Connect, NeedSecrets,
+ConnectInteractive and Disconnect plus read-only State properties. Helper setters
+and interactive secret replacement are not exported. Non-interactive fallback
+returns the official `InteractiveNotSupported` error, not UnknownMethod.
+
+`NewPluginPlan` generates a fresh 128-bit `meridian-activation` nonce. The trusted
+manager must place it in its own single-flight activation profile before request.
+The fixed name supports only `supports-multiple-connections=false`. The accepted
+credential envelope permits that exact nonce, password-flags="2" (not-saved), an
+exact planned vpn.user-name and only vpn.secrets.password. Password is 1–4095 UTF-8
+bytes without CR/LF/NUL at Connect; missing password makes NeedSecrets return
+"vpn". NeedSecrets may repeat and never launches or consumes the activation.
+Native executable, gateway, CA, authgroup and launch options come only from
+trusted provisioning, never this profile. There is no credentialstore fallback.
+
+A single accepted Connect produces an opaque Activation. The sanitized network
+snapshot has no credential envelope and shares no mutable collections. UsePassword
+is one-shot, clears its owned bytes after callback return, and sanitizes errors.
+Unused credentials expire after 30 seconds, erase their owned copy, and close the
+plugin lifetime. D-Bus decoding creates immutable Go strings, so this does not
+promise complete memory erasure. No secret enters journals, logs or reply text.
+
+Disconnect is fenced in the synchronous reader before godbus's unordered handler
+goroutines. Pending receipt/launch work is permanently revoked; bus/owner loss
+also cancels and erases it. Disconnect before Connect directly stops the plugin.
+An uncertain acceptance cannot leave a live empty receiver. Plugin state signals
+are directed only to NM. STARTED is allowed only after both configuration signals;
+it is not host readiness. State reports must run **outside** Broker callbacks:
+DBusPeer holds its bus lock during those callbacks. Report STOPPED only after the
+native owner has completed local teardown, never as host-network absence proof.
+
+`StartUniVPNNMBroker` in internal/core is a conditional native bridge. Before
+password use it requires a retained trusted HostAuthority result, validates the
+receipt's local bus/owner/plugin/UUID/path pins and exact planned username versus
+--user. The authority must independently correlate its own manager transaction
+and captured nonce. Connect itself contains no active/settings path; UUID scans
+or caller-created Binding values do not prove that correlation.
+
+The bridge owns the concrete pinned native launcher, the original worker's sole
+Wait, concrete process-bound offer source, packet endpoint and retained host
+binding. It derives the session solely from the native offer, validates the frozen
+IPv4/no-DNS policy, and transfers the packet endpoint exactly once to the required
+host binding. It never calls the old direct-network UniVPNOfferController. It
+returns retained recovery authority even on post-acquisition error. Uncertain
+local cleanup is sticky; no arbitrary PID/name replacement or destructive retry.
+
+Broker.Verify proves immutable generation provenance even after cancellation or
+exit. PublicationVerifier separately requires live worker/host policy immediately
+before each signal, and is mandatory for an installed incoming Plugin. Stop joins
+only retained local handles; ProveAbsent additionally requires native containment
+and independent host link/routes/DNS/relay absence. Neither normal application
+wiring nor core.Ready is supplied. The HostAuthority/HostBinding concrete manager,
+TUN/relay, policy and readback implementations remain mandatory missing deployment
+gates. Mock bridge tests do not establish those proofs.
+
+Additional primary sources: [NM service implementation](https://github.com/NetworkManager/NetworkManager/blob/a0f2961616e2ca50ebf8eeecde2900b00150ec4e/src/libnm-client-impl/nm-vpn-service-plugin.c),
+[NM activation and secret flow](https://github.com/NetworkManager/NetworkManager/blob/a0f2961616e2ca50ebf8eeecde2900b00150ec4e/src/core/vpn/nm-vpn-connection.c),
+and [godbus export dispatch](https://github.com/godbus/dbus/blob/v5.2.2/export.go).

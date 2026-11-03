@@ -18,8 +18,8 @@ import (
 type fakeTUNDevice struct {
 	createCalls, observeCalls, pollCalls, closeCalls int
 	createErr, observeErr, pollErr, closeErr         error
-	value                                          TUNObservation
-	onCreate, onObserve, onPoll                     func()
+	value                                            TUNObservation
+	onCreate, onObserve, onPoll                      func()
 }
 
 func newFakeTUN() *fakeTUNDevice {

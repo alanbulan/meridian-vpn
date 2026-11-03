@@ -1,0 +1,4 @@
+# Preserve canonical source and embedded asset bytes on every runner.
+* text=auto eol=lf
+*.png binary
+*.tar.gz binary

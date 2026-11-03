@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +56,12 @@ func TestAdvancedProfilePersistenceAndArguments(t *testing.T) {
 		t.Fatal("advanced fields did not round trip", e)
 	}
 	a, e := OpenConnectArgs(p)
+	if runtime.GOOS == "windows" {
+		if e == nil {
+			t.Fatal("CA accepted without verified file permissions")
+		}
+		return
+	}
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -73,6 +80,12 @@ func TestAdvancedProfilePersistenceAndArguments(t *testing.T) {
 	n := testNM(r.mockRunner)
 	n.runner = r
 	session, e := n.Start(context.Background(), p, []byte("secret"))
+	if runtime.GOOS != "linux" {
+		if e == nil || len(r.calls) != 0 {
+			t.Fatal("unsupported private-FD authentication reached a command")
+		}
+		return
+	}
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -126,6 +139,15 @@ func TestAdvancedFieldsRejectInjectionAndUnsupportedValues(t *testing.T) {
 }
 func TestCertificateValidationFailBeforeAnyCommand(t *testing.T) {
 	valid := caFixture(t)
+	if runtime.GOOS == "windows" {
+		p := profile()
+		p.CAFile = valid
+		r := &mockRunner{}
+		if _, err := testNM(r).Start(context.Background(), p, nil); err == nil || len(r.calls) != 0 {
+			t.Fatal("unverified CA permissions reached a command")
+		}
+		return
+	}
 	if e := ValidateCAFile(valid); e != nil {
 		t.Fatal(e)
 	}

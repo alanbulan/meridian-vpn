@@ -35,7 +35,7 @@ func runCLI(a application, args ...string) (int, string, string) {
 }
 
 func sampleProfile() core.Profile {
-	return core.Profile{ID: "private-profile-id", Name: "private-profile-name", Gateway: "https://private.example", Protocol: "anyconnect", Username: "private-account", Description: "private-description", AuthGroup: "private-group", CAFile: "/private/ca.pem", ProxyURL: "http://private-proxy.example:8080", InteractiveAuth: true, DisableUDP: true, MTU: 1400}
+	return core.Profile{ID: "private-profile-id", Name: "private-profile-name", Gateway: "https://private.example", Protocol: "anyconnect", Username: "private-account", Description: "private-description", AuthGroup: "private-group", CAFile: filepath.Join(os.TempDir(), "meridian-private-ca-fixture", "ca.pem"), ProxyURL: "http://private-proxy.example:8080", InteractiveAuth: true, DisableUDP: true, MTU: 1400}
 }
 
 func sampleConfig() core.Config {
@@ -61,7 +61,7 @@ func readConfig(t *testing.T, path string) core.Config {
 
 func assertNoProfileData(t *testing.T, text string) {
 	t.Helper()
-	for _, value := range []string{"private-profile-id", "private-profile-name", "private.example", "private-account", "private-description", "private-group", "/private/", "private-proxy.example"} {
+	for _, value := range []string{"private-profile-id", "private-profile-name", "private.example", "private-account", "private-description", "private-group", "/private/", "meridian-private-ca-fixture", "private-proxy.example"} {
 		if strings.Contains(text, value) {
 			t.Fatalf("redacted output disclosed %q", value)
 		}

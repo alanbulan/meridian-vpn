@@ -5,6 +5,7 @@ import (
 	"encoding/asn1"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -31,6 +32,9 @@ func syntheticPFX(t *testing.T) Profile {
 	return p
 }
 func TestPKCS12EnvelopeAndPrivateFDTransport(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux inherited-file-descriptor authentication transport")
+	}
 	p := syntheticPFX(t)
 	if e := ValidateClientCertificate(p); e != nil {
 		t.Fatal(e)
@@ -81,7 +85,10 @@ func TestPKCS11RejectsSecretsAndAmbiguity(t *testing.T) {
 		}
 	}
 }
-func TestPKCS11PrivateTransportAndPersistence(t *testing.T) {
+func TestPKCS11PrivateTransport(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux inherited-file-descriptor authentication transport")
+	}
 	p := profile()
 	p.CertificateFormat = "pkcs11"
 	p.ClientCertificate = "pkcs11:token=Synthetic;id=%01;type=cert"
@@ -103,15 +110,22 @@ func TestPKCS11PrivateTransportAndPersistence(t *testing.T) {
 	if e != nil || len(files) != 0 || cert != p.ClientCertificate || key != p.ClientKey {
 		t.Fatal("wrong MFA token references", e)
 	}
+}
+
+func TestPKCS11PersistenceRejectsPIN(t *testing.T) {
+	p := profile()
+	p.CertificateFormat = "pkcs11"
+	p.ClientCertificate = "pkcs11:token=Synthetic;id=%01;type=cert"
+	p.ClientKey = "pkcs11:token=Synthetic;id=%01;type=private"
 	s := Store{filepath.Join(t.TempDir(), "profiles.json")}
-	if e = s.Save(Config{Profiles: []Profile{p}}); e != nil {
+	if e := s.Save(Config{Profiles: []Profile{p}}); e != nil {
 		t.Fatal(e)
 	}
 	if strings.Contains(string(mustRead(t, s.Path)), "PIN") {
 		t.Fatal("PIN persisted")
 	}
 	p.ClientKey = ""
-	if e = ValidateProfile(p); e != nil {
+	if e := ValidateProfile(p); e != nil {
 		t.Fatal("implicit matching token key rejected", e)
 	}
 	p.ClientCertificate += "?pin-value=synthetic-PIN"
@@ -188,6 +202,9 @@ func (r *replaceCAFileRunner) RunWithFiles(ctx context.Context, exe string, args
 	return r.recordingFileRunner.RunWithFiles(ctx, exe, args, input, files)
 }
 func TestAuthenticationPinsValidatedCAFile(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux inherited-file-descriptor authentication transport")
+	}
 	for _, bundle := range []bool{false, true} {
 		p := profile()
 		if bundle {
@@ -220,5 +237,24 @@ func TestCARejectsWritableTrustRoot(t *testing.T) {
 	}
 	if ValidateCAFile(path) == nil {
 		t.Fatal("externally writable trust root accepted")
+	}
+}
+
+// A token URI needs no local certificate file, so this checks the non-Linux
+// backend boundary independently of platform-specific file permissions.
+func TestPrivateCertificateTransportRejectsUnsupportedPlatform(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		t.Skip("non-Linux backend rejection")
+	}
+	p := profile()
+	p.CertificateFormat = "pkcs11"
+	p.ClientCertificate = "pkcs11:id=%01;type=cert"
+	p.ClientKey = "pkcs11:id=%01;type=private"
+	r := &recordingFileRunner{mockRunner: &mockRunner{}}
+	if _, err := authenticateOpenConnect(context.Background(), r, "oc", p, Credentials{}); err == nil {
+		t.Fatal("unsupported platform accepted private certificate transport")
+	}
+	if len(r.calls) != 0 || len(r.files) != 0 {
+		t.Fatal("unsupported platform reached an authentication command")
 	}
 }

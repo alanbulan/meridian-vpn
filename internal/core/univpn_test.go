@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -84,6 +85,17 @@ func TestUniVPNEngineLifecycle(t *testing.T) {
 	b := &uvTestBroker{s: s, started: make(chan struct{})}
 	u := UniVPN{Executable: uvExecutable(t), Broker: b}
 	e := NewEngine(u)
+	if runtime.GOOS == "windows" {
+		if e.Connect(uvProfile(), "mock-secret", true) == nil {
+			t.Fatal("unverified native executable enabled UniVPN")
+		}
+		select {
+		case <-b.started:
+			t.Fatal("unavailable executable reached broker")
+		default:
+		}
+		return
+	}
 	if err := e.Connect(uvProfile(), "mock-secret", true); err != nil {
 		t.Fatal(err)
 	}

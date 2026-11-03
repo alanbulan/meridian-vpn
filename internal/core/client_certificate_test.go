@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -65,6 +66,12 @@ func clientIdentity(t *testing.T, password []byte, expires time.Time) (Profile, 
 }
 func TestClientCertificateValidation(t *testing.T) {
 	p, _, _ := clientIdentity(t, nil, time.Now().Add(time.Hour))
+	if runtime.GOOS == "windows" {
+		if ValidateClientCertificate(p) == nil {
+			t.Fatal("identity accepted without verified private-file permissions")
+		}
+		return
+	}
 	if err := ValidateClientCertificate(p); err != nil {
 		t.Fatal(err)
 	}
@@ -217,6 +224,9 @@ func (r *recordingFileRunner) RunWithFiles(ctx context.Context, p string, args [
 	return r.mockRunner.Run(ctx, p, args, input)
 }
 func TestNetworkManagerConsumesClientCertificateAndPrivateFD(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux inherited-file-descriptor authentication transport")
+	}
 	p, _, _ := clientIdentity(t, nil, time.Now().Add(time.Hour))
 	p.Username = ""
 	r := &recordingFileRunner{mockRunner: &mockRunner{}}
@@ -291,8 +301,9 @@ func TestEngineCopiesAndClearsCertificateCredentials(t *testing.T) {
 	a := captureCredentialsAdapter{started: make(chan Credentials, 1)}
 	e := NewEngine(a)
 	p := profile()
-	p.ClientCertificate = "/synthetic/certificate.pem"
-	p.ClientKey = "/synthetic/private.pem"
+	dir := t.TempDir()
+	p.ClientCertificate = filepath.Join(dir, "certificate.pem")
+	p.ClientKey = filepath.Join(dir, "private.pem")
 	c := Credentials{Password: []byte("synthetic-login-copy"), KeyPassword: []byte("synthetic-key-copy")}
 	if err := e.ConnectWithCredentials(p, c, true); err != nil {
 		t.Fatal(err)

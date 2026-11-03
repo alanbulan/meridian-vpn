@@ -4,6 +4,7 @@ import (
 	"mygo-vpn/internal/core"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -87,7 +88,8 @@ func TestExportDoesNotContainMemorySecretsOrConsent(t *testing.T) {
 		t.Fatal("incorrect export")
 	}
 	info, _ := os.Stat(dest)
-	if info.Mode().Perm() != 0600 {
+	// Windows mode bits do not describe ACL privacy; no Windows ACL claim is made.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("export not private")
 	}
 }

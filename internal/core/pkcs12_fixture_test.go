@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -44,6 +45,12 @@ func pkcs12Fixture(t *testing.T) (Profile, *x509.Certificate, []byte) {
 func TestGeneratedPKCS12Preflight(t *testing.T) {
 	p, _, password := pkcs12Fixture(t)
 	defer clear(password)
+	if runtime.GOOS == "windows" {
+		if ValidateClientCertificate(p) == nil {
+			t.Fatal("bundle accepted without verified private-file permissions")
+		}
+		return
+	}
 	if err := ValidateClientCertificate(p); err != nil {
 		t.Fatal(err)
 	}

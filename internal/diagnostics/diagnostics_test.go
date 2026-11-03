@@ -17,7 +17,7 @@ import (
 
 func readyCollector() Collector {
 	return Collector{OS: "linux", Architecture: "amd64", Version: "0.2.0-test",
-		LookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		LookPath: func(name string) (string, error) { return filepath.Join(os.TempDir(), "meridian-test-bin", name), nil },
 		ReadFile: func(string, int64) ([]byte, error) {
 			return []byte("service=org.freedesktop.NetworkManager.openconnect\n"), nil
 		},
@@ -42,7 +42,7 @@ func TestReadinessUsesOnlyBoundedReadOnlyProbe(t *testing.T) {
 	calls := 0
 	c.Run = func(ctx context.Context, path string, args []string) ([]byte, error) {
 		calls++
-		if path != "/usr/bin/nmcli" || !reflect.DeepEqual(args, []string{"-t", "-f", "RUNNING", "general"}) {
+		if path != filepath.Join(os.TempDir(), "meridian-test-bin", "nmcli") || !reflect.DeepEqual(args, []string{"-t", "-f", "RUNNING", "general"}) {
 			t.Fatalf("unexpected probe: %q %q", path, args)
 		}
 		deadline, ok := ctx.Deadline()
@@ -172,7 +172,7 @@ func assertNoPrivateData(t *testing.T, r Report) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"alice", "secret", "private.example", "10.0.0.1", "/home/", "/usr/bin/", "COOKIE", "username="} {
+	for _, secret := range []string{"alice", "secret", "private.example", "10.0.0.1", "/home/", "/usr/bin/", "meridian-test-bin", "COOKIE", "username="} {
 		if strings.Contains(string(data), secret) {
 			t.Fatalf("report disclosed %q", secret)
 		}

@@ -123,7 +123,13 @@ func TestTUNResourceKernelObservationInvalidation(t *testing.T) {
 				}
 			case "open-partial", "open-partial-cleanup":
 				base := f.ops.openNamespace
-				f.ops.openNamespace = func() (*os.File, KernelNamespaceIdentity, error) { p, id, _ := base(); return p, id, boom }
+				f.ops.openNamespace = func() (*os.File, KernelNamespaceIdentity, error) {
+					p, id, _ := base()
+					if mode == "open-partial-cleanup" {
+						return p, id, errors.Join(ErrCleanup, boom)
+					}
+					return p, id, boom
+				}
 			case "retained-namespace":
 				f.ops.inspectNamespace = func(*os.File) (KernelNamespaceIdentity, error) { return KernelNamespaceIdentity{7, 10}, nil }
 			case "fresh-namespace":

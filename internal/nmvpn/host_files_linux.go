@@ -19,18 +19,18 @@ import (
 )
 
 const (
-	hostFileMaxFiles = 16
-	hostFileMaxBytes = 64 * 1024
+	hostFileMaxFiles      = 16
+	hostFileMaxBytes      = 64 * 1024
 	hostFileMaxTotalBytes = 256 * 1024
-	hostFileMaxDepth = 32
-	hostFileMaxPathBytes = 4096
+	hostFileMaxDepth      = 32
+	hostFileMaxPathBytes  = 4096
 )
 
 // HostFilePin identifies an explicitly provisioned file and its expected bytes.
 // SHA256 must be exactly 64 lowercase hexadecimal characters. A manifest supplied
 // by an untrusted caller is not trusted provisioning, even if every pin matches.
 type HostFilePin struct {
-	Path string
+	Path   string
 	SHA256 string
 }
 
@@ -38,17 +38,17 @@ type HostFilePin struct {
 // It describes the retained inode observed during OpenHostFilePins. Use Check to
 // revalidate it; neither operation prevents subsequent privileged writes.
 type HostFileSnapshot struct {
-	Path string
-	SHA256 string
-	Device uint64
-	Inode uint64
-	Size int64
-	Mode uint32
-	OwnerUID uint32
-	OwnerGID uint32
+	Path      string
+	SHA256    string
+	Device    uint64
+	Inode     uint64
+	Size      int64
+	Mode      uint32
+	OwnerUID  uint32
+	OwnerGID  uint32
 	LinkCount uint64
-	Modified time.Time
-	Changed time.Time
+	Modified  time.Time
+	Changed   time.Time
 }
 
 // HostFilePins retains read-only handles to files and every walked ancestor.
@@ -66,16 +66,16 @@ type HostFileSnapshot struct {
 // filesystem syscall or mutex wait. Snapshots expose metadata only; this API
 // never logs or writes file content. Unrelated ancestor changes also invalidate.
 type HostFilePins struct {
-	mu sync.Mutex
-	policy hostFilePolicy
-	files []hostRetainedFile
+	mu      sync.Mutex
+	policy  hostFilePolicy
+	files   []hostRetainedFile
 	invalid error
-	closed bool
+	closed  bool
 }
 
 type hostFilePolicy struct {
-	root string
-	uid uint32
+	root       string
+	uid        uint32
 	production bool
 }
 
@@ -85,9 +85,9 @@ type hostFileNode struct {
 }
 
 type hostRetainedFile struct {
-	pin HostFilePin
+	pin    HostFilePin
 	digest [sha256.Size]byte
-	nodes []hostFileNode
+	nodes  []hostFileNode
 }
 
 // OpenHostFilePins only reads already-existing, explicitly pinned files. Real
@@ -300,7 +300,7 @@ func hostFileVerifyNodes(ctx context.Context, nodes []hostFileNode) error {
 
 func hostFileCloseNodes(nodes []hostFileNode) error {
 	var err error
-	for i := len(nodes)-1; i >= 0; i-- {
+	for i := len(nodes) - 1; i >= 0; i-- {
 		// Never retry Close: even an error can leave the descriptor recycled.
 		err = errors.Join(err, nodes[i].file.Close())
 	}
@@ -444,7 +444,7 @@ func (s *HostFilePins) Snapshot() ([]HostFileSnapshot, error) {
 			Device: uint64(st.Dev), Inode: uint64(st.Ino), Size: st.Size,
 			Mode: st.Mode, OwnerUID: st.Uid, OwnerGID: st.Gid, LinkCount: uint64(st.Nlink),
 			Modified: time.Unix(int64(st.Mtim.Sec), int64(st.Mtim.Nsec)),
-			Changed: time.Unix(int64(st.Ctim.Sec), int64(st.Ctim.Nsec)),
+			Changed:  time.Unix(int64(st.Ctim.Sec), int64(st.Ctim.Nsec)),
 		})
 	}
 	return out, nil

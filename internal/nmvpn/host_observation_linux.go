@@ -195,7 +195,7 @@ func parseHostObservation(properties map[string]dbus.Variant, record ActivationR
 	}
 	out = HostObservationSnapshot{
 		Binding: Binding{
-			Identity: Identity{BootID: record.BootID, BusID: record.BusID, Owner: record.Owner, UUID: record.UUID, ActivePath: record.ActivePath, Interface: record.Interface},
+			Identity:       Identity{BootID: record.BootID, BusID: record.BusID, Owner: record.Owner, UUID: record.UUID, ActivePath: record.ActivePath, Interface: record.Interface},
 			ConnectionPath: dbus.ObjectPath(record.ConnectionPath), PluginOwner: record.PluginOwner,
 		},
 		State: 1, IP4Config: "/", IP6Config: "/", ParentDevices: parents,

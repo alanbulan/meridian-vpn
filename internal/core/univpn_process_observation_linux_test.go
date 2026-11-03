@@ -103,16 +103,16 @@ func TestUniVPNProcessObservationStatParser(t *testing.T) {
 		}
 	}
 	for name, data := range map[string]string{
-		"wrong PID": uniVPNFixtureStat(98, "native", "S", 777),
-		"zombie": uniVPNFixtureStat(99, "native", "Z", 777),
-		"dead": uniVPNFixtureStat(99, "native", "X", 777),
-		"unknown state": uniVPNFixtureStat(99, "native", "?", 777),
-		"zero start": uniVPNFixtureStat(99, "native", "S", 0),
-		"short": "99 (native) S 1 2\n",
+		"wrong PID":                 uniVPNFixtureStat(98, "native", "S", 777),
+		"zombie":                    uniVPNFixtureStat(99, "native", "Z", 777),
+		"dead":                      uniVPNFixtureStat(99, "native", "X", 777),
+		"unknown state":             uniVPNFixtureStat(99, "native", "?", 777),
+		"zero start":                uniVPNFixtureStat(99, "native", "S", 0),
+		"short":                     "99 (native) S 1 2\n",
 		"truncated after starttime": "99 (native) S " + strings.Repeat("0 ", 18) + "777\n",
-		"missing newline": strings.TrimSuffix(uniVPNFixtureStat(99, "native", "S", 777), "\n"),
-		"overflow": strings.Replace(uniVPNFixtureStat(99, "native", "S", 777), "777", "18446744073709551616", 1),
-		"oversize": uniVPNFixtureStat(99, strings.Repeat("x", uniVPNProcStatLimit), "S", 777),
+		"missing newline":           strings.TrimSuffix(uniVPNFixtureStat(99, "native", "S", 777), "\n"),
+		"overflow":                  strings.Replace(uniVPNFixtureStat(99, "native", "S", 777), "777", "18446744073709551616", 1),
+		"oversize":                  uniVPNFixtureStat(99, strings.Repeat("x", uniVPNProcStatLimit), "S", 777),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := parseUniVPNProcStat([]byte(data), 99); err == nil {
@@ -130,14 +130,14 @@ func TestUniVPNProcessObservationStatusParser(t *testing.T) {
 	for name, data := range map[string]string{
 		"duplicate UID": good + "Uid:\t0 0 0 0\n",
 		"duplicate PID": good + "Pid:\t99\n",
-		"wrong PID": strings.Replace(good, "Pid:\t99\n", "Pid:\t98\n", 1),
-		"wrong leader": strings.Replace(good, "Tgid:\t99\n", "Tgid:\t98\n", 1),
-		"missing UID": strings.Replace(good, "Uid:", "NoUID:", 1),
-		"short UID": strings.Replace(good, "Uid:\t65532\t65532\t65532\t65532", "Uid:\t0 0 0", 1),
-		"negative UID": strings.Replace(good, "Uid:\t65532", "Uid:\t-1", 1),
-		"overflow UID": strings.Replace(good, "Uid:\t65532", "Uid:\t4294967296", 1),
-		"truncated": strings.TrimSuffix(good, "\n"),
-		"oversized": good + strings.Repeat("x", uniVPNProcStatusLimit),
+		"wrong PID":     strings.Replace(good, "Pid:\t99\n", "Pid:\t98\n", 1),
+		"wrong leader":  strings.Replace(good, "Tgid:\t99\n", "Tgid:\t98\n", 1),
+		"missing UID":   strings.Replace(good, "Uid:", "NoUID:", 1),
+		"short UID":     strings.Replace(good, "Uid:\t65532\t65532\t65532\t65532", "Uid:\t0 0 0", 1),
+		"negative UID":  strings.Replace(good, "Uid:\t65532", "Uid:\t-1", 1),
+		"overflow UID":  strings.Replace(good, "Uid:\t65532", "Uid:\t4294967296", 1),
+		"truncated":     strings.TrimSuffix(good, "\n"),
+		"oversized":     good + strings.Repeat("x", uniVPNProcStatusLimit),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := parseUniVPNProcStatus([]byte(data), 99); err == nil {
@@ -153,11 +153,11 @@ func TestUniVPNProcessObservationNamespaceViewGuard(t *testing.T) {
 		t.Fatal("single matching namespace PID rejected")
 	}
 	for name, data := range map[string]string{
-		"missing": strings.Replace(good, "NSpid:\t99\n", "", 1),
+		"missing":         strings.Replace(good, "NSpid:\t99\n", "", 1),
 		"outer namespace": strings.Replace(good, "NSpid:\t99", "NSpid:\t99 7", 1),
-		"wrong PID": strings.Replace(good, "NSpid:\t99", "NSpid:\t98", 1),
-		"duplicate": good + "NSpid:\t99\n",
-		"empty": strings.Replace(good, "NSpid:\t99", "NSpid:\t", 1),
+		"wrong PID":       strings.Replace(good, "NSpid:\t99", "NSpid:\t98", 1),
+		"duplicate":       good + "NSpid:\t99\n",
+		"empty":           strings.Replace(good, "NSpid:\t99", "NSpid:\t", 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if validUniVPNProcSelfStatus([]byte(data), 99) {
@@ -299,7 +299,7 @@ func uniVPNFixtureBroker(f *uniVPNProcFixture) (*UniVPNNMBroker, *uniVPNExecProc
 
 type uniVPNObservationIsolation struct{}
 
-func (uniVPNObservationIsolation) Prepare(*exec.Cmd) error { return nil }
+func (uniVPNObservationIsolation) Prepare(*exec.Cmd) error                    { return nil }
 func (uniVPNObservationIsolation) WaitEmpty(context.Context, *exec.Cmd) error { return nil }
 
 func TestUniVPNProcessObservationBrokerGate(t *testing.T) {

@@ -27,12 +27,12 @@ type UniVPNObservedInode struct {
 type UniVPNObservedExecutable struct {
 	UniVPNObservedInode
 	UID, GID, Mode uint32
-	Size          int64
-	ModifiedSec   int64
-	ModifiedNS    int64
-	ChangedSec    int64
-	ChangedNS     int64
-	SHA256        string
+	Size           int64
+	ModifiedSec    int64
+	ModifiedNS     int64
+	ChangedSec     int64
+	ChangedNS      int64
+	SHA256         string
 }
 
 // UniVPNNMProcessObservation contains two matching, bounded observations of the
@@ -69,12 +69,12 @@ const (
 // start. Pin failure is retained here without losing ownership of a started
 // child or changing Launch's established cleanup contract.
 type uniVPNProcessObservation struct {
-	mu      sync.Mutex
-	dir     *os.File
-	pid     int
-	start   uint64
-	err     error
-	closed  bool
+	mu     sync.Mutex
+	dir    *os.File
+	pid    int
+	start  uint64
+	err    error
+	closed bool
 	// Package-private fixture seam. Production always uses the real reader and
 	// a verified fixed /proc handle. No caller can supply a PID, root or reader.
 	read func(context.Context, *os.File, int) (UniVPNNMProcessObservation, error)
@@ -497,7 +497,7 @@ func readUniVPNProcessImage(ctx context.Context, dir *os.File) (UniVPNObservedEx
 func uniVPNObservedImage(st syscall.Stat_t) UniVPNObservedExecutable {
 	return UniVPNObservedExecutable{
 		UniVPNObservedInode: UniVPNObservedInode{Device: uint64(st.Dev), Inode: st.Ino},
-		UID: st.Uid, GID: st.Gid, Mode: st.Mode, Size: st.Size,
+		UID:                 st.Uid, GID: st.Gid, Mode: st.Mode, Size: st.Size,
 		ModifiedSec: st.Mtim.Sec, ModifiedNS: st.Mtim.Nsec,
 		ChangedSec: st.Ctim.Sec, ChangedNS: st.Ctim.Nsec,
 	}

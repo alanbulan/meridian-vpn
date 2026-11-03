@@ -150,23 +150,23 @@ func TestHostFilePinsRejectsMalformedManifest(t *testing.T) {
 	root := hostFileFixtureRoot(t)
 	pin := hostFileFixture(t, root, "config", "safe", 0600)
 	cases := map[string][]HostFilePin{
-		"empty": nil,
-		"duplicate": {pin, pin},
-		"relative": {{Path: "config", SHA256: pin.SHA256}},
-		"root": {{Path: "/", SHA256: pin.SHA256}},
-		"anchor": {{Path: root, SHA256: pin.SHA256}},
-		"unclean": {{Path: root + "/./config", SHA256: pin.SHA256}},
+		"empty":          nil,
+		"duplicate":      {pin, pin},
+		"relative":       {{Path: "config", SHA256: pin.SHA256}},
+		"root":           {{Path: "/", SHA256: pin.SHA256}},
+		"anchor":         {{Path: root, SHA256: pin.SHA256}},
+		"unclean":        {{Path: root + "/./config", SHA256: pin.SHA256}},
 		"trailing slash": {{Path: pin.Path + "/", SHA256: pin.SHA256}},
-		"outside root": {{Path: filepath.Dir(root) + "/outside", SHA256: pin.SHA256}},
-		"nul": {{Path: root + "/bad\x00name", SHA256: pin.SHA256}},
-		"long path": {{Path: root + "/" + strings.Repeat("x", hostFileMaxPathBytes), SHA256: pin.SHA256}},
-		"deep path": {{Path: root + strings.Repeat("/d", hostFileMaxDepth+1), SHA256: pin.SHA256}},
-		"missing hash": {{Path: pin.Path}},
-		"invalid hex": {{Path: pin.Path, SHA256: strings.Repeat("z", 64)}},
-		"short hash": {{Path: pin.Path, SHA256: "00"}},
-		"long hash": {{Path: pin.Path, SHA256: strings.Repeat("0", 10000)}},
+		"outside root":   {{Path: filepath.Dir(root) + "/outside", SHA256: pin.SHA256}},
+		"nul":            {{Path: root + "/bad\x00name", SHA256: pin.SHA256}},
+		"long path":      {{Path: root + "/" + strings.Repeat("x", hostFileMaxPathBytes), SHA256: pin.SHA256}},
+		"deep path":      {{Path: root + strings.Repeat("/d", hostFileMaxDepth+1), SHA256: pin.SHA256}},
+		"missing hash":   {{Path: pin.Path}},
+		"invalid hex":    {{Path: pin.Path, SHA256: strings.Repeat("z", 64)}},
+		"short hash":     {{Path: pin.Path, SHA256: "00"}},
+		"long hash":      {{Path: pin.Path, SHA256: strings.Repeat("0", 10000)}},
 		"uppercase hash": {{Path: pin.Path, SHA256: strings.ToUpper(pin.SHA256)}},
-		"wrong hash": {{Path: pin.Path, SHA256: strings.Repeat("0", 64)}},
+		"wrong hash":     {{Path: pin.Path, SHA256: strings.Repeat("0", 64)}},
 	}
 	tooMany := make([]HostFilePin, hostFileMaxFiles+1)
 	for i := range tooMany {
@@ -213,40 +213,68 @@ func TestHostFilePinsAcceptsRootWriterAndScriptModes(t *testing.T) {
 func TestHostFilePinsRejectsUnsafeFiles(t *testing.T) {
 	cases := map[string]func(*testing.T, string, HostFilePin){
 		"world writable": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Chmod(pin.Path, 0602); err != nil { t.Fatal(err) }
+			if err := os.Chmod(pin.Path, 0602); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"group writable": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Chmod(pin.Path, 0620); err != nil { t.Fatal(err) }
+			if err := os.Chmod(pin.Path, 0620); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"setuid": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Chmod(pin.Path, 0700|os.ModeSetuid); err != nil { t.Fatal(err) }
+			if err := os.Chmod(pin.Path, 0700|os.ModeSetuid); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"setgid": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Chmod(pin.Path, 0700|os.ModeSetgid); err != nil { t.Fatal(err) }
+			if err := os.Chmod(pin.Path, 0700|os.ModeSetgid); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"sticky": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Chmod(pin.Path, 0600|os.ModeSticky); err != nil { t.Fatal(err) }
+			if err := os.Chmod(pin.Path, 0600|os.ModeSticky); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"hardlink": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Link(pin.Path, filepath.Join(root, "alias")); err != nil { t.Fatal(err) }
+			if err := os.Link(pin.Path, filepath.Join(root, "alias")); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"symlink": func(t *testing.T, root string, pin HostFilePin) {
 			target := filepath.Join(root, "target")
-			if err := os.Rename(pin.Path, target); err != nil { t.Fatal(err) }
-			if err := os.Symlink(target, pin.Path); err != nil { t.Fatal(err) }
+			if err := os.Rename(pin.Path, target); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, pin.Path); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"directory": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Remove(pin.Path); err != nil { t.Fatal(err) }
-			if err := os.Mkdir(pin.Path, 0700); err != nil { t.Fatal(err) }
+			if err := os.Remove(pin.Path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(pin.Path, 0700); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"fifo": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Remove(pin.Path); err != nil { t.Fatal(err) }
-			if err := syscall.Mkfifo(pin.Path, 0600); err != nil { t.Fatal(err) }
+			if err := os.Remove(pin.Path); err != nil {
+				t.Fatal(err)
+			}
+			if err := syscall.Mkfifo(pin.Path, 0600); err != nil {
+				t.Fatal(err)
+			}
 		},
 		"socket": func(t *testing.T, root string, pin HostFilePin) {
-			if err := os.Remove(pin.Path); err != nil { t.Fatal(err) }
+			if err := os.Remove(pin.Path); err != nil {
+				t.Fatal(err)
+			}
 			listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: pin.Path, Net: "unix"})
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			t.Cleanup(func() { listener.Close() })
 		},
 	}
@@ -269,17 +297,27 @@ func TestHostFilePinsRejectsUnsafeAncestors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			root := hostFileFixtureRoot(t)
 			dir := filepath.Join(root, "child")
-			if err := os.Mkdir(dir, 0700); err != nil { t.Fatal(err) }
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			pin := hostFileFixture(t, dir, "config", "safe", 0600)
 			policy := hostFilePolicy{root: root, uid: uint32(os.Geteuid())}
 			switch name {
 			case "group writable":
-				if err := os.Chmod(dir, 0770); err != nil { t.Fatal(err) }
+				if err := os.Chmod(dir, 0770); err != nil {
+					t.Fatal(err)
+				}
 			case "world writable sticky":
-				if err := os.Chmod(dir, 0777|os.ModeSticky); err != nil { t.Fatal(err) }
+				if err := os.Chmod(dir, 0777|os.ModeSticky); err != nil {
+					t.Fatal(err)
+				}
 			case "symlink":
-				if err := os.Rename(dir, dir+"-real"); err != nil { t.Fatal(err) }
-				if err := os.Symlink(dir+"-real", dir); err != nil { t.Fatal(err) }
+				if err := os.Rename(dir, dir+"-real"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(dir+"-real", dir); err != nil {
+					t.Fatal(err)
+				}
 			case "wrong owner":
 				policy.uid++
 			}
@@ -298,10 +336,14 @@ func TestHostFilePinsRegularStatRejectsDevicesAndOwners(t *testing.T) {
 	for _, mode := range []uint32{syscall.S_IFCHR, syscall.S_IFBLK, syscall.S_IFIFO, syscall.S_IFSOCK, syscall.S_IFDIR, syscall.S_IFLNK} {
 		st := valid
 		st.Mode = mode | 0600
-		if err := hostFileRegularStat(st, policy); err == nil { t.Fatalf("accepted type %o", mode) }
+		if err := hostFileRegularStat(st, policy); err == nil {
+			t.Fatalf("accepted type %o", mode)
+		}
 	}
 	valid.Uid++
-	if err := hostFileRegularStat(valid, policy); err == nil { t.Fatal("accepted wrong file owner") }
+	if err := hostFileRegularStat(valid, policy); err == nil {
+		t.Fatal("accepted wrong file owner")
+	}
 }
 
 func TestHostFilePinsReadLimits(t *testing.T) {
@@ -312,9 +354,13 @@ func TestHostFilePinsReadLimits(t *testing.T) {
 			pins = append(pins, hostFileFixture(t, root, fmt.Sprintf("file-%d", i), strings.Repeat("x", hostFileMaxBytes), 0644))
 		}
 		s, err := openHostFileFixture(context.Background(), root, pins...)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		defer s.Close()
-		if err := s.Check(context.Background()); err != nil { t.Fatal(err) }
+		if err := s.Check(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	})
 	t.Run("per file", func(t *testing.T) {
 		root := hostFileFixtureRoot(t)
@@ -342,10 +388,14 @@ func TestHostFilePinsCheckRejectsChangesAndLatches(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			root := hostFileFixtureRoot(t)
 			dir := filepath.Join(root, "child")
-			if err := os.Mkdir(dir, 0700); err != nil { t.Fatal(err) }
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			pin := hostFileFixture(t, dir, "config", "safe", 0600)
 			s, err := openHostFileFixture(context.Background(), root, pin)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer s.Close()
 			switch change {
 			case "content":
@@ -357,7 +407,9 @@ func TestHostFilePinsCheckRejectsChangesAndLatches(t *testing.T) {
 			case "remove":
 				err = os.Remove(pin.Path)
 			case "replace":
-				if err := os.Rename(pin.Path, pin.Path+"-old"); err != nil { t.Fatal(err) }
+				if err := os.Rename(pin.Path, pin.Path+"-old"); err != nil {
+					t.Fatal(err)
+				}
 				err = os.WriteFile(pin.Path, []byte("safe"), 0600)
 			case "ancestor mode":
 				err = os.Chmod(dir, 0755)
@@ -366,10 +418,18 @@ func TestHostFilePinsCheckRejectsChangesAndLatches(t *testing.T) {
 			case "unrelated child":
 				err = os.WriteFile(filepath.Join(dir, "other"), []byte("other"), 0600)
 			}
-			if err != nil { t.Fatal(err) }
-			if err := s.Check(context.Background()); err == nil { t.Fatal("accepted change") }
-			if _, err := s.Snapshot(); err == nil { t.Fatal("returned invalid snapshot") }
-			if err := s.Check(context.Background()); err == nil { t.Fatal("retried invalid set") }
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Check(context.Background()); err == nil {
+				t.Fatal("accepted change")
+			}
+			if _, err := s.Snapshot(); err == nil {
+				t.Fatal("returned invalid snapshot")
+			}
+			if err := s.Check(context.Background()); err == nil {
+				t.Fatal("retried invalid set")
+			}
 		})
 	}
 }
@@ -381,7 +441,9 @@ func hostFileRefreshTestStats(t *testing.T, s *HostFilePins) {
 	for i := range s.files {
 		for j := range s.files[i].nodes {
 			node := &s.files[i].nodes[j]
-			if err := syscall.Fstat(int(node.file.Fd()), &node.stat); err != nil { t.Fatal(err) }
+			if err := syscall.Fstat(int(node.file.Fd()), &node.stat); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }
@@ -391,30 +453,50 @@ func TestHostFilePinsCheckRewalksAndRehashes(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			root := hostFileFixtureRoot(t)
 			dir := filepath.Join(root, "child")
-			if err := os.Mkdir(dir, 0700); err != nil { t.Fatal(err) }
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			pin := hostFileFixture(t, dir, "config", "safe", 0600)
 			s, err := openHostFileFixture(context.Background(), root, pin)
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer s.Close()
 			switch change {
 			case "file replacement":
-				if err := os.Rename(pin.Path, pin.Path+"-old"); err != nil { t.Fatal(err) }
+				if err := os.Rename(pin.Path, pin.Path+"-old"); err != nil {
+					t.Fatal(err)
+				}
 				hostFileFixture(t, dir, "config", "safe", 0600)
 			case "ancestor replacement":
-				if err := os.Rename(dir, dir+"-old"); err != nil { t.Fatal(err) }
-				if err := os.Mkdir(dir, 0700); err != nil { t.Fatal(err) }
+				if err := os.Rename(dir, dir+"-old"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
 				hostFileFixture(t, dir, "config", "safe", 0600)
 			case "root replacement":
-				if err := os.Rename(root, root+"-old"); err != nil { t.Fatal(err) }
-				t.Cleanup(func() { os.RemoveAll(root+"-old") })
-				if err := os.Mkdir(root, 0700); err != nil { t.Fatal(err) }
-				if err := os.Mkdir(dir, 0700); err != nil { t.Fatal(err) }
+				if err := os.Rename(root, root+"-old"); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.RemoveAll(root + "-old") })
+				if err := os.Mkdir(root, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
 				hostFileFixture(t, dir, "config", "safe", 0600)
 			case "same size content":
-				if err := os.WriteFile(pin.Path, []byte("evil"), 0600); err != nil { t.Fatal(err) }
+				if err := os.WriteFile(pin.Path, []byte("evil"), 0600); err != nil {
+					t.Fatal(err)
+				}
 			}
 			hostFileRefreshTestStats(t, s)
-			if err := s.Check(context.Background()); err == nil { t.Fatal("only checked retained metadata") }
+			if err := s.Check(context.Background()); err == nil {
+				t.Fatal("only checked retained metadata")
+			}
 		})
 	}
 }
@@ -422,13 +504,15 @@ func TestHostFilePinsCheckRewalksAndRehashes(t *testing.T) {
 type hostFileHookContext struct {
 	context.Context
 	calls int
-	at int
-	hook func()
+	at    int
+	hook  func()
 }
 
 func (c *hostFileHookContext) Err() error {
 	c.calls++
-	if c.calls == c.at { c.hook() }
+	if c.calls == c.at {
+		c.hook()
+	}
 	return c.Context.Err()
 }
 
@@ -438,7 +522,9 @@ func TestHostFilePinsCancellationAndReadMutation(t *testing.T) {
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	if s, err := openHostFileFixture(canceled, root, pin); !errors.Is(err, context.Canceled) {
-		if s != nil { s.Close() }
+		if s != nil {
+			s.Close()
+		}
 		t.Fatal("canceled open", err)
 	}
 	if s, err := openHostFileFixture(nil, root, pin); err == nil {
@@ -446,7 +532,9 @@ func TestHostFilePinsCancellationAndReadMutation(t *testing.T) {
 		t.Fatal("accepted nil context")
 	}
 	s, err := openHostFileFixture(context.Background(), root, pin)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close()
 	node := s.files[0].nodes[len(s.files[0].nodes)-1]
 	ctx, cancelRead := context.WithCancel(context.Background())
@@ -456,27 +544,39 @@ func TestHostFilePinsCancellationAndReadMutation(t *testing.T) {
 		t.Fatal("did not cancel between bounded chunks", n, err)
 	}
 	mutation := &hostFileHookContext{Context: context.Background(), at: 3, hook: func() {
-		if err := os.WriteFile(pin.Path, []byte(strings.Repeat("y", 32*1024)), 0600); err != nil { t.Fatal(err) }
+		if err := os.WriteFile(pin.Path, []byte(strings.Repeat("y", 32*1024)), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}}
 	if _, _, err := hostFileHash(mutation, node, hostFileMaxBytes); err == nil {
 		t.Fatal("accepted mutation during hash")
 	}
-	if err := s.Check(canceled); !errors.Is(err, context.Canceled) { t.Fatal("canceled check", err) }
-	if err := s.Check(context.Background()); !errors.Is(err, context.Canceled) { t.Fatal("cancellation not latched", err) }
+	if err := s.Check(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatal("canceled check", err)
+	}
+	if err := s.Check(context.Background()); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancellation not latched", err)
+	}
 }
 
 func TestHostFileHashDetectsGrowthAtBound(t *testing.T) {
 	root := hostFileFixtureRoot(t)
 	pin := hostFileFixture(t, root, "config", strings.Repeat("x", hostFileMaxBytes), 0600)
 	s, err := openHostFileFixture(context.Background(), root, pin)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close()
 	node := s.files[0].nodes[len(s.files[0].nodes)-1]
 	ctx := &hostFileHookContext{Context: context.Background(), at: 2, hook: func() {
 		f, err := os.OpenFile(pin.Path, os.O_WRONLY|os.O_APPEND, 0)
-		if err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
 		_, writeErr := f.Write([]byte("extra"))
-		if err := errors.Join(writeErr, f.Close()); err != nil { t.Fatal(err) }
+		if err := errors.Join(writeErr, f.Close()); err != nil {
+			t.Fatal(err)
+		}
 	}}
 	if _, n, err := hostFileHash(ctx, node, hostFileMaxBytes); err == nil || n != hostFileMaxBytes+1 {
 		t.Fatal("growth did not stop at bounded extra byte", n, err)
@@ -487,7 +587,9 @@ func TestHostFilePinsConcurrentCheckSnapshotAndClose(t *testing.T) {
 	root := hostFileFixtureRoot(t)
 	pin := hostFileFixture(t, root, "config", "safe", 0600)
 	s, err := openHostFileFixture(context.Background(), root, pin)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer s.Close()
 	var wg sync.WaitGroup
 	for i := 0; i < 12; i++ {
@@ -497,11 +599,16 @@ func TestHostFilePinsConcurrentCheckSnapshotAndClose(t *testing.T) {
 			for j := 0; j < 12; j++ {
 				var err error
 				switch i % 3 {
-				case 0: err = s.Check(context.Background())
-				case 1: _, err = s.Snapshot()
-				case 2: err = s.Close()
+				case 0:
+					err = s.Check(context.Background())
+				case 1:
+					_, err = s.Snapshot()
+				case 2:
+					err = s.Close()
 				}
-				if err != nil && !errors.Is(err, os.ErrClosed) { t.Error(err) }
+				if err != nil && !errors.Is(err, os.ErrClosed) {
+					t.Error(err)
+				}
 			}
 		}(i)
 	}
@@ -514,15 +621,21 @@ func TestHostFilePinsNoDescriptorLeaks(t *testing.T) {
 	bad := pin
 	bad.SHA256 = strings.Repeat("0", 64)
 	warmup, err := openHostFileFixture(context.Background(), root, pin)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := warmup.Check(context.Background()); err != nil {
 		warmup.Close()
 		t.Fatal(err)
 	}
-	if err := warmup.Close(); err != nil { t.Fatal(err) }
+	if err := warmup.Close(); err != nil {
+		t.Fatal(err)
+	}
 	count := func() int {
 		files, err := os.ReadDir("/proc/self/fd")
-		if err != nil { t.Fatal("own descriptor inventory unavailable", err) }
+		if err != nil {
+			t.Fatal("own descriptor inventory unavailable", err)
+		}
 		return len(files)
 	}
 	before := count()
@@ -534,13 +647,21 @@ func TestHostFilePinsNoDescriptorLeaks(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		hooked := &hostFileHookContext{Context: ctx, at: 4, hook: cancel}
 		if s, err := openHostFileFixture(hooked, root, pin); !errors.Is(err, context.Canceled) {
-			if s != nil { s.Close() }
+			if s != nil {
+				s.Close()
+			}
 			t.Fatal("mid-walk cancellation", err)
 		}
 		cancel()
 		s, err := openHostFileFixture(context.Background(), root, pin)
-		if err != nil { t.Fatal(err) }
-		if err := s.Close(); err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if after := count(); after != before { t.Fatalf("descriptor count changed: %d -> %d", before, after) }
+	if after := count(); after != before {
+		t.Fatalf("descriptor count changed: %d -> %d", before, after)
+	}
 }

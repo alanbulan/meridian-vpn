@@ -15,11 +15,15 @@ import (
 	"strings"
 )
 
-const usage = `Meridian CLI: headless configuration and read-only readiness checks.
+const usage = `Meridian CLI: configuration, readiness checks and Linux foreground VPN.
 
 Usage: meridianctl [--config FILE] COMMAND
 
 Commands:
+  connect --profile INDEX --authorize-network --credentials-stdin
+      Linux foreground VPN. Read credentials from a private non-terminal stdin
+      JSON stream. Ctrl+C/SIGTERM disconnects only this process-owned session.
+      Requires explicit permission for gateway authentication and routes/DNS.
   profiles list [--json] [--show-private]
       List profile indexes and configured feature flags. Names, IDs, gateways,
       accounts and local paths are hidden unless --show-private is requested.
@@ -43,8 +47,9 @@ Commands:
 
 Files must be Meridian versioned JSON, not UniVPN proprietary configuration.
 Output files are created with mode 0600 and existing files are never replaced.
-No command starts/stops a tunnel, authenticates, changes routes/DNS, or installs
-software. Diagnostics checks prerequisites only, not enterprise compatibility.
+Only connect authenticates and changes routes/DNS after explicit authorization.
+Other commands remain offline/read-only. No command installs software.
+Diagnostics checks prerequisites only, not enterprise compatibility.
 Exit codes: 0 success/ready, 1 invalid/unavailable/failure, 2 usage error.
 `
 
@@ -52,10 +57,18 @@ type application struct {
 	version     string
 	configDir   func() (string, error)
 	diagnostics func(context.Context, string) diagnostics.Report
+	vpnSupported func() bool
+	vpnAdapter func() core.Adapter
+	credentials func(context.Context) (core.Credentials, error)
 }
 
 func newApplication() application {
-	return application{version: version, configDir: os.UserConfigDir, diagnostics: diagnostics.Collect}
+	return application{
+		version: version, configDir: os.UserConfigDir, diagnostics: diagnostics.Collect,
+		vpnSupported: foregroundVPNSupported,
+		vpnAdapter: func() core.Adapter { return core.NewNetworkManager() },
+		credentials: func(ctx context.Context) (core.Credentials, error) { return readCredentialInput(ctx, os.Stdin) },
+	}
 }
 
 func (a application) run(ctx context.Context, args []string, out, errOut io.Writer) int {
@@ -98,7 +111,7 @@ func (a application) run(ctx context.Context, args []string, out, errOut io.Writ
 	if args[0] == "diagnostics" {
 		return a.diagnose(ctx, args[1:], out, errOut)
 	}
-	if args[0] != "profiles" && args[0] != "validate" {
+	if args[0] != "profiles" && args[0] != "validate" && args[0] != "connect" {
 		return usageError(errOut)
 	}
 	if *configPath == "" {
@@ -107,6 +120,9 @@ func (a application) run(ctx context.Context, args []string, out, errOut io.Writ
 			return failure(errOut, "Cannot locate the configuration directory; pass --config FILE.")
 		}
 		*configPath = filepath.Join(base, "meridian", "profiles.json")
+	}
+	if args[0] == "connect" {
+		return a.connect(ctx, *configPath, args[1:], out, errOut)
 	}
 	if args[0] == "validate" {
 		return a.validate(*configPath, args[1:], out, errOut)

@@ -1,5 +1,4 @@
-// meridianctl provides headless configuration and read-only readiness workflows.
-// It deliberately has no connect/disconnect command or credential input.
+// meridianctl provides configuration, read-only readiness and owned foreground VPN sessions.
 package main
 
 import (
@@ -11,5 +10,8 @@ import (
 var version = "dev"
 
 func main() {
-	os.Exit(newApplication().run(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
+	ctx, stop := commandSignalContext(context.Background())
+	code := newApplication().run(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
 }

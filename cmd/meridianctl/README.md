@@ -1,6 +1,6 @@
 # Meridian 命令行
 
-`meridianctl` 是独立的无界面配置与就绪检查工具，不依赖 GTK 或图形会话。它没有连接/断开、密码输入、自动安装、sudo 或修改路由/DNS 的命令。
+`meridianctl` 是独立的无界面配置与就绪检查工具，不依赖 GTK 或图形会话。Linux 另提供明确授权的前台连接模式，复用桌面版 Engine 与 NetworkManager；Ctrl+C 或 SIGTERM 清理该进程拥有的会话。其他命令保持离线/只读，不自动安装软件或调用 sudo。
 
 ## 构建
 
@@ -45,7 +45,7 @@ JSON 有稳定的 `schema_version: 1`、`read_only: true`、`backend.prerequisit
 
 ### 交互式认证配置
 
-Meridian 配置字段 `interactive_auth` 是布尔值，省略或 `false` 使用原有非交互认证路径；`true` 要求可选 `meridian-auth-helper`，用于桌面程序中的结构化 MFA/OTP、认证选项等交互流程。它不等同于支持所有企业 SSO、Host Checker 或终端合规要求。CLI 会保留并展示此开关，但不采集密码/OTP、不启动该流程。`validate` 仅校验本地配置，是否装有可用 helper 请看 `diagnostics` 的可选检查。修改和连接请在原生桌面界面完成。
+Meridian 配置字段 `interactive_auth` 是布尔值，省略或 `false` 使用原有非交互认证路径；`true` 要求可选 `meridian-auth-helper`，用于桌面程序中的结构化 MFA/OTP、认证选项等交互流程。它不等同于支持所有企业 SSO、Host Checker 或终端合规要求。CLI 会保留并展示此开关，但前台 connect 明确拒绝交互式 MFA 配置，不采集 OTP、不冒充支持该流程。`validate` 仅校验本地配置，是否装有可用 helper 请看 `diagnostics` 的可选检查。修改和连接请在原生桌面界面完成。
 
 ## 导入预览与导出
 
@@ -72,3 +72,24 @@ Meridian 配置字段 `interactive_auth` 是布尔值，省略或 `false` 使用
 `meridianctl profiles preview-ini --file received.ini --json` 可检查有界 UTF-8 INI 的分节与配置项数量。原生设置页也提供“只读检查 INI”。不显示任何分节名、字段名或值，不读取活动配置，不推断协议，不导入或写入文件。重复键、重复分节、非法编码、控制字符与超限输入会被拒绝。识别到的密码类字段数量仅作提示，不代表识别了所有秘密。
 
 这不是 UniVPN 私有 INI 格式兼容导入。没有经过验证的厂商字段契约时，不把未知字段转换成网关、安全策略或认证配置。
+
+
+## Linux 前台连接与断开
+
+```sh
+# 私密凭据应由可信秘密管理器经 stdin 提供；不要把密码写进 shell 参数或历史。
+secret-manager-command | ./build/meridianctl --config ./profiles.json connect \
+  --profile 1 --authorize-network --credentials-stdin
+```
+
+这里 `secret-manager-command` 是占位说明，需替换为自己的可信秘密来源，不是随应用提供的命令。输入是单个 JSON 对象，并在发送后关闭写端（EOF）；可用字段仅为 `password`、`ipsec_psk`、`key_password`，值必须是字符串。PKCS#12/PEM 私钥口令使用 `key_password`；L2TP 同时要求 password 与 ipsec_psk，其他协议禁止 PSK。无需秘密的证书模式可输入空对象。拒绝终端直接输入，避免密码回显；不接受密码 argv、环境变量、额外对象、重复键、未知键、null、超过 16 KiB 的输入或超过 4096 字节的字段。
+
+每次运行必须同时指定 1-based `--profile`、`--authorize-network` 和 `--credentials-stdin`，不保存授权。授权覆盖该配置的网关认证及本次路由/DNS 变更，不自动切换备用网关、不重放凭据或重连。凭据不写配置/日志，拥有的字节缓冲区在使用后清零；Go JSON 解码的短暂字符串及运行时副本无法承诺物理内存完全擦除。
+
+连接保持前台运行，仅输出 Connecting/Connected/Disconnecting 等状态，不打印账号、网关、IP 或原始后端错误。Connected 只表示核心后端的隧道/接口验证通过，不代表企业内网资源或 DNS 策略已验收。
+
+**断开：** 对这个前台命令按 Ctrl+C，或向这个进程发送 SIGTERM。Unix 终端挂断（SIGHUP）与输出管道断开也进入自身会话清理流程。程序等待自身会话的清理确认才退出，不终止 GUI、其他进程或其他 VPN。没有跨进程 `disconnect` 命令，也没有 PID 文件、后台守护或重连功能。不要使用 SIGKILL/强制关闭代替正常断开；强制杀死、系统崩溃及断电不能保证清理。
+
+正常取消并确认清理返回 0；认证失败、意外连接丢失、输出失败或无法确认清理返回 1；缺少授权参数等用法错误返回 2。清理无法确认时，明确提示检查系统 VPN 服务后再连接。终端 MFA、外部浏览器 SSO 和非 Linux VPN 后端不在此命令支持范围。
+
+本实现的测试使用假后端和私有文件/管道，不连接真实网关，不修改测试宿主的路由、DNS 或接口。实际企业隧道仍需要单独授权的验收环境。

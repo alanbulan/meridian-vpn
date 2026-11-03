@@ -110,7 +110,7 @@ go build -buildvcs=false -trimpath -o build/meridianctl.exe ./cmd/meridianctl
 ./build/meridianctl diagnostics --json
 ```
 
-CLI 不提供连接、断开或密码输入。诊断只检查依赖与就绪状态，存在阻断项时返回退出码 1。导出文件可能含网关、账号和本地路径，分享前仍需审阅。完整命令见 [CLI 文档](cmd/meridianctl/README.md)。
+以上命令保持离线/只读。Linux另提供显式 `connect --profile N --authorize-network --credentials-stdin` 前台连接：通过非终端stdin接收有界凭据JSON，Ctrl+C/SIGTERM清理本进程拥有的会话。终端MFA、跨进程disconnect和自动重连尚未实现，真实网关/路由DNS恢复仍未验收。诊断只检查依赖与就绪状态，存在阻断项时返回退出码 1。导出文件可能含网关、账号和本地路径，分享前仍需审阅。完整命令见 [CLI 文档](cmd/meridianctl/README.md)。
 
 ## 技术架构
 
@@ -130,7 +130,7 @@ flowchart TB
 | --- | --- | --- |
 | 原生界面 | [internal/desktop](internal/desktop) | 页面、认证交互、导入导出、生命周期提示 |
 | 会话与协议适配 | [internal/core](internal/core) | 配置校验、授权、认证、连接状态和回滚 |
-| 无界面管理 | [cmd/meridianctl](cmd/meridianctl) | 离线配置、INI 结构预览、只读诊断 |
+| 无界面管理 | [cmd/meridianctl](cmd/meridianctl) | 离线配置、INI 结构预览、只读诊断；Linux显式授权前台连接与自身会话清理 |
 | 系统辅助能力 | [internal/autostart](internal/autostart)、[internal/diagnostics](internal/diagnostics) | 启动项与有限、脱敏的环境报告 |
 | 实验性隔离 | [internal/processcontainment](internal/processcontainment)、[integration/worker-bootstrap](integration/worker-bootstrap) | cgroup 生命周期契约、受限 worker 启动代码与注入测试 |
 | 离线部署准备 | [integration/provisioning](integration/provisioning) | 清单、哈希、文件类型与工作区暂存；不安装、不激活 |

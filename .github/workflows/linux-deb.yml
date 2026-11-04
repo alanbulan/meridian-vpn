@@ -1,0 +1,60 @@
+name: Linux 安装包构建与安装验收
+on:
+  push:
+    branches: [candidate/linux-minimal-20261104]
+    paths: [.github/workflows/linux-deb.yml, scripts/package-linux-deb.py, scripts/test_linux_deb.py, scripts/test-deb-installed.sh, packaging/linux/**]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: 获取并验证原始发布包
+        run: |
+          mkdir -p build/deb
+          curl --fail --location --retry 2 --max-time 120 https://github.com/alanbulan/meridian-vpn/releases/download/v0.1.0-alpha.1/meridian-linux-amd64.tar.gz -o build/original.tar.gz
+          echo '9247a8c826b7f8683ac4758e52fddb5df0e66e8eba3d115bdbe5501073c99d36  build/original.tar.gz' | sha256sum -c -
+      - name: 构建与校验 Debian 安装包
+        run: |
+          python3 -m unittest discover -s scripts -p test_linux_deb.py -v
+          python3 scripts/package-linux-deb.py --archive build/original.tar.gz --packaging-commit "$GITHUB_SHA" --output 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb'
+          python3 scripts/package-linux-deb.py --archive build/original.tar.gz --packaging-commit "$GITHUB_SHA" --output build/repeat.deb
+          cmp 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb' build/repeat.deb
+          dpkg-deb --info 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb'
+          dpkg-deb --contents 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb'
+          cp packaging/linux/安装说明.md build/deb/安装说明.md
+          cd build/deb
+          sha256sum *.deb > SHA256SUMS-deb
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: meridian-linux-deb
+          path: build/deb/
+          if-no-files-found: error
+          retention-days: 14
+  install:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [debian:trixie-slim, ubuntu:24.04]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: meridian-linux-deb
+          path: build/deb
+      - name: 在全新隔离容器中验证安装、启动与卸载
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker run --rm -e MERIDIAN_DISPOSABLE_INSTALL_TEST=1 \
+            -v "$PWD/build/deb:/input:ro" -v "$PWD/scripts/test-deb-installed.sh:/test.sh:ro" \
+            "$IMAGE" sh /test.sh

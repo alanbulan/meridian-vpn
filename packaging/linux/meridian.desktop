@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Meridian VPN
+Name[zh_CN]=Meridian VPN 客户端
+Comment=Native desktop VPN client (alpha)
+Comment[zh_CN]=原生桌面 VPN 客户端（测试版）
+Exec=/usr/bin/meridian
+TryExec=/usr/bin/meridian
+Icon=meridian
+Terminal=false
+Categories=Network;
+StartupNotify=true

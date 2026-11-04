@@ -105,6 +105,7 @@ jobs:
           expected |= {'TestNMVPNWireManagerLibnmNormalization', 'TestNMVPNWireManagerNormalizationTampering'}
           expected |= {'TestNMVPNWireHostObservationInitialReadOnlySnapshot', 'TestNMVPNWireHostObservationRejectsMissingAndUnsupportedFields', 'TestNMVPNWireHostObservationRejectsMembership', 'TestNMVPNWireHostObservationRejectsChangedReadback', 'TestNMVPNWireHostObservationRejectsUncorrelatedAndStaleInputs', 'TestNMVPNWireHostObservationCancellationJoinsRead'}
           expected |= {'TestNMVPNWireRetainedCorrelationUsesOnlyOriginalSuccessfulReceipt', 'TestNMVPNWireRetainedCorrelationDoesNotPoisonForeignTransaction'}
+          expected |= {'TestNMVPNWireIPv4ObservationBoundProjection', 'TestNMVPNWireIPv4ObservationRejectsProjection', 'TestNMVPNWireIPv4ObservationRejectsUnboundAndStaleInputs', 'TestNMVPNWireIPv4ObservationRejectsDrift', 'TestNMVPNWireIPv4ObservationCancellationJoinsRead'}
           passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
           assert expected <= passed, 'a required wire case did not pass'
           assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'
@@ -127,3 +128,4 @@ jobs:
           path: reports/nmvpn-wire/
           if-no-files-found: warn
           retention-days: 7
+

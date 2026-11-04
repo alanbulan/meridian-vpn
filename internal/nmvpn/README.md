@@ -316,6 +316,15 @@ retained identities without supplying the missing host-policy authority.
 Applied/global/dispatcher policy, independent absence readback and authorized
 real-kernel acceptance remain missing; normal application enablement is unchanged.
 
+The same receipt now provides a separate post-publication `ObserveIPv4` path:
+it reads the exact ACTIVATED connection's bounded NM IPv4 projection and compares
+modern/legacy address and route fields with its already-bound native offer.
+It rejects DNS/IPv6, unsupported attributes and observed drift, without NM writes
+or a caller-selected path. The [observation contract](HOST-OBSERVATION.md#post-publication-ipv4-projection)
+documents source-derived NM 1.52.1 shapes, export truncation/filtering/cache limits,
+and private-bus tests. This is historical readback, not a full applied/global
+policy validator, host authority, independent absence proof or Ready gate.
+
 
 ## Retained local generation correlation
 
@@ -369,3 +378,4 @@ provenance without refreshing native/NM liveness. The normal application remains
 disabled for this experimental path. Tests inject all TUN, namespace and netlink
 operations; no real-kernel acceptance has run. The previous product gates remain
 open rather than being marked complete by mock or CI evidence.
+

@@ -40,6 +40,59 @@ These are necessary distinctions:
 - Equal sequential samples detect observed drift only. They provide no atomic
   snapshot, lock, lease, or protection against changes after return.
 
+## Post-publication IPv4 projection
+
+`ActivationReceipt.ObserveIPv4` is a separate one-shot observation after both
+configuration signals. It derives the exact binding and offer from the same
+authenticated Activation, not caller-selected paths or an expected-route list.
+It requires the correlated manager receipt, successful password handoff, immutable
+native binding, and the exact active connection in ACTIVATED state. It reads that
+connection's own IP4Config through the retained pinned bus with NO_AUTO_START.
+It does not use a parent device's GetAppliedConnection. Call it outside Broker
+callbacks, which already hold the bus serialization lock.
+
+The closed projection checks one exact offered IPv4 address, every offered direct
+route, no other route except the exact directly connected subnet, main-table
+routes only, no default gateway, and empty DNS/WINS/search/options collections.
+It requires `/` IPv6 and DHCP configuration references. Modern and deprecated
+IPv4 arrays must agree, including metrics. Unknown address/route attributes,
+missing properties, malformed signatures, duplicates, foreign references and
+observed drift fail closed. Address/next-hop integers use native-endian in_addr
+bytes; prefixes and metrics remain ordinary uint32 values. Routes are compared
+as sets. DNS priority and route metrics are observed values, not approved global
+policy. The supported source-derived shape is NM 1.52.1; there is no permissive
+fallback for older versions with missing modern properties.
+
+Two complete projections, current secret-free settings, active membership and
+boot/bus/owner/local activation pins must agree. Success returns copied historical
+data only. Failure quarantines the local transaction and closes its pinned
+connection, but sends no NM mutation, installs no service, and owns no cleanup.
+A copied receipt cannot repeat the observation. This cannot implement
+HostBinding.CheckLive, ProveAbsent, a host lease or core.Ready. It does not poll
+until activation or automatically wire the normal application.
+
+The reviewed NM source limits address/route export to 100 records and excludes
+non-unicast routes; deprecated Routes additionally omit defaults and non-main
+tables. This observer rejects 100 or more projected routes and accepts at most
+98 offered routes plus one connected prefix. That bound avoids accepting an
+observed truncation boundary but does not recover omitted route types. IP4Config
+also uses cached, rate-limited platform notifications. Even two matching samples
+therefore cannot prove all kernel routes, RPDB rules, current resolver state,
+initial host namespace identity, global configuration, dispatcher quiescence,
+absence, or an atomic snapshot. It is a concrete NM read path, not the missing
+independent kernel/global-policy proof.
+
+The tests use a real private D-Bus daemon and synthetic NM with source-derived
+values, including actual manager receipt correlation, credential handoff, binding
+and both directed publications. No native worker, system bus or real NM daemon
+is started. No TUN, NETLINK_ROUTE socket or host network operation is attempted.
+These tests do not replace authorized real-NM/kernel/gateway acceptance.
+
+Primary implementation references:
+- [NM 1.52.1 IPv4 object and cached platform projection](https://github.com/NetworkManager/NetworkManager/blob/1.52.1/src/core/nm-ip-config.c)
+- [NM 1.52.1 address/route serializers, limits and legacy byte order](https://github.com/NetworkManager/NetworkManager/blob/1.52.1/src/core/NetworkManagerUtils.c)
+- [IP4Config property signatures](https://networkmanager.dev/docs/api/latest/gdbus-org.freedesktop.NetworkManager.IP4Config.html)
+
 ## Explicit trusted file pins
 
 The file observer opens only an explicitly provisioned, bounded list of paths and
@@ -112,3 +165,4 @@ state; only injected tests run in CI. It cannot replace HostAuthority/HostBindin
 See [its resource contract](../packetrelay/README.md#separate-retained-tun-acquisition-precursor).
 Actual namespace/activation/native-generation correlation, applied/global policy,
 relay ownership and independent network-absence readback remain missing.
+

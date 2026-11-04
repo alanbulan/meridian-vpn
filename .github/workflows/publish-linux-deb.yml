@@ -20,6 +20,8 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - name: 离线验证只追加发布和并发保护
+        run: python3 -m unittest discover -s scripts -p test_publish_linux_deb.py -v
       - name: 验证完整安装验收并追加安装包，不替换原文件
         env:
           GH_TOKEN: ${{ github.token }}

@@ -110,6 +110,7 @@ type serviceWireBackend struct {
 	closeErr       error
 	closes         int
 	closeContextOK bool
+	closeRelease   <-chan struct{}
 }
 
 func (b *serviceWireBackend) Binding() Binding      { return b.binding }
@@ -120,6 +121,13 @@ func (b *serviceWireBackend) Close(ctx context.Context) error {
 	b.closes++
 	_, bounded := ctx.Deadline()
 	b.closeContextOK = ctx.Err() == nil && bounded
+	if b.closeRelease != nil {
+		select {
+		case <-b.closeRelease:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	return b.closeErr
 }
 
@@ -133,6 +141,7 @@ type serviceWireFixture struct {
 	factoryCalls int
 	policyCalls  int
 	mode         string
+	closeRelease chan struct{}
 }
 
 func newServiceWireFixture(t *testing.T) *serviceWireFixture {
@@ -209,7 +218,7 @@ func newServiceWireFixture(t *testing.T) *serviceWireFixture {
 		if err = a.Bind(ctx, binding, f.offer); err != nil {
 			return nil, err
 		}
-		b := &serviceWireBackend{nmPluginWireBroker: &nmPluginWireBroker{nmWireBroker: &nmWireBroker{binding: binding, offer: f.offer}, activation: a}, trace: w.trace, done: make(chan struct{})}
+		b := &serviceWireBackend{nmPluginWireBroker: &nmPluginWireBroker{nmWireBroker: &nmWireBroker{binding: binding, offer: f.offer}, activation: a}, trace: w.trace, done: make(chan struct{}), closeRelease: w.closeRelease}
 		w.backend = b
 		switch w.mode {
 		case "partial factory":
@@ -277,10 +286,13 @@ type serviceWireResult struct {
 }
 
 func TestNMVPNWireServiceActualCompositionLifecycle(t *testing.T) {
-	for _, mode := range []string{"success", "failed Close", "policy revoked"} {
+	for _, mode := range []string{"success", "failed Close", "policy revoked", "backend ended", "Disconnect", "owner loss"} {
 		t.Run(mode, func(t *testing.T) {
 			w := newServiceWireFixture(t)
 			w.mode = mode
+			if mode == "Disconnect" {
+				w.closeRelease = make(chan struct{})
+			}
 			s := w.newService(t)
 			copied := &Service{self: s, config: s.config}
 			if r, e := copied.Run(w.ctx); e == nil || r != (ServiceResult{}) || s.claimed.Load() {
@@ -307,8 +319,8 @@ func TestNMVPNWireServiceActualCompositionLifecycle(t *testing.T) {
 			}
 			serviceWireState(t, w, signals, 4)
 			// Observing the signal alone is insufficient: stateLocked performs a final
-			// pin readback after Emit. Join its mutex release before canceling so this
-			// specifically exercises steady-state cancellation, not in-flight bus loss.
+			// pin readback after Emit. Join its mutex release before ending the
+			// generation. This also synchronizes reads of the initialized backend.
 			plugin := w.bus.plugin.Load()
 			if plugin == nil {
 				t.Fatal("Run did not retain plugin")
@@ -317,9 +329,28 @@ func TestNMVPNWireServiceActualCompositionLifecycle(t *testing.T) {
 			plugin.mu.Unlock()
 			// Startup timer finalization may still return errService on cancellation,
 			// but cleanup must retain this exact bus for NM withdrawal and STOPPED.
-			if mode == "policy revoked" {
+			switch mode {
+			case "policy revoked":
 				close(w.config.GlobalPolicy.(*serviceTestPolicy).done)
-			} else {
+			case "backend ended":
+				close(w.backend.done)
+			case "Disconnect":
+				// The reader cancels Activation before dispatching Disconnect.
+				// Hold the final local join until its handler emits STOPPING,
+				// so MarkStopped cannot overtake the authenticated method reply.
+				var release sync.Once
+				unblock := func() { release.Do(func() { close(w.closeRelease) }) }
+				defer unblock()
+				if err := w.service.conn.Object(PluginService, PluginPath).CallWithContext(w.ctx, PluginInterface+".Disconnect", dbus.FlagNoAutoStart).Err; err != nil {
+					t.Fatal("authenticated Disconnect failed", err)
+				}
+				serviceWireState(t, w, signals, 5)
+				unblock()
+			case "owner loss":
+				if reply, err := w.service.conn.ReleaseName(NMName); err != nil || reply != dbus.ReleaseNameReplyReleased {
+					t.Fatal("synthetic NM owner release failed", err)
+				}
+			default:
 				cancel()
 			}
 			var got serviceWireResult
@@ -328,13 +359,19 @@ func TestNMVPNWireServiceActualCompositionLifecycle(t *testing.T) {
 			case <-w.ctx.Done():
 				t.Fatal("Run failed to join cancellation")
 			}
-			if !got.result.Published || got.result.NetworkAbsent != (mode != "failed Close") || !got.result.ReconciliationRequired {
+			if !got.result.Published || got.result.NetworkAbsent != (mode != "failed Close" && mode != "owner loss") || !got.result.ReconciliationRequired {
 				t.Fatalf("incorrect result: %+v", got)
 			}
-			if mode == "policy revoked" && !errors.Is(got.err, errService) {
-				t.Fatal("policy revocation did not report lifecycle failure", got.err)
+			if (mode == "policy revoked" || mode == "backend ended" || mode == "Disconnect") && !errors.Is(got.err, errService) {
+				t.Fatal("generation loss did not report lifecycle failure", got.err)
 			}
-			if mode != "failed Close" {
+			if mode == "owner loss" {
+				if !errors.Is(got.err, errServiceCleanup) || !got.result.LocalStopped || !w.bus.invalid.Load() || !w.backend.stopped {
+					t.Fatalf("owner loss did not retain uncertainty and join local handles: %+v", got)
+				}
+				// The invalidated plugin bus cannot report STOPPED. Local state
+				// alone is not evidence that a state signal was delivered.
+			} else if mode != "failed Close" {
 				if (got.err != nil && !errors.Is(got.err, errService)) || !got.result.LocalStopped {
 					t.Fatalf("successful lifecycle failed: %+v", got)
 				}
@@ -350,14 +387,25 @@ func TestNMVPNWireServiceActualCompositionLifecycle(t *testing.T) {
 			w.service.mu.Lock()
 			deactivations, caller, active := w.service.deactivations, w.service.caller, w.service.active
 			w.service.mu.Unlock()
-			if deactivations != 1 || caller != w.bus.UniqueName() || active {
-				t.Fatal("canceled caller lost pinned cleanup bus")
+			if mode == "owner loss" {
+				if deactivations != 0 || !active {
+					t.Fatal("lost owner allowed NM withdrawal or invented absence")
+				}
+			} else if deactivations != 1 || caller != w.bus.UniqueName() || active {
+				t.Fatal("ended generation lost pinned cleanup bus")
 			}
 			expected := []string{"factory preflight", "policy preflight", "AddConnection2", "ActivateConnection", "Connect", "factory Start", "publication policy", "publication policy", "DeactivateConnection", "Close"}
+			if mode == "owner loss" {
+				expected = append(expected[:8], "Close")
+			}
 			if !reflect.DeepEqual(w.trace.snapshot(), expected) {
 				t.Fatal("incorrect composition order", w.trace.snapshot())
 			}
-			if r, e := w.config.PublicationJournal.Load(); e != nil || r != nil {
+			if r, e := w.config.PublicationJournal.Load(); mode == "owner loss" {
+				if e != nil || r == nil || r.Phase != "quarantine" || r.Identity != w.backend.binding.Identity {
+					t.Fatal("owner loss discarded exact publication recovery evidence", e)
+				}
+			} else if e != nil || r != nil {
 				t.Fatal("proven removal retained publication journal", e)
 			}
 			if r, e := w.config.ActivationJournal.LoadActivation(); e != nil || r == nil || r.Phase != "quarantine" || r.ActivePath != string(wireActive) {

@@ -478,7 +478,7 @@ func (a *App) connectionStatus(c *ui.Context) {
 	state := snapshot.State
 	if a.macServiceOwnsAttempt(snapshot) {
 		p = a.macService.activeProfile
-	} else if a.windowsOwnsAttempt(snapshot) {
+	} else if a.windowsOwnsAttempt(snapshot) && snapshot.State != core.Failed {
 		p = a.windowsActiveProfile
 	}
 	ui.Column(c).Width(294).Height(paneHeight).MinHeight(0).MaxHeight(paneHeight).Shrink(0).Padding(20, 22).Gap(12).Background(a.sidebar()).Border(1, t.Border).Radius(16, 0, 0, 16).Children(func() {
@@ -702,8 +702,12 @@ func (a *App) editor(c *ui.Context) {
 		if protocol != a.Draft.Protocol {
 			a.setDraftProtocol(protocol)
 		}
-		a.label(c, "Username")
-		ui.TextInput(c.Key("profile-user"), &a.Draft.Username).Placeholder(a.tr("Optional")).FillWidth()
+		usernameLabel, usernamePlaceholder := "Username", "Optional"
+		if a.Draft.Protocol == core.WindowsBorrowedProtocol {
+			usernameLabel, usernamePlaceholder = "Username (required)", "Required"
+		}
+		a.label(c, usernameLabel)
+		ui.TextInput(c.Key("profile-user"), &a.Draft.Username).Placeholder(a.tr(usernamePlaceholder)).FillWidth()
 		if ui.ButtonBase(c.Key("advanced")).Label(a.tr("Authentication & transport")).Padding(4).TextColor(t.Accent).Children(func() {
 			ui.Row(c).Gap(7).Children(func() {
 				ui.Icon(c, icons["Settings"]).Size(15, 15)

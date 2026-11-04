@@ -87,5 +87,12 @@ func (a *App) windowsNotice(c *ui.Context, text string) {
 }
 
 func (a *App) windowsOwnsAttempt(s core.Snapshot) bool {
-	return a.windowsActiveProfile != nil && a.windowsActiveAttemptID != 0 && a.windowsActiveAttemptID == s.AttemptID
+	// Retain failed/uncertain attempt identity for truthful diagnostics, but a
+	// clean disconnect must show the newly selected profile for the next attempt.
+	switch s.State {
+	case core.Connecting, core.Connected, core.Disconnecting, core.CleanupFailed, core.Failed:
+		return a.windowsActiveProfile != nil && a.windowsActiveAttemptID != 0 && a.windowsActiveAttemptID == s.AttemptID
+	default:
+		return false
+	}
 }

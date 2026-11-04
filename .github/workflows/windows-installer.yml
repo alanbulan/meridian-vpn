@@ -1,7 +1,7 @@
 name: Windows 安装包构建与预览验收
 on:
   push:
-    branches: [candidate/windows-product-20261104]
+    branches: [candidate/windows-product-20261104, candidate/windows-ui-20261104]
 permissions:
   contents: read
 jobs:

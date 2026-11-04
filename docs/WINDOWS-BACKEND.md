@@ -367,3 +367,33 @@ Sources:
 - [RasDial direct-result and reference obligations](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw)
 - [RasHangUp asynchronous termination](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rashangupw)
 - [RasDeleteEntry scope](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdeleteentryw)
+
+### Dial parameter marshalling (offline, injected only)
+
+`withDialParameters` prepares four-byte-aligned `RASDIALPARAMSW` storage and an
+explicit phonebook path for a synchronous injected consumer. The Windows 10
+layout includes the Windows 8+ `szEncPassword` pointer; its x86/x64 size and every
+field offset are asserted against the installed Microsoft SDK in CI. Native
+arm64 ABI acceptance remains unverified; its Go test binary is compile-only.
+
+The boundary rejects missing entry/path/user/password, malformed UTF-8, embedded
+NUL/CR/LF, field-length overflow, and `*` as a saved-phonebook domain selector.
+An empty domain deliberately means the remote server's domain. All override,
+callback, subentry, interface and encrypted-password fields remain zero. No PSK
+or saved-credential API is involved. This does not prove that a future native
+dial cannot persist credentials or that an opaque saved-password token cannot
+be interpreted specially by RAS; native credential semantics remain a gate.
+
+The password is encoded directly from bytes into mutable UTF-16 storage without
+an immutable string or intermediate rune slice. All owned buffers are cleared
+after the injected consumer returns, errors or panics; the caller's password is
+unchanged. The consumer must not retain buffers or start asynchronous work.
+**Do not pass this scoped buffer to asynchronous RasDial:** its immediate return
+does not establish consumer quiescence. This package neither loads nor calls a
+dial API, and marshalling grants no network permission, profile ownership or
+readiness. Future native lifecycle integration must establish independent
+callback/buffer lifetime, cancellation and profile-revalidation contracts.
+
+References: [current SDK declarations](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/Ras.h),
+[parameter semantics](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377238(v=vs.85)),
+and [asynchronous RasDial lifetime](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw).

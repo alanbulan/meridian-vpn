@@ -71,3 +71,21 @@ CHECK(connected_state, RASCS_Connected == 0x2000);
 CHECK(disconnected_state, RASCS_Disconnected == 0x2001);
 CHECK(owner_known, RASCF_OwnerKnown == 0x4);
 CHECK(owner_match, RASCF_OwnerMatch == 0x8);
+
+/* Dial parameters: include the Windows 8+ encrypted-password pointer. */
+#define DIALOFF(field, expected) CHECK(dial_##field, offsetof(RASDIALPARAMSW, field) == (expected))
+CHECK(dial_username_limit, UNLEN == 256);
+CHECK(dial_password_limit, PWLEN == 256);
+CHECK(dial_domain_limit, DNLEN == 15);
+DIALOFF(dwSize, 0);
+DIALOFF(szEntryName, 4);
+DIALOFF(szPhoneNumber, 518);
+DIALOFF(szCallbackNumber, 776);
+DIALOFF(szUserName, 1034);
+DIALOFF(szPassword, 1548);
+DIALOFF(szDomain, 2062);
+DIALOFF(dwSubEntry, 2096);
+DIALOFF(dwCallbackId, 2100);
+DIALOFF(dwIfIndex, 2100 + sizeof(void *));
+DIALOFF(szEncPassword, 2104 + sizeof(void *));
+CHECK(dial_size, sizeof(RASDIALPARAMSW) == 2104 + 2 * sizeof(void *));

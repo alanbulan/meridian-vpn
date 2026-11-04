@@ -89,3 +89,9 @@ DIALOFF(dwCallbackId, 2100);
 DIALOFF(dwIfIndex, 2100 + sizeof(void *));
 DIALOFF(szEncPassword, 2104 + sizeof(void *));
 CHECK(dial_size, sizeof(RASDIALPARAMSW) == 2104 + 2 * sizeof(void *));
+
+/* Compile-only callback assignment checks the SDK signature/calling convention.
+   No definition, link, callback invocation or RAS function is needed here. */
+DWORD CALLBACK meridian_callback_signature(ULONG_PTR, DWORD, HRASCONN, UINT,
+                                          RASCONNSTATE, DWORD, DWORD);
+RASDIALFUNC2 meridian_callback_contract = meridian_callback_signature;

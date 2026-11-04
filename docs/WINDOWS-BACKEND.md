@@ -397,3 +397,34 @@ callback/buffer lifetime, cancellation and profile-revalidation contracts.
 References: [current SDK declarations](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/Ras.h),
 [parameter semantics](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377238(v=vs.85)),
 and [asynchronous RasDial lifetime](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw).
+
+### Callback routing and trampoline (no dialing)
+
+An unexported callback router now provides bounded scalar notification mailboxes:
+at most 32 registrations and 16 queued events per registration. Its nonzero
+integer callback IDs are never reused, including after retirement; machine-word
+ID exhaustion blocks registration permanently. Overflow faults the attempt and
+discards queued observations instead of silently dropping a terminal event.
+Callbacks do not execute application handlers, wait for consumers, interpret
+readiness, or acquire ownership of the reported handle. Events may arrive before
+a direct dial return, out of order or repeatedly.
+
+Windows has one lazily allocated process-lifetime `RASDIALFUNC2` trampoline using
+Go's Windows callback bridge. The SDK compile-only check verifies its declared
+seven-argument WINAPI signature; Windows amd64 and WOW64 386 tests invoke only
+our own trampoline through `SyscallN`, never a RAS function or DLL. The test
+checks scalar argument transport, singleton reuse and rejection of late events.
+The arm64 binary remains compile-only. No native dialer uses the trampoline.
+
+Retirement serializes with the Go dispatch body, removes its ID, clears queued
+events and wakes its consumer. Future callbacks safely reject the retired ID.
+This is **not native callback-stack or credential-buffer quiescence**: the
+process-lifetime trampoline is not freed, and native input consumers are outside
+this registry. Returning zero suppresses notifications, not the connection.
+Canceling an observer wait does not retire an attempt or create cleanup rights.
+The existing direct-result reference ledger remains separate. A production
+driver still needs verified native input lifetime, cancellation, isolation and
+credential-persistence behavior before any real dial is enabled.
+
+References: [RASDIALFUNC2 behavior](https://learn.microsoft.com/en-us/windows/win32/api/ras/nc-ras-rasdialfunc2)
+and [Go Windows callback implementation](https://go.dev/src/syscall/syscall_windows.go).

@@ -65,6 +65,12 @@ and an explicit `live_vpn_acceptance: false` summary are written under reports.
 These tests are regression checks, not an OS-enforced malicious-code sandbox.
 Do not run the production worker bootstrap or install a privileged service.
 
+The CLI fixture uses the production helper discovery checks, unlike the core
+fixture's explicit executable injection. Its helper path and every ancestor must
+be owned by root/the current user, non-symlink, and not group/world writable.
+CI builds it under the unprivileged fixture user's home rather than weakening
+those checks for a shared checkout.
+
 ## Runner regressions and evidence limits
 
 ```sh

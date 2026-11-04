@@ -56,12 +56,12 @@ Exit codes: 0 success/ready, 1 invalid/unavailable/failure, 2 usage error.
 `
 
 type application struct {
-	version     string
-	configDir   func() (string, error)
-	diagnostics func(context.Context, string) diagnostics.Report
+	version      string
+	configDir    func() (string, error)
+	diagnostics  func(context.Context, string) diagnostics.Report
 	vpnSupported func() bool
-	vpnAdapter func() core.Adapter
-	credentials func(context.Context) (core.Credentials, error)
+	vpnAdapter   func() core.Adapter
+	credentials  func(context.Context) (core.Credentials, error)
 	authTerminal func() (authTerminal, error)
 }
 
@@ -70,8 +70,8 @@ func newApplication() application {
 		version: version, configDir: os.UserConfigDir, diagnostics: diagnostics.Collect,
 		vpnSupported: foregroundVPNSupported,
 		authTerminal: openAuthTerminal,
-		vpnAdapter: func() core.Adapter { return core.NewNetworkManager() },
-		credentials: func(ctx context.Context) (core.Credentials, error) { return readCredentialInput(ctx, os.Stdin) },
+		vpnAdapter:   func() core.Adapter { return core.NewNetworkManager() },
+		credentials:  func(ctx context.Context) (core.Credentials, error) { return readCredentialInput(ctx, os.Stdin) },
 	}
 }
 

@@ -24,14 +24,26 @@ func TestTerminalPromptBoundsAndSelectMapping(t *testing.T) {
 	values := [][]byte{[]byte("private-otp"), []byte("2")}
 	var output bytes.Buffer
 	a, err := collectTerminalAnswer(context.Background(), ch, func(context.Context) ([]byte, error) {
-		value := values[0]; values = values[1:]; return value, nil
+		value := values[0]
+		values = values[1:]
+		return value, nil
 	}, func(_ context.Context, value string) error { _, err := output.WriteString(value); return err })
-	defer func() { for _, v := range a.Values { clear(v) } }()
-	if err != nil || string(a.Values["otp"]) != "private-otp" || string(a.Values["method"]) != "backup" || a.Round != ch.Round || a.SessionID != ch.SessionID { t.Fatal("valid answer did not preserve session or map selection") }
-	for _, secret := range []string{"private-otp", "private-title", "private-message", "\x1b", "\r", "\t", "\u202e", "\u2066", strings.Repeat("z", 97)} {
-		if strings.Contains(output.String(), secret) { t.Fatal("terminal text disclosed an answer or unbounded/unsafe gateway data") }
+	defer func() {
+		for _, v := range a.Values {
+			clear(v)
+		}
+	}()
+	if err != nil || string(a.Values["otp"]) != "private-otp" || string(a.Values["method"]) != "backup" || a.Round != ch.Round || a.SessionID != ch.SessionID {
+		t.Fatal("valid answer did not preserve session or map selection")
 	}
-	if !strings.Contains(output.String(), "Gateway field 1") { t.Fatal("missing local prompt context") }
+	for _, secret := range []string{"private-otp", "private-title", "private-message", "\x1b", "\r", "\t", "\u202e", "\u2066", strings.Repeat("z", 97)} {
+		if strings.Contains(output.String(), secret) {
+			t.Fatal("terminal text disclosed an answer or unbounded/unsafe gateway data")
+		}
+	}
+	if !strings.Contains(output.String(), "Gateway field 1") {
+		t.Fatal("missing local prompt context")
+	}
 }
 
 func TestTerminalPromptRejectsMalformedFormBeforeInput(t *testing.T) {
@@ -50,11 +62,14 @@ func TestTerminalPromptRejectsMalformedFormBeforeInput(t *testing.T) {
 		func(c *core.AuthChallenge) { c.Fields[0].Label = string([]byte{0xff}) },
 	}
 	for _, mutate := range mutations {
-		ch := cliChallenge(); mutate(&ch)
+		ch := cliChallenge()
+		mutate(&ch)
 		_, err := collectTerminalAnswer(context.Background(), ch,
 			func(context.Context) ([]byte, error) { t.Fatal("read before complete validation"); return nil, nil },
 			func(context.Context, string) error { t.Fatal("displayed malformed form"); return nil })
-		if err == nil { t.Fatal("malformed form accepted") }
+		if err == nil {
+			t.Fatal("malformed form accepted")
+		}
 	}
 }
 
@@ -63,9 +78,15 @@ func TestTerminalPromptFailureClearsPartialAnswers(t *testing.T) {
 		first := []byte("private-otp")
 		reads := 0
 		a, err := collectTerminalAnswer(context.Background(), cliChallenge(), func(context.Context) ([]byte, error) {
-			reads++; if reads == 1 { return first, nil }; return second, nil
+			reads++
+			if reads == 1 {
+				return first, nil
+			}
+			return second, nil
 		}, func(context.Context, string) error { return nil })
-		if err == nil || len(a.Values) != 0 || bytes.Count(first, []byte{0}) != len(first) || bytes.Count(second, []byte{0}) != len(second) { t.Fatal("failure retained partial answer") }
+		if err == nil || len(a.Values) != 0 || bytes.Count(first, []byte{0}) != len(first) || bytes.Count(second, []byte{0}) != len(second) {
+			t.Fatal("failure retained partial answer")
+		}
 	}
 }
 
@@ -73,18 +94,27 @@ func TestTerminalPromptOutputFailureClearsAnswers(t *testing.T) {
 	secret := []byte("private-otp")
 	read := false
 	_, err := collectTerminalAnswer(context.Background(), cliChallenge(), func(context.Context) ([]byte, error) { read = true; return secret, nil }, func(context.Context, string) error {
-		if read { return errors.New("untrusted-output-error") }; return nil
+		if read {
+			return errors.New("untrusted-output-error")
+		}
+		return nil
 	})
-	if err == nil || err.Error() != errTerminalAuth.Error() || bytes.Count(secret, []byte{0}) != len(secret) { t.Fatal("output failure retained answer or exposed error") }
+	if err == nil || err.Error() != errTerminalAuth.Error() || bytes.Count(secret, []byte{0}) != len(secret) {
+		t.Fatal("output failure retained answer or exposed error")
+	}
 }
 
 func TestTerminalPromptCancellationClearsAnswers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	secret := []byte("private-otp")
 	_, err := collectTerminalAnswer(ctx, cliChallenge(), func(context.Context) ([]byte, error) { cancel(); return secret, nil }, func(context.Context, string) error { return nil })
-	if err == nil || bytes.Count(secret, []byte{0}) != len(secret) { t.Fatal("cancellation retained answer") }
+	if err == nil || bytes.Count(secret, []byte{0}) != len(secret) {
+		t.Fatal("cancellation retained answer")
+	}
 }
 
 func TestTerminalAnswerLimit(t *testing.T) {
-	if !validTerminalAnswer(bytes.Repeat([]byte{'x'}, 4096)) || validTerminalAnswer(bytes.Repeat([]byte{'x'}, 4097)) || validTerminalAnswer([]byte("secret\n")) { t.Fatal("terminal answer bounds incorrect") }
+	if !validTerminalAnswer(bytes.Repeat([]byte{'x'}, 4096)) || validTerminalAnswer(bytes.Repeat([]byte{'x'}, 4097)) || validTerminalAnswer([]byte("secret\n")) {
+		t.Fatal("terminal answer bounds incorrect")
+	}
 }

@@ -31,7 +31,7 @@ func readCredentialInput(ctx context.Context, input *os.File) (core.Credentials,
 	defer cancelRead()
 	type result struct {
 		credentials core.Credentials
-		err error
+		err         error
 	}
 	// Inherited stdin can be a blocking descriptor not managed by Go's poller.
 	// Closing it is best effort, so cancellation must not wait for Read to return.

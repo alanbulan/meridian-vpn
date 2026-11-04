@@ -59,7 +59,13 @@ $manifest | ConvertTo-Json -Depth 8 | Set-Content "$stage/build-manifest.json" -
 if ($LASTEXITCODE) { throw 'Installer compilation failed' }
 $setup=Join-Path $out 'Meridian-0.1.0-alpha.1-Windows-x64-Setup.exe'
 if (!(Test-Path $setup)) { throw 'Installer missing' }
-if ((Get-Item $setup).VersionInfo.FileVersion -ne '0.1.0.1') { throw 'Installer version mismatch' }
+$setupInfo=[Diagnostics.FileVersionInfo]::GetVersionInfo($setup)
+$fixedVersion="$($setupInfo.FileMajorPart).$($setupInfo.FileMinorPart).$($setupInfo.FileBuildPart).$($setupInfo.FilePrivatePart)"
+Write-Output "Setup version resource: fixed=$fixedVersion; text=$($setupInfo.FileVersion); product=$($setupInfo.ProductVersion)"
+$diagnostics=Join-Path $env:RUNNER_TEMP 'meridian-installer-logs'
+New-Item -ItemType Directory -Path $diagnostics -Force | Out-Null
+$setupInfo | Format-List * | Out-String | Set-Content (Join-Path $diagnostics 'setup-version.txt') -Encoding utf8
+if ($fixedVersion -ne '0.1.0.1') { throw 'Installer fixed version mismatch' }
 Copy-Item "$stage/build-manifest.json" $out
 Copy-Item "$stage/WINDOWS-PREVIEW.txt" $out
 $hash=(Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant()

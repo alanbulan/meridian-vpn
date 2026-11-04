@@ -9,7 +9,7 @@ $expected=(Get-Content (Join-Path $artifact 'SHA256SUMS-windows') -Raw).Split(' 
 if ((Get-FileHash $setup -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Setup checksum mismatch' }
 $install=Join-Path $env:RUNNER_TEMP "Meridian-Installer-$env:GITHUB_RUN_ID"
 if (Test-Path $install) { throw 'Test installation already exists' }
-$logs=Join-Path $env:RUNNER_TEMP 'meridian-installer-logs'; New-Item -ItemType Directory -Path $logs | Out-Null
+$logs=Join-Path $env:RUNNER_TEMP 'meridian-installer-logs'; New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/DIR=`"$install`"", "/LOG=`"$logs/install.log`"")
 $process=Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
 if ($process.ExitCode -ne 0) { throw "Installation failed: $($process.ExitCode)" }

@@ -33,6 +33,8 @@ func (a *App) SetSystemLanguages(tags []string) {
 }
 
 var zh = map[string]string{
+	"Review the connection and authorize network changes before connecting": "连接前请检查连接配置并授权网络更改",
+	"The previous session gateway is unavailable; choose a connection and sign in again": "上次会话的网关已不可用，请选择连接并重新登录",
 	"Experimental UniVPN: direct TLS password authentication only":                                    "实验性 UniVPN：仅支持直连 TLS 密码认证",
 	"A reviewed native engine and trusted continuous-session broker must be explicitly configured":    "必须另行明确配置经审核的原生引擎及可信的持续会话代理",
 	"Authentication domain (blank = gateway host)":                                                    "认证域（留空使用网关主机名）",
@@ -83,6 +85,17 @@ var zh = map[string]string{
 	"Startup settings are unavailable":                                      "当前无法管理登录启动项",
 	"Existing startup entry cannot be safely managed":                       "已有启动文件不属于本应用或权限不安全，未修改",
 	"Startup entry change could not be confirmed; check the current status": "启动项操作未能确认完成，请检查当前状态",
+
+	"Required VPN backend capability is unavailable": "所需VPN后端当前不可用",
+	"VPN backend could not start": "VPN后端无法启动",
+	"VPN tunnel readiness was not verified": "未能确认VPN隧道已就绪",
+	"VPN tunnel connection was lost": "VPN隧道连接已中断",
+	"VPN authentication failed": "VPN认证失败",
+	"VPN peer trust could not be verified": "无法验证VPN对端的信任",
+	"VPN configuration was rejected": "VPN配置被拒绝",
+	"VPN transport failed": "VPN传输失败",
+	"VPN connection failed": "VPN连接失败",
+	"VPN cleanup could not be confirmed; inspect the system VPN service before reconnecting or quitting": "无法确认VPN已清理。请先检查系统VPN服务，再重新连接或退出。",
 
 	"Offer fresh authentication after connection loss":   "断线后提醒重新认证",
 	"Connection lost; cleanup completed. Sign in again?": "连接中断，清理已确认。是否重新认证？",
@@ -169,7 +182,7 @@ var zh = map[string]string{
 	"+ New profile": "＋ 新建配置", "Your gateway belongs here.": "把你的工作网络，放在这里。", "No sample servers or pre-filled credentials. Add the details supplied by IT.": "没有预置服务器或账号，请填写 IT 提供的真实连接信息。", "Create your first profile": "创建第一个连接配置", "SELECTED": "当前使用", "Select": "使用此配置", "Edit": "编辑", "Delete": "删除", "Delete this profile permanently?": "确定永久删除此配置？", "Cancel": "取消", "Confirm delete": "确认删除",
 	"Connection profile": "连接配置", "PROFILE NAME": "配置名称", "HTTPS GATEWAY": "HTTPS 网关地址", "PROTOCOL · CONFIRM WITH YOUR IT TEAM": "连接协议 · 请与 IT 确认", "USERNAME · OPTIONAL, NOT A PASSWORD": "用户名 · 可选，请勿填写密码", "Certificates remain verified. No insecure TLS override is available.": "始终验证服务器证书，不提供跳过 TLS 验证选项。", "Save profile": "保存配置", "Work network": "工作网络", "Your account name": "你的账号",
 	"A clear record. No secrets.": "运行记录，清晰且克制。", "Only structured lifecycle events are shown. Raw engine output is discarded.": "仅保留结构化状态事件，丢弃原始引擎输出，避免泄露敏感信息。", "Clear activity": "清空日志", "Application ready. No tunnel has been started.": "应用已就绪，尚未启动隧道。", "No VPN tunnel is active": "当前没有活动 VPN 隧道", "Activity history cleared.": "运行日志已清空。",
-	"Designed to stay out of your way.": "按你的习惯，安静运行。", "Keep in tray when the window closes": "关闭窗口后保留在系统托盘", "Tray integration unavailable in this desktop session.": "当前桌面会话不支持系统托盘。", "THEME": "外观", "Midnight · native dark interface": "午夜 · 原生深色界面", "ENGINE": "连接引擎", "Recheck prerequisites": "重新检查运行环境", "NetworkManager owns network configuration; missing dependencies disable connection.": "网络配置由系统服务负责，缺少依赖时不会尝试提权连接。", "PRIVACY": "隐私", "No telemetry. No credential persistence. Local profiles only.": "无遥测，不保存凭据，连接配置仅存储在本机。", "ABOUT": "关于", "Meridian 0.1 / MyGo 0.7.4 / pure Go native UI": "Meridian 0.1 / MyGo 0.7.4 / 纯 Go 原生界面", "Gateway interoperability and platform packaging require deployment validation.": "网关互通性与各平台安装包仍需实际部署验证。",
+	"Designed to stay out of your way.": "按你的习惯，安静运行。", "Keep in tray when the window closes": "关闭窗口后保留在系统托盘", "Tray integration unavailable in this desktop session.": "当前桌面会话不支持系统托盘。", "THEME": "外观", "Midnight · native dark interface": "午夜 · 原生深色界面", "ENGINE": "连接引擎", "Recheck prerequisites": "重新检查运行环境", "NetworkManager owns network configuration; missing dependencies disable connection.": "网络配置由系统服务负责，缺少依赖时不会尝试提权连接。", "PRIVACY": "隐私", "No telemetry. No credential persistence. Local profiles only.": "无遥测，不保存凭据，连接配置仅存储在本机。", "ABOUT": "关于", "Meridian %s / MyGo 0.7.4 / pure Go native UI": "Meridian %s / MyGo 0.7.4 / 纯 Go 原生界面", "Gateway interoperability and platform packaging require deployment validation.": "网关互通性与各平台安装包仍需实际部署验证。",
 	"OpenConnect is not installed. Install it through your operating system package manager.":               "尚未安装 OpenConnect，请通过操作系统包管理器安装。",
 	"OpenConnect found; a verified privileged tunnel broker is not installed. Live connection is disabled.": "已找到 OpenConnect，但尚未安装可信隧道服务，暂不能连接。",
 	"Saved locally. Credentials are never stored.":                                                          "已保存至本机，不包含密码或会话凭据。",

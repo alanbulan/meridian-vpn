@@ -2,7 +2,7 @@ name: Native build and tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, safe-recovery-boundaries, feat/cli-terminal-mfa, candidate/linux-minimal-20261104]
   pull_request:
   workflow_dispatch:
 
@@ -53,6 +53,12 @@ jobs:
           go env GOOS GOARCH
           go mod download
           go mod verify
+      - name: Verify CLI source formatting
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p reports
+          gofmt -d cmd/meridianctl/auth*.go cmd/meridianctl/app.go cmd/meridianctl/connect.go cmd/meridianctl/signals_unix.go > reports/cli-format.patch
+          test ! -s reports/cli-format.patch
       - name: Unit tests (not live VPN acceptance)
         run: |
           mkdir -p reports
@@ -65,6 +71,12 @@ jobs:
           mkdir -p build
           go build -buildvcs=false -trimpath -tags mygo_noinspector -ldflags '-s -w -X github.com/egoist/mygo.production=1' -o build/meridian${{ matrix.ext }} ./cmd/meridian
           go build -buildvcs=false -trimpath -ldflags '-s -w' -o build/meridianctl${{ matrix.ext }} ./cmd/meridianctl
+      - name: Compile Linux arm64 terminal MFA and PTY tests
+        if: runner.os == 'Linux'
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: go test -c -o "$RUNNER_TEMP/meridianctl-arm64.test" ./cmd/meridianctl
       - name: Run native CLI without configuration or network changes
         run: |
           ./build/meridianctl${{ matrix.ext }} version
@@ -160,9 +172,11 @@ jobs:
           runuser -u meridian-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
             GOPATH=/home/meridian-ci/go GOCACHE=/home/meridian-ci/.cache/go-build \
             MERIDIAN_OPENCONNECT_TEST_BINARY="$(command -v openconnect)" \
-            MERIDIAN_MFA_HELPER_TEST_BINARY="$GITHUB_WORKSPACE/build/meridian-auth-helper" \
+            MERIDIAN_MFA_HELPER_TEST_BINARY="/home/meridian-ci/bin/meridian-auth-helper" \
             bash -e -c '
-              sh integration/mfa-helper/build.sh "$PWD/build/meridian-auth-helper"
+              mkdir -p /home/meridian-ci/bin
+              sh integration/mfa-helper/build.sh "$MERIDIAN_MFA_HELPER_TEST_BINARY"
+              stat -c "%a %u %n" / /home /home/meridian-ci /home/meridian-ci/bin "$MERIDIAN_MFA_HELPER_TEST_BINARY" "$GITHUB_WORKSPACE" "$(dirname "$GITHUB_WORKSPACE")" "$(dirname "$(dirname "$GITHUB_WORKSPACE")")" > reports/loopback-auth/helper-path.txt
               python3 integration/loopback/run.py auth --reports reports/loopback-auth
             '
       - name: Run unprivileged native loopback and syscall-wrapped fixtures

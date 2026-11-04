@@ -33,3 +33,9 @@ The CI artifacts contain only the freshly built Meridian Go GUI and CLI. They do
 not contain the experimental native worker, rootfs, system VPN plugins, signing
 credentials, or an installer. They are development builds, not validated VPN
 releases.
+
+The separate opt-in Linux candidate workflow additionally packages the exact git
+source snapshot and preserved dependency notices. When selected, it also includes
+the dynamically linked authentication-only C helper, not libopenconnect or other
+system libraries. This does not select a license for Meridian-authored code or
+remove the maintainer's distribution review. See docs/LINUX-RELEASE.md.

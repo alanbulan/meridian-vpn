@@ -3,11 +3,19 @@ package main
 
 import (
 	"context"
+	"mygo-vpn/internal/buildinfo"
 	"os"
 )
 
 // Set at build time with -ldflags '-X main.version=...'.
-var version = "dev"
+var version = ""
+
+func applicationVersion() string {
+	if version != "" {
+		return version
+	} // Compatibility with existing -X main.version builds.
+	return buildinfo.Version
+}
 
 func main() {
 	ctx, stop := commandSignalContext(context.Background())

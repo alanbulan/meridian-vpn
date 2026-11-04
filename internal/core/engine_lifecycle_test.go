@@ -263,3 +263,51 @@ func TestEngineCancellationDuringPartialStartCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestSnapshotAttemptIdentityChangesOnlyOnAdmission(t *testing.T) {
+	s := newLifecycleSession()
+	e := NewEngine(sessionAdapter{s})
+	if e.Snapshot().AttemptID != 0 {
+		t.Fatal("idle engine has an attempt identity")
+	}
+	if err := e.Connect(profile(), "", false); err == nil || e.Snapshot().AttemptID != 0 {
+		t.Fatal("rejected authorization advanced attempt identity")
+	}
+	if err := e.Connect(profile(), "", true); err != nil {
+		t.Fatal(err)
+	}
+	first := e.Snapshot().AttemptID
+	if first == 0 {
+		t.Fatal("admitted attempt has no identity")
+	}
+	if err := e.Connect(profile(), "", true); err == nil || e.Snapshot().AttemptID != first {
+		t.Fatal("duplicate connect changed attempt identity")
+	}
+	s.ready <- nil
+	await(t, e, Connected)
+	if e.Snapshot().AttemptID != first {
+		t.Fatal("readiness changed attempt identity")
+	}
+	s.done <- NewConnectionError(FailureTransport)
+	await(t, e, Failed)
+	if e.Snapshot().AttemptID != first {
+		t.Fatal("terminal result lost attempt identity")
+	}
+	next := newLifecycleSession()
+	if err := e.ReplaceAdapter(sessionAdapter{next}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Connect(profile(), "", true); err != nil {
+		t.Fatal(err)
+	}
+	if e.Snapshot().AttemptID == first {
+		t.Fatal("fresh admitted attempt retained old identity")
+	}
+	if err := e.Disconnect(); err != nil {
+		t.Fatal(err)
+	}
+	await(t, e, Disconnected)
+	if e.Snapshot().AttemptID == first || e.Snapshot().AttemptID == 0 {
+		t.Fatal("cancellation lost the new attempt identity")
+	}
+}

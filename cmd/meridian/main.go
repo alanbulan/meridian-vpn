@@ -4,9 +4,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"log"
+	"mygo-vpn/internal/buildinfo"
 	"mygo-vpn/internal/desktop"
 	"os"
 	"path/filepath"
@@ -14,6 +16,11 @@ import (
 )
 
 func main() {
+	// Version queries never open a window or read user configuration.
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Printf("Meridian %s (%s)\n", buildinfo.Version, buildinfo.Commit)
+		return
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)

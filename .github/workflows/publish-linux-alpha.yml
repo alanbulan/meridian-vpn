@@ -1,0 +1,27 @@
+name: Publish verified Linux alpha
+on:
+  push:
+    branches: [candidate/linux-minimal-20261104]
+    paths: [.github/workflows/publish-linux-alpha.yml, scripts/publish-linux-alpha.py, docs/releases/v0.1.0-alpha.1.md]
+permissions:
+  contents: read
+concurrency:
+  group: publish-linux-v0.1.0-alpha.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'alanbulan/meridian-vpn' && github.ref == 'refs/heads/candidate/linux-minimal-20261104'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify original artifact and publish exact-source prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLICATION_COMMIT: ${{ github.sha }}
+        run: python3 scripts/publish-linux-alpha.py

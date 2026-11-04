@@ -1,41 +1,41 @@
-# Real OpenConnect authentication-only integration
+# 真实 OpenConnect 仅认证集成测试
 
-These opt-in tests launch an **actual OpenConnect client**, not a mock runner, against a loopback HTTPS AnyConnect XML authentication fixture. The test code lives in `internal/core/authfixture_integration_test.go`, so real-client arguments come from production `OpenConnectArgs` (including custom-CA validation and direct-mode `--no-proxy`), child environment uses production proxy sanitization, and successful output is passed directly to production `parseAuthentication`.
+这些需要显式启用的测试会启动**真实的 OpenConnect 客户端**，而不是模拟运行器，并连接本机回环 HTTPS AnyConnect XML 认证夹具。测试代码位于 `internal/core/authfixture_integration_test.go`，因此真实客户端参数来自生产代码 `OpenConnectArgs`（包括自定义 CA 校验和直连模式的 `--no-proxy`）；子进程环境使用生产代码的代理净化逻辑，成功输出直接交给生产代码 `parseAuthentication`。
 
-## Scope
+## 范围
 
-Verified with Debian OpenConnect **9.12-3+deb13u2**, GnuTLS **3.8.9**, Linux amd64:
+以下项目已使用 Debian OpenConnect **9.12-3+deb13u2**、GnuTLS **3.8.9**、Linux amd64 验证：
 
-1. Trusted fixture TLS certificate → username/password challenge/reply → authenticated cookie, gateway and certificate fingerprint parsed by production code.
-2. Invalid synthetic password rejected after a real challenge/reply; no cookie.
-3. Untrusted fixture certificate rejected before HTTP credentials reached the server; error identifies certificate validation.
-4. Cancelled pending authentication terminates the real child process; no cookie.
-5. Real mTLS certificate-only authentication with no username/password, using both an unencrypted EC PEM key and an encrypted OpenSSL-compatible EC PEM key.
-6. A client certificate not trusted by the local gateway is rejected at TLS, before HTTP authentication.
-7. Missing/wrong encrypted-key passphrases fail closed without an HTTP credential request.
-8. Cancellation during pending client-certificate authentication terminates the real child.
-9. Encrypted PKCS#8 (PBES2, AES-256-CBC, PBKDF2-HMAC-SHA256) authenticates with a private-FD passphrase; missing/wrong passphrases and a mismatched certificate fail closed.
+1. 信任夹具的 TLS 证书 → 用户名/密码挑战与应答 → 生产代码解析认证 Cookie、网关和证书指纹。
+2. 真实挑战与应答后拒绝无效的合成密码，不返回 Cookie。
+3. 在 HTTP 凭据到达服务器前拒绝不受信任的夹具证书，错误明确指向证书验证。
+4. 取消等待中的认证会终止真实子进程，不返回 Cookie。
+5. 无用户名/密码的真实 mTLS 纯证书认证，分别使用未加密的 EC PEM 私钥和兼容 OpenSSL 的加密 EC PEM 私钥。
+6. 本地网关不信任的客户端证书会在 TLS 阶段被拒绝，早于 HTTP 认证。
+7. 加密私钥口令缺失或错误时安全拒绝，不发出 HTTP 凭据请求。
+8. 取消等待中的客户端证书认证会终止真实子进程。
+9. 加密 PKCS#8（PBES2、AES-256-CBC、PBKDF2-HMAC-SHA256）通过私有文件描述符传递口令完成认证；口令缺失、错误或证书不匹配时安全拒绝。
 
-Client-certificate tests use production `authenticateOpenConnect` and `execRunner`, including their no-follow file validation, retained descriptors, strict result parser, and cancellation. A separate real subprocess test checks that the password and key passphrase never appear in argv or environment, and arrive only over stdin and inherited descriptor 3. Certificate and private key use inherited descriptors 4 and 5; only the authenticated cookie tuple reaches the NetworkManager stage (which remains mocked).
+客户端证书测试使用生产代码 `authenticateOpenConnect` 和 `execRunner`，包括不跟随符号链接的文件校验、保留的文件描述符、严格的结果解析器和取消逻辑。另有真实子进程测试，检查密码和私钥口令从不出现在 argv 或环境变量中，仅通过 stdin 和继承的文件描述符 3 到达。证书和私钥使用继承的文件描述符 4 和 5；只有已认证的 Cookie 三元组进入 NetworkManager 阶段，该阶段仍使用模拟实现。
 
-Every client invocation uses **`--authenticate`**. The fixture counts and rejects HTTP `CONNECT`; the successful runs recorded **zero tunnel CONNECT requests**. The tests never run `nmcli`, touch `/dev/net/tun`, create a network interface, set routes/DNS, contact a corporate gateway or establish a VPN. These results **do not constitute Linux VPN end-to-end verification or UniVPN compatibility**.
+每次客户端调用均使用 **`--authenticate`**。夹具统计并拒绝 HTTP `CONNECT`；记录中的成功运行产生了**零次隧道 CONNECT 请求**。测试绝不运行 `nmcli`、访问 `/dev/net/tun`、创建网络接口、设置路由/DNS、连接企业网关或建立 VPN。这些结果**不构成 Linux VPN 端到端验证，也不证明 UniVPN 兼容性**。
 
-Credentials are fixed synthetic test values; passwords are delivered through stdin. Real generated cookies (which can include an HPKE private-key prefix) are held in memory, never printed or written to files. The test CA and synthetic client identity files are written to private temporary mode-0600 files and deleted by the test harness. No real credential is used. The TLS server key stays in Go test server memory; the test CA is not installed in the OS trust store. Key passphrases are passed as a generated config through an anonymous pipe, never as process arguments, environment variables, or config files. The fixture uses `--cafile` solely for that temporary test CA and `--no-proxy` to keep requests on loopback. TLS verification is not disabled.
+凭据是固定的合成测试值；密码通过 stdin 传递。真实生成的 Cookie（可能带有 HPKE 私钥前缀）仅保存在内存中，不打印、不写入文件。测试 CA 和合成客户端身份文件写入私有的 0600 临时文件，由测试框架删除。不使用真实凭据。TLS 服务器私钥保留在 Go 测试服务器内存中；测试 CA 不安装到操作系统信任库。私钥口令作为生成的配置经匿名管道传递，不进入进程参数、环境变量或配置文件。夹具的 `--cafile` 仅指向临时测试 CA，`--no-proxy` 确保请求停留在回环网络。TLS 验证不会关闭。
 
-## Run against an installed trusted client
+## 使用已安装的可信客户端运行
 
-From the repository root:
+在仓库根目录执行：
 
 ```sh
 MERIDIAN_OPENCONNECT_TEST_BINARY=/usr/sbin/openconnect \
   ./integration/authfixture/run-auth-only.sh
 ```
 
-Normal `go test ./...` **skips** these nine opt-in test functions when the variable is unset. Skipped does not mean passed. The client `--version` prerequisite is verified in every test; failure to launch a real client cannot falsely pass a negative test.
+未设置环境变量时，普通 `go test ./...` 会**跳过**这九个需显式启用的测试函数。跳过不等于通过。每项测试都会验证客户端 `--version` 前置条件；真实客户端无法启动时，拒绝类测试也不能错误地通过。
 
-## Workspace-only Debian staging
+## 仅在工作区暂存 Debian 组件
 
-No root or package installation is used. On a compatible Linux amd64 system, the script downloads pinned packages from `https://deb.debian.org/debian/pool/main/`, checks the recorded SHA-256 for each archive, and extracts them beneath the requested private staging directory:
+无需 root，也不安装软件包。在兼容的 Linux amd64 系统上，脚本会从 `https://deb.debian.org/debian/pool/main/` 下载固定版本的软件包，逐个校验已记录的 SHA-256，并解压到指定的私有暂存目录：
 
 ```sh
 ./integration/authfixture/stage-debian-client.sh /absolute/workspace/openconnect-fixture
@@ -45,9 +45,9 @@ LD_LIBRARY_PATH=/absolute/workspace/openconnect-fixture/root/usr/lib/x86_64-linu
   ./integration/authfixture/run-auth-only.sh
 ```
 
-The script does **not** install packages, run package maintainer scripts, start services, change security policy or modify system files. Additional ordinary system libraries (glibc, GnuTLS, libxml2, etc.) must already be ABI compatible. The package hashes pin the HTTPS-fetched artifacts; this fixture does not claim a separate Debian release-signature verification. Do not substitute an untrusted executable.
+脚本**不会**安装软件包、运行软件包维护脚本、启动服务、更改安全策略或修改系统文件。其他普通系统库（glibc、GnuTLS、libxml2 等）必须已有兼容的 ABI。软件包哈希固定了通过 HTTPS 获取的制品；本夹具不声称另外验证过 Debian 发行版签名。不要替换成不可信的可执行文件。
 
-In the cloud execution workspace, the actual command used Go 1.27.3 and these explicit paths:
+云端执行工作区中的实际命令使用 Go 1.27.3 和以下明确路径：
 
 ```sh
 GO=/workspace/shared/toolchains/go/bin/go \
@@ -57,21 +57,21 @@ MERIDIAN_OPENCONNECT_TEST_BINARY=/workspace/shared/openconnect-fixture/root/usr/
   ./integration/authfixture/run-auth-only.sh
 ```
 
-A clean staging reproduction at `/workspace/shared/openconnect-fixture-repro` also completed: all 12 archive SHA-256 checks passed, the staged client ran, and the original four authentication tests passed again (historical baseline; the current expanded result is in `RESULTS.txt`). Shell syntax validation and core vet passed.
+还在 `/workspace/shared/openconnect-fixture-repro` 完成过一次全新暂存复现：12 个归档的 SHA-256 检查全部通过，暂存客户端可以运行，原先四项认证测试再次通过。这是历史基线，当前扩展结果见 `RESULTS.txt`。Shell 语法检查和核心代码 vet 检查通过。
 
-`RESULTS.txt` contains the sanitized final test output. Downloaded executables and libraries are not included in the source archive.
+`RESULTS.txt` 保存最终的脱敏测试输出。下载的可执行文件和运行库不包含在源码归档中。
 
-## Primary references
+## 一手参考资料
 
-- [OpenConnect: authenticate separately as an unprivileged user](https://www.infradead.org/openconnect/nonroot.html).
-- [OpenConnect: AnyConnect protocol overview](https://www.infradead.org/openconnect/anyconnect.html).
-- Official upstream source checked out at commit `70d1e79d1e55849dfc71dcc199b1edb535b547e4`: [`auth.c`](https://gitlab.com/openconnect/openconnect/-/blob/70d1e79d1e55849dfc71dcc199b1edb535b547e4/auth.c), [`main.c`](https://gitlab.com/openconnect/openconnect/-/blob/70d1e79d1e55849dfc71dcc199b1edb535b547e4/main.c), and [`tests/fake-cisco-server.py`](https://gitlab.com/openconnect/openconnect/-/blob/70d1e79d1e55849dfc71dcc199b1edb535b547e4/tests/fake-cisco-server.py). The fixture uses its own minimal authentication handler; it is not a complete gateway or copied server implementation.
-- Official Debian package URLs and pinned archive hashes: `debian-packages.sha256-urls`.
+- [OpenConnect：以非特权用户单独执行认证](https://www.infradead.org/openconnect/nonroot.html)。
+- [OpenConnect：AnyConnect 协议概述](https://www.infradead.org/openconnect/anyconnect.html)。
+- 已检出的官方上游源码提交 `70d1e79d1e55849dfc71dcc199b1edb535b547e4`：[`auth.c`](https://gitlab.com/openconnect/openconnect/-/blob/70d1e79d1e55849dfc71dcc199b1edb535b547e4/auth.c)、[`main.c`](https://gitlab.com/openconnect/openconnect/-/blob/70d1e79d1e55849dfc71dcc199b1edb535b547e4/main.c) 和 [`tests/fake-cisco-server.py`](https://gitlab.com/openconnect/openconnect/-/blob/70d1e79d1e55849dfc71dcc199b1edb535b547e4/tests/fake-cisco-server.py)。夹具使用自行编写的最小认证处理程序，不是完整网关，也不是复制的服务器实现。
+- Debian 官方软件包 URL 和固定的归档哈希：`debian-packages.sha256-urls`。
 
-## Client identity format and validation
+## 客户端身份格式与校验
 
-Profiles store certificate and private-key absolute path references only. Use a PEM certificate chain whose first certificate is the currently valid client leaf, and a separate RSA/EC/PKCS#8 PEM private key. Private keys must have owner-only POSIX permissions (for example `0600`); certificates may not be group/world writable. Symlinks, FIFOs, directories, oversized files, malformed PEM, expired/non-client certificates and mismatched unencrypted keys are rejected locally. The native TLS implementation decrypts and matches encrypted keys. PKCS#12 bundles and hardware/USB tokens are not implemented.
+配置仅保存证书和私钥绝对路径的引用。PEM 证书链的首张证书应是当前有效的客户端叶证书，并使用独立的 RSA/EC/PKCS#8 PEM 私钥。私钥必须具有仅所有者可访问的 POSIX 权限（例如 `0600`）；证书不能允许组或其他用户写入。本地会拒绝符号链接、FIFO、目录、超大文件、格式错误的 PEM、过期或非客户端证书，以及不匹配的未加密私钥。加密私钥由原生 TLS 实现解密并匹配。本节原有验证范围尚未实现 PKCS#12 容器和硬件/USB 令牌。
 
-The traditional encrypted-PEM test uses OpenSSL-compatible uppercase IV hex in its DEK-Info header. OpenConnect 9.12 rejects lowercase IV hex produced by Go's deprecated legacy PEM encryption function; the test fixture normalizes only its own synthetic header. Encrypted PKCS#8 avoids that legacy format constraint. Do not infer support for every cipher/provider from the tested formats.
+传统加密 PEM 测试在 DEK-Info 头中使用兼容 OpenSSL 的大写十六进制 IV。OpenConnect 9.12 会拒绝 Go 已弃用的旧式 PEM 加密函数生成的小写十六进制 IV；夹具只规范化自己生成的合成头。加密 PKCS#8 没有这一旧格式限制。不能根据已测试格式推断所有密码算法或提供程序均受支持。
 
-OpenConnect config values are not shell quoted. The generated key-password line preserves literal quotes, `#`, and `=`. Empty passphrases omit that line. CR/LF/NUL, leading space/tab and passphrases over 4096 bytes are rejected before starting any process.
+OpenConnect 配置值不使用 shell 引号转义。生成的 key-password 行保留字面量引号、`#` 和 `=`。口令为空时省略该行。启动任何进程前，会拒绝 CR/LF/NUL、开头为空格或制表符、以及超过 4096 字节的口令。

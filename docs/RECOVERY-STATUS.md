@@ -1,48 +1,45 @@
-# Recovery status, 2026-11-03
+# 恢复状态，2026-11-03
 
-The recoverable starting artifact is `meridian-0.1-source.zip`, persisted version 3, last modified 2026-11-03 03:55:22 UTC. A fresh working tree was extracted from those bytes. Later previously reported development changes were not present in this archive; they must not be described as recovered.
+可恢复的起始产物为 `meridian-0.1-source.zip`，持久化版本为 3，最后修改时间为 2026-11-03 03:55:22 UTC。已从该文件的原始字节解压出全新的工作树。此前报告过的后续开发改动并不包含在此归档中，不得将其描述为已恢复。
 
-## Reimplemented in this working tree
+## 在此工作树中重新实现的内容
 
-- Bounded structural UTF-8 INI inspection, CLI `profiles preview-ini` and native settings file picker. All names and values are hidden. Duplicate keys/sections and unsafe or oversized files fail closed. This is not vendor-format conversion/import.
-- Native certificate format selector for PEM, PKCS#12 and PKCS#11, appropriate bundle picker / URI inputs, per-session passphrase/PIN. Changing format clears incompatible references and invalidates outstanding old-format file pickers.
-- Native L2TP/IPsec parameter controls and per-session PSK, routed through the protocol-aware backend capability. Switching protocol clears incompatible transport fields and credentials. Draft/copy operations deep-copy L2TP options.
-- Regression tests for INI boundaries/redaction, no configuration reads/writes during CLI preview, certificate format safety, protocol switching, PSK clearing and L2TP draft isolation.
+- 有界的 UTF-8 INI 结构检查、CLI `profiles preview-ini` 和原生设置文件选择器。隐藏所有名称和值。遇到重复键/节、不安全文件或超大文件时会安全拒绝。这不是厂商格式转换/导入功能。
+- 支持 PEM、PKCS#12 和 PKCS#11 的原生证书格式选择器，以及相应的证书包选择器 / URI 输入框和每会话口令/PIN。更改格式会清除不兼容的引用，并使尚未完成的旧格式文件选择器失效。
+- 原生 L2TP/IPsec 参数控件和每会话 PSK，通过能够识别协议的后端能力处理。切换协议会清除不兼容的传输字段和凭据。草稿/复制操作会深度复制 L2TP 选项。
+- 回归测试覆盖 INI 边界/脱敏、CLI 预览期间不读写配置、证书格式安全、协议切换、PSK 清除和 L2TP 草稿隔离。
 
-## Verification by recovery worker
+## 恢复工作的验证结果
 
-- `go test ./cmd/meridianctl ./internal/core`: passed at 05:53 UTC.
-- `go test ./internal/desktop`: passed, including rerun after capability text updates.
-- `go test -race ./cmd/meridianctl ./internal/desktop`: passed.
-- `go vet ./cmd/meridianctl ./internal/desktop`: passed.
+- `go test ./cmd/meridianctl ./internal/core`：于 05:53 UTC 通过。
+- `go test ./internal/desktop`：通过，包含能力说明文本更新后的重新运行。
+- `go test -race ./cmd/meridianctl ./internal/desktop`：通过。
+- `go vet ./cmd/meridianctl ./internal/desktop`：通过。
 
-Other workers may have changed core behavior concurrently. Final aggregate verification is still required after all integration. None of these checks establishes successful real VPN connection, routing/DNS restoration, token-hardware compatibility, or enterprise gateway compatibility. This worker did not run a real tunnel or change host network settings.
+其他工作者可能同时更改了核心行为。全部集成完成后仍需进行最终的综合验证。这些检查均不能证明真实 VPN 连接成功、路由/DNS 恢复有效、硬件令牌兼容或企业网关兼容。此次恢复工作没有运行真实隧道，也没有更改主机网络设置。
 
-## Final disabled experimental checkpoint, 06:12 UTC
+## 最终未启用实验检查点，06:12 UTC
 
-Final current-tree default tests: 202 top-level PASS, 20 explicit SKIP. Full project race, vet, module verification, Linux GUI/CLI and Windows AMD64/macOS ARM64 GUI/CLI builds passed. See VALIDATION.md and RECOVERY-TEST-RESULTS.jsonl. Real authentication-only OpenConnect suite separately passed all 10 tests, including PFX; native UniVPN mock TLS suite passed all 9. No privileged tunnel or route/DNS tests occurred.
+当前工作树最终默认测试结果：202 项顶层测试 PASS，20 项明确 SKIP。全项目竞态检查、vet、模块验证，以及 Linux GUI/CLI 和 Windows AMD64/macOS ARM64 GUI/CLI 构建均已通过。参见 VALIDATION.md 和 RECOVERY-TEST-RESULTS.jsonl。真实 OpenConnect 仅认证测试套件另行通过了全部 10 项测试，包括 PFX；原生 UniVPN 模拟 TLS 套件通过了全部 9 项测试。未进行特权隧道或路由/DNS 测试。
 
-The UniVPN controller and broker are implemented and mock-tested but unavailable for deployment without descendant containment, exclusive namespace lease, service deployment, and authorized integration validation. An opt-in authenticated native inherited-pipe session source is implemented in the subsequent session-channel work; it is not activated. Default GUI UniVPN remains disabled.
+UniVPN 控制器和代理服务已实现并通过模拟测试，但在缺少子孙进程约束、独占命名空间租约、服务部署和经授权的集成验证时，仍不能部署。后续会话通道工作实现了需要主动选择启用、经过认证的原生继承管道会话源；该功能尚未激活。GUI 中的 UniVPN 默认仍处于禁用状态。
 
-## Native session-channel checkpoint, 06:27 UTC
+## 原生会话通道检查点，06:27 UTC
 
-The subsequent source update adds an opt-in private inherited-pipe native session
-channel, the matching Go process-bound configuration source, and stricter
-fail-closed kernel JSON parsing. It includes seven pinned native patches and
-actual C-emitter wire fixtures. The channel does not activate a service or GUI
-connection capability.
+后续源码更新增加了需要主动选择启用的私有继承管道原生会话通道、
+与之配套且绑定到进程的 Go 配置源，以及更严格、遇错即拒绝的内核 JSON 解析。
+其中包含七个固定版本的原生补丁，以及真实 C 发送端的传输格式测试夹具。
+该通道不会激活服务或 GUI 连接能力。
 
-Verification for this update: full core race tests and core vet passed after the
-final changes. A fresh official native archive plus all seven patches completed
-the packaged build, nine loopback TLS regressions, actual inherited-pipe CLI
-authentication success/rejection tests, and wrapped TUN/netlink emitter tests.
-Native source/package checksums verified. Independent review found no additional
-critical source issue in this disabled experimental scope.
+本次更新的验证结果：最终改动完成后，完整核心竞态测试和核心 vet 检查通过。
+使用全新官方原生归档及全部七个补丁，完成了打包构建、九项环回 TLS 回归测试、
+真实继承管道 CLI 认证成功/拒绝测试，以及经过包装的 TUN/netlink 发送端测试。
+原生源码/软件包的校验和已验证。独立审查在这一未启用的实验范围内，
+未发现其他严重源码问题。
 
-A graceful no-network attestation still requires EOF, whole-process-tree
-containment, and independent kernel absence proof. Partial acquisition or missing
-proof quarantines the broker. Real containment and exclusive namespace lease
-providers remain unavailable; a broker lock cannot exclude competing privileged
-host writers, and a private namespace needs correct user-traffic forwarding and
-DNS integration. Production activation and real privileged networking remain
-unimplemented/unverified, not implicitly approved by passing isolated tests.
+正常退出时的无网络状态证明仍需要 EOF、对整个进程树的约束，
+以及独立的内核对象不存在证明。仅获取部分资源或缺少证明时，代理服务会进入隔离状态。
+真实进程约束和独占命名空间租约的提供方仍不可用；代理服务锁无法排除
+主机上其他具有特权的写入方的竞争，而私有命名空间需要正确的用户流量转发
+和 DNS 集成。生产环境激活和真实特权网络操作仍未实现/未验证，
+通过隔离测试并不意味着获得了隐含批准。

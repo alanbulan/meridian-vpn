@@ -1,87 +1,71 @@
-# Broker packet boundary
+# 代理服务的数据包边界
 
-This package is an executable, injected-I/O relay, **not** an activated VPN or a
-standalone privilege broker. It does not open a TUN device, change interfaces,
-routes, DNS, namespaces, privileges, or start/listen on a socket. Only local
-synthetic packet/mocked-I/O tests were run.
+本包是可执行、通过注入 I/O 工作的中继组件，**不是**已激活的 VPN，也不是独立的特权代理服务。
+它不会打开 TUN 设备，不会更改接口、路由、DNS、命名空间或权限，也不会启动套接字或在其上监听。
+目前仅运行了本地合成数据包和模拟 I/O 测试。
 
-## Integration contract
+## 集成约定
 
-1. A separately authorized host component opens/configures a single-queue Linux
-   TUN with `IFF_TUN|IFF_NO_PI`, without virtual headers or offloads. The broker
-   retains that descriptor; it must **never** pass the host TUN to the native
-   child. `NewFilePackets` checks the existing descriptor using the read-only
-   `TUNGETIFF` ioctl and requires pollable I/O. It refuses regular files, pipes,
-   sockets, unsupported platforms, multiqueue and virtual-header configurations.
-   Constructor failures leave ownership with the caller. Successful construction
-   transfers ownership to the wrapper. The caller must not change its flags,
-   duplicate or share it after validation.
-2. Construct `NewPolicy` from separately authorized assigned IPv4, remote CIDRs,
-   resolver addresses, explicit protocol switches and maximum packet size/MTU.
-   A native child's offered address/prefixes are untrusted metadata, not authority.
-   Inputs are copied. Empty/invalid policy and unspecified MTU fail closed.
-3. Pass the broker-owned host endpoint and the child's **packet channel** to
-   `Run`. Child packet channel adapters must preserve message boundaries and
-   report truncation. `NewDatagramPackets` accepts only inherited connected nonblocking unnamed AF_UNIX
-   `SOCK_SEQPACKET` descriptors with protocol zero, verified with fstat, socket
-   type/protocol and local/peer address queries. Datagram, named and abstract
-   sockets are rejected. It uses recvmsg, detects MSG_TRUNC/MSG_CTRUNC,
-   accepts no ancillary descriptors, and uses atomic message writes. It never
-   creates/connects/binds/listens on a socket. Other transports require adapters; bare streams and pipe reads are not valid packet channels. Each
-   `WritePacket` must consume exactly one packet. This package does not create
-   that channel or launch a child.
-4. `Run` owns two distinct endpoints. `Close` must promptly unblock both reads
-   and writes, including when the peer is stalled. `Run` closes each endpoint
-   exactly once, waits for both pumps, and joins cleanup errors into its result.
-   On `errors.Is(err, ErrCleanup)`, the caller must treat resource ownership as uncertain
-   and quarantine the session, not start a replacement on these descriptors.
+1. 由另行获得授权的宿主组件打开并配置一个使用 `IFF_TUN|IFF_NO_PI` 的单队列 Linux TUN，
+   不使用虚拟头或卸载功能。代理服务保留该描述符；**绝不能**将宿主机的 TUN 传给原生子进程。
+   `NewFilePackets` 通过只读的 `TUNGETIFF` ioctl 检查现有描述符，并要求 I/O 支持轮询。
+   它拒绝普通文件、管道、套接字、不支持的平台、多队列及虚拟头配置。
+   构造失败时，所有权仍归调用方。构造成功后，所有权转移给封装对象。
+   校验之后，调用方不得更改其标志、复制或共享该描述符。
+2. 使用另行获得授权的已分配 IPv4 地址、远端 CIDR、解析器地址、明确的协议开关和最大数据包大小/MTU
+   构造 `NewPolicy`。原生子进程提供的地址和前缀是不可信元数据，不能作为授权依据。
+   输入会被复制。策略为空、无效或未指定 MTU 时，均会拒绝继续。
+3. 将代理服务持有的宿主端点及子进程的**数据包通道**传给 `Run`。
+   子进程数据包通道适配器必须保留消息边界，并报告截断。
+   `NewDatagramPackets` 仅接受继承而来的、已连接、非阻塞、未命名且协议号为零的 AF_UNIX
+   `SOCK_SEQPACKET` 描述符，并通过 fstat、套接字类型/协议及本地/对端地址查询进行验证。
+   数据报套接字、具名套接字和抽象套接字均会被拒绝。
+   它使用 recvmsg，检测 MSG_TRUNC/MSG_CTRUNC，不接受辅助数据中的描述符，并使用原子的消息写入。
+   它绝不会创建、连接、绑定套接字或在套接字上监听。其他传输方式需要适配器；
+   原始字节流和管道读取不能作为有效的数据包通道。每次 `WritePacket` 必须恰好消费一个数据包。
+   本包不会创建该通道，也不会启动子进程。
+4. `Run` 拥有两个不同的端点。`Close` 必须及时解除读取和写入的阻塞，包括对端停滞时。
+   `Run` 对每个端点恰好关闭一次，等待两个转发循环结束，并将清理错误合并到返回结果中。
+   出现 `errors.Is(err, ErrCleanup)` 时，调用方必须将资源所有权视为不确定并隔离该会话，
+   而不能使用这些描述符启动替代会话。
 
-## Filtering semantics
+## 过滤语义
 
-Outbound is host to child: source equals the authorized assigned VPN address,
-destination belongs to an authorized remote prefix. Inbound reverses this:
-destination equals the assigned VPN address and source belongs to a remote
-prefix. No forwarding to other local destinations is permitted.
+出站方向为宿主机到子进程：源地址必须等于获准分配的 VPN 地址，目标地址必须属于获准的远端前缀。
+入站方向相反：目标地址必须等于分配的 VPN 地址，源地址必须属于某个远端前缀。
+不允许转发到其他本地目标。
 
-IPv4 only, exactly a 20-byte IPv4 header, exact total length and valid header
-checksum, nonzero TTL. All IPv4 options, fragments (including first fragments),
-reserved flags and trailing bytes are rejected; DF is accepted. Unspecified,
-loopback, link-local, multicast, class-E/limited broadcast and authorized subnet
-network/broadcast endpoints are rejected. /31 and /32 remain usable for unicast
-point-to-point/host routes. A packet cannot exceed the explicit MTU.
+仅支持 IPv4，要求 IPv4 头恰好为 20 字节、总长度精确匹配、头部校验和有效且 TTL 非零。
+拒绝所有 IPv4 选项、分片（包括首个分片）、保留标志及尾随字节；允许 DF。
+拒绝未指定地址、回环地址、链路本地地址、组播地址、E 类地址/受限广播地址，
+以及获准子网的网络地址和广播地址作为端点。/31 和 /32 仍可用于单播点对点路由和主机路由。
+数据包大小不能超过明确指定的 MTU。
 
-Protocol permissions are default-off:
+协议权限默认关闭：
 
-- TCP: nonzero ports, complete and structurally valid header/options, reserved
-  bits clear and valid pseudo-header checksum. No connection tracking: inbound
-  unsolicited TCP is permitted within the configured source prefixes.
-- UDP: nonzero ports and exact UDP length. Nonzero checksums must validate;
-  zero UDP checksum is allowed by IPv4. No connection tracking.
-- ICMP: echo request/reply only, code zero, minimum echo header and valid
-  checksum. Redirects, destination unreachable and time-exceeded are rejected.
-  Consequently PMTU discovery relying on ICMP errors is not implemented.
-- Source/destination port 53 requires the exact remote resolver address;
-  outbound destination must be 53 and inbound source must be 53. Resolver
-  addresses must also be in an authorized remote prefix. This does not inspect
-  DNS content or prohibit DNS over HTTPS/TLS inside allowed traffic.
+- TCP：端口非零，头部及选项完整且结构有效，保留位清零，伪首部校验和有效。
+  不跟踪连接：允许配置的源前缀范围内未经请求的入站 TCP。
+- UDP：端口非零，UDP 长度精确匹配。非零校验和必须验证通过；IPv4 允许 UDP 校验和为零。
+  不跟踪连接。
+- ICMP：仅允许回显请求和回显应答，代码为零，包含最小回显头且校验和有效。
+  拒绝重定向、目标不可达及超时消息。因此，未实现依赖 ICMP 错误消息的 PMTU 发现。
+- 源端口或目标端口为 53 时，必须精确匹配远端解析器地址；出站目标端口必须为 53，入站源端口必须为 53。
+  解析器地址还必须属于获准的远端前缀。这不会检查 DNS 内容，也不会禁止允许流量内的 HTTPS/TLS 加密 DNS。
 
-This is a stateless endpoint/protocol filter, not a general firewall, resolver
-implementation or authenticated tunnel. It does not prove a remote packet's
-identity beyond the native transport's authentication. The host's configuration
-must not enable TCP/UDP checksum offload: checksums must already be materialized.
-Unsupported traffic terminates the relay rather than silently widening policy.
-The two bounded buffers are each MTU+1 bytes; oversize/truncated reads cannot be
-accepted. The relay records only packet counts and no contents. Any invalid
-packet, I/O failure, partial write, or cancellation closes both endpoints.
+这是无状态的端点/协议过滤器，不是通用防火墙、解析器实现或经过认证的隧道。
+除原生传输自身的认证外，它不能进一步证明远端数据包的身份。
+宿主机配置不得启用 TCP/UDP 校验和卸载：校验和值必须已经实际写入数据包。
+不支持的流量会终止中继，而不是静默放宽策略。
+两个有界缓冲区的大小各为 MTU+1 字节；超大或截断的读取不能被接受。
+中继只记录数据包数量，不记录内容。任何无效数据包、I/O 失败、部分写入或取消操作都会关闭两个端点。
 
-## Validation
+## 验证
 
-From repository root with its pinned toolchain environment loaded:
+加载仓库锁定的工具链环境后，从仓库根目录运行：
 
     go test -race ./internal/packetrelay
     go vet ./internal/packetrelay
 
-Tests use in-memory packet endpoints, injected recvmsg/sendmsg/poller callbacks,
-and temporary regular files only. They do
-not create sockets, devices, namespaces, routes, or DNS configuration. Actual
-TUN descriptor compatibility and native-channel integration remain unverified.
+测试仅使用内存数据包端点、注入的 recvmsg/sendmsg/轮询器回调和临时普通文件。
+不会创建套接字、设备、命名空间、路由或 DNS 配置。
+实际 TUN 描述符兼容性和原生通道集成仍未验证。

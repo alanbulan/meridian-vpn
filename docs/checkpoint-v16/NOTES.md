@@ -1,28 +1,13 @@
-# Meridian source checkpoint v16
+# Meridian 源码检查点 v16
 
-This checkpoint preserves every source file from the v15 checkpoint byte-for-byte
-and adds the inactive `internal/processcontainment` Linux lifecycle primitive,
-injected tests, its documented threat model, and this validation record.
+本检查点逐字节保留 v15 检查点的全部源码文件，并增加尚未启用的 `internal/processcontainment` Linux 生命周期基础组件、注入测试、对应威胁模型文档及本验证记录。
 
-Baseline archive: meridian-native9-fd6-offer-final-20261103T0714Z.zip
-Baseline SHA256: 7aa9e2d652aaa9a5828ff5f69b50568299b80fde289606792af2cdfa00f5e4e4
-Baseline comparison: no changed or missing archived source files.
+基线归档：meridian-native9-fd6-offer-final-20261103T0714Z.zip
+基线 SHA256：7aa9e2d652aaa9a5828ff5f69b50568299b80fde289606792af2cdfa00f5e4e4
+基线比较：归档源码文件均无改动或缺失。
 
-Validation scope: Go 1.27.3 on Linux amd64; commands and exit statuses are in
-VALIDATION.txt. Tests use mocked cgroup/process operations and ordinary pipe FDs.
-Independent security review passed for the documented inactive primitive scope.
-This does not approve production confinement, host network exclusivity, or VPN
-activation. Existing default remains disabled; no privileged settings, cgroups,
-network namespaces, TUN devices, routes, DNS or Unix listeners were created here.
-Prior native integration evidence is retained from v15, not rerun or relabeled.
+验证范围：Linux amd64 上的 Go 1.27.3；命令与退出状态见 VALIDATION.txt。测试使用模拟的 cgroup/进程操作和普通管道文件描述符。针对文档所述、尚未启用的基础组件范围，独立安全审查通过。这不批准生产环境隔离、宿主网络独占或 VPN 激活。既有默认设置仍为禁用；此处未创建任何特权设置、cgroup、网络命名空间、TUN 设备、路由、DNS 或 Unix 监听器。先前的原生集成证据沿用 v15，没有重新运行或重新标注。
 
-The archive excludes build binaries, toolchains, caches and local credentials.
-The unchanged pinned upstream OpenConnect source tarball includes public upstream
-test certificates/private-key fixtures. They are reproducibility test data, not
-user or service credentials. The tarball remains byte-for-byte pinned rather than
-silently removing upstream fixture content and breaking its checksum.
+归档不包含构建二进制、工具链、缓存或本地凭据。固定且未修改的上游 OpenConnect 源码包包含公开的上游测试证书/私钥夹具。它们是用于复现的测试数据，不是用户或服务凭据。源码包继续逐字节保持固定，未静默删除上游夹具内容而破坏校验值。
 
-See internal/processcontainment/README.md for prerequisites and official sources.
-A reviewed bootstrap enforcing identity/capabilities/namespaces/filesystem/FD and
-syscall policy, plus an enforceable ownership model for host network and resolver
-writers, is still required before deployment.
+前置条件及官方来源见 internal/processcontainment/README.md。部署前仍需经过审查的引导程序，强制实施身份、能力、命名空间、文件系统、文件描述符及系统调用策略；同时还需能强制落实的所有权模型，约束宿主网络和解析器的写入方。

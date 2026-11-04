@@ -6,10 +6,10 @@
 
 基于 Go 与 MyGo 的安全访问客户端，面向 Linux VPN 工作流与跨平台原生界面。
 
-[![CI](https://img.shields.io/github/actions/workflow/status/alanbulan/meridian-vpn/ci.yml?branch=main&style=flat-square&label=build%20%26%20tests)](https://github.com/alanbulan/meridian-vpn/actions/workflows/ci.yml)
+[![构建与测试](https://img.shields.io/github/actions/workflow/status/alanbulan/meridian-vpn/ci.yml?branch=main&style=flat-square&label=%E6%9E%84%E5%BB%BA%E4%B8%8E%E6%B5%8B%E8%AF%95)](https://github.com/alanbulan/meridian-vpn/actions/workflows/ci.yml)
 ![Go](https://img.shields.io/badge/Go-1.27.3-00ADD8?style=flat-square&logo=go&logoColor=white)
 ![MyGo](https://img.shields.io/badge/MyGo-0.7.4-64748b?style=flat-square)
-![Status](https://img.shields.io/badge/status-development-f59e0b?style=flat-square)
+![开发状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%BC%80%E5%8F%91%E4%B8%AD-f59e0b?style=flat-square)
 
 [界面预览](#界面预览) · [平台与协议](#平台与协议) · [快速开始](#快速开始) · [工程验证](#工程验证) · [安全边界](#安全边界) · [开发路线](#开发路线)
 
@@ -41,7 +41,7 @@ Meridian 使用纯 Go 原生桌面界面，不依赖 WebView、HTML、JavaScript
 | --- | --- | --- |
 | 配置新建、编辑、搜索、确认删除 | 密码、PEM、PKCS#12 与受限 PKCS#11 URI 输入 | Meridian JSON 导入预览、去重与导出 |
 | 手动多网关选择与安全切换 | 路由/DNS 变更逐次确认 | 只读环境诊断与脱敏日志导出 |
-| 中文 / English、浅色 / 深色主题 | 可选独立 libopenconnect MFA 组件 | 无界面 `meridianctl` 配置管理 |
+| 中文 / 英文、浅色 / 深色主题 | 可选独立 libopenconnect MFA 组件 | 无界面 `meridianctl` 配置管理 |
 | 已验证接口的地址、流量与连接时长 | 取消认证、清除会话秘密、失败关闭 | Linux 用户级登录启动的确认流程 |
 
 密码、Cookie、私钥口令和 PIN 不写入配置文件。代理集成认证单次授权不会随配置导入或持久化。托盘功能取决于桌面宿主；不支持时明确禁用。
@@ -53,7 +53,7 @@ Meridian 使用纯 Go 原生桌面界面，不依赖 WebView、HTML、JavaScript
 | Linux amd64 原生界面 / CLI | 已实现 | CI 构建、单元测试、CLI 启动；归档另有原生 GUI 人工记录 |
 | Linux AnyConnect | OpenConnect 认证 + NetworkManager 系统服务 | 本地合成身份认证夹具有记录；真实企业隧道未验收 |
 | Linux L2TP/IPsec | NetworkManager-l2tp 参数及生命周期适配 | 受控测试；真实 IKE/PPP 协商、授权及清理未验收 |
-| Linux 实验性 UniVPN | 原生传输、broker 与隔离组件的开发代码 | 默认禁用；仅受控/回环夹具与离线准备，非生产连接入口 |
+| Linux 实验性 UniVPN | 原生传输、代理服务与隔离组件的开发代码 | 默认禁用；仅受控/回环夹具与离线准备，非生产连接入口 |
 | Windows amd64 | 原生界面与离线 CLI | 无 VPN 后端，无签名安装包；以对应 Actions 结果判断原生编译/测试 |
 | macOS arm64 | 原生界面与离线 CLI | 无 VPN 后端，无 Developer ID 签名/公证；以对应 Actions 结果判断原生编译/测试 |
 
@@ -110,7 +110,7 @@ go build -buildvcs=false -trimpath -o build/meridianctl.exe ./cmd/meridianctl
 ./build/meridianctl diagnostics --json
 ```
 
-以上命令保持离线/只读。Linux另提供显式 `connect --profile N --authorize-network --credentials-stdin` 前台连接：通过非终端stdin接收有界凭据JSON，Ctrl+C/SIGTERM清理本进程拥有的会话。终端MFA、跨进程disconnect和自动重连尚未实现，真实网关/路由DNS恢复仍未验收。诊断只检查依赖与就绪状态，存在阻断项时返回退出码 1。导出文件可能含网关、账号和本地路径，分享前仍需审阅。完整命令见 [CLI 文档](cmd/meridianctl/README.md)。
+以上命令保持离线/只读。Linux另提供显式 `connect --profile N --authorize-network --credentials-stdin` 前台连接：通过非终端stdin接收有界凭据JSON，Ctrl+C/SIGTERM清理本进程拥有的会话。终端 MFA、跨进程断开连接和自动重连尚未实现，真实网关/路由DNS恢复仍未验收。诊断只检查依赖与就绪状态，存在阻断项时返回退出码 1。导出文件可能含网关、账号和本地路径，分享前仍需审阅。完整命令见 [CLI 文档](cmd/meridianctl/README.md)。
 
 ## 技术架构
 
@@ -139,15 +139,15 @@ flowchart TB
 
 ## 工程验证
 
-[GitHub Actions](.github/workflows/ci.yml) 在 Linux amd64、Windows amd64、macOS arm64 原生 runner 上分别执行：
+[GitHub Actions](.github/workflows/ci.yml) 在 Linux amd64、Windows amd64、macOS arm64 原生运行环境上分别执行：
 
 - 固定 Go 版本、模块完整性检查。
 - `go test -count=1 -json ./...` 与 `go vet ./...`。
 - 目标平台 GUI / CLI 编译，以及不读取配置的 CLI `help` / `version` 启动。
 - 独立输出测试记录和未签名开发二进制，保存 7 天。
 - 打包前核对 ELF / PE / Mach-O 的目标架构；制品附带 `SHA256SUMS` 和 `build-manifest.json`，记录源提交、平台、大小与哈希。
-- Linux 追加 race 检查、静态 bootstrap 构建/注入测试、离线 provisioning 单元测试。
-- 独立 Debian trixie CI 容器以普通用户执行合成 localhost 认证与 native 回环/注入夹具；不挂载TUN、不运行VPN系统服务。
+- Linux 追加竞态检查、静态引导程序构建/注入测试、离线部署准备单元测试。
+- 独立 Debian trixie CI 容器以普通用户执行合成本机认证与原生回环/注入夹具；不挂载TUN、不运行VPN系统服务。
 
 工作流汇总单独列出跳过项，跳过不计为通过；包级编译失败、缺失日志与缺少包终态会标为失败或未验证。GUI 单元测试使用 MyGo `ui.NewTester`，不能代替真实窗口、托盘、输入法、系统授权弹窗或登录启动验收。CI 不创建实际 TUN、不修改路由/DNS、不连接企业网关、不安装或运行特权 UniVPN 服务。
 
@@ -160,20 +160,20 @@ python3 -m unittest discover -s integration/provisioning -v
 python3 -m unittest discover -s scripts -v
 ```
 
-发布 GUI / CLI 使用 `CGO_ENABLED=0`；race 检测需要的 cgo 仅用于测试插桩。可选认证 helper 是单独的 C 程序，不能称为全 Go VPN 协议实现。
+发布 GUI / CLI 使用 `CGO_ENABLED=0`；数据竞争检测需要的 cgo 仅用于测试插桩。可选认证辅助程序是单独的 C 程序，不能称为全 Go VPN 协议实现。
 
-本地合成认证、回环 TLS 和原生 C 回归的复现入口分别见 [authfixture](integration/authfixture/README.md)、[mfa-helper](integration/mfa-helper/README.md)、[univpn-native](integration/univpn-native/README.md)。统一入口见 [loopback](integration/loopback/README.md)。独立CI job从Debian官方仓库准备依赖并记录版本；18项认证用例必须全部实际通过，缺失或跳过均失败。原生用例使用仓库内校验过的源码归档与补丁，不联网下载该源码。依赖安装仅发生在临时CI容器，runner本身不安装软件；本地运行需自行准备依赖并明确选择套件。
+本地合成认证、回环 TLS 和原生 C 回归的复现入口分别见 [认证夹具](integration/authfixture/README.md)、[MFA 认证辅助程序](integration/mfa-helper/README.md)、[原生 UniVPN](integration/univpn-native/README.md)。统一入口见 [回环测试](integration/loopback/README.md)。独立 CI 任务从Debian官方仓库准备依赖并记录版本；18项认证用例必须全部实际通过，缺失或跳过均失败。原生用例使用仓库内校验过的源码归档与补丁，不联网下载该源码。依赖安装仅发生在临时 CI 容器，运行器本身不安装软件；本地运行需自行准备依赖并明确选择套件。
 
 下载制品后可在解压目录运行 `sha256sum -c SHA256SUMS`（macOS 使用 `shasum -a 256 -c SHA256SUMS`），并将清单源提交与对应 Actions 运行核对。哈希用于检测下载损坏或字节差异，不是签名、发行者身份认证或安全审计。
 
-历史验证记录保存在 [VALIDATION.md](docs/VALIDATION.md)，属于对应检查点，不自动继承到后续代码。最新运行是否通过，以具体 commit 的 Actions 日志为准。
+历史验证记录保存在 [VALIDATION.md](docs/VALIDATION.md)，属于对应检查点，不自动继承到后续代码。最新运行是否通过，以具体提交的 Actions 日志为准。
 
 ## 安全边界
 
 - 凭据只用于当前认证会话；不把密码、Cookie、PIN 或私钥口令写入配置、日志、argv 或环境变量。
 - 系统连接只操作本次创建的配置身份，失败时保留清理不确定性的提示，并阻止不安全的重复连接。
-- 不提供 kill switch 或完整 IPv6 / DNS 泄漏保证。强制结束应用、系统崩溃时，系统服务中的连接不保证立即断开。
-- 实验性 UniVPN 仍缺可信部署、独占网络控制与真实内核隔离验收；不要安装为 setuid、手动运行 bootstrap 或启用生产连接。
+- 不提供断网保护（kill switch） 或完整 IPv6 / DNS 泄漏保证。强制结束应用、系统崩溃时，系统服务中的连接不保证立即断开。
+- 实验性 UniVPN 仍缺可信部署、独占网络控制与真实内核隔离验收；不要安装为 setuid、手动运行引导程序 或启用生产连接。
 - 离线清单哈希证明字节一致，不证明代码安全、来源可信或完整依赖闭包。
 
 发现问题时请勿提交真实账号、网关、Cookie、私钥、证书口令或完整网络配置。
@@ -181,7 +181,7 @@ python3 -m unittest discover -s scripts -v
 ## 开发路线
 
 - [ ] 在授权隔离环境验收 Linux 真实隧道、内网访问、路由/DNS 回滚和异常退出。
-- [ ] 验证实验性 worker 的真实内核隔离、资源限制、失败回收和不可逃逸性。
+- [ ] 验证实验性工作进程的真实内核隔离、资源限制、失败回收和不可逃逸性。
 - [ ] 实现 Windows / macOS 平台后端及其权限、安全服务与签名流程。
 - [ ] 完成真实桌面窗口、托盘、输入法与登录启动的目标系统验收。
 - [ ] 按明确需求实现 SSO、硬件令牌、自动重连和系统密钥环，而非用界面选项替代能力。
@@ -196,4 +196,4 @@ MyGo 与 Lucide 的许可证副本随源码保留；Go 依赖通知见 [docs/thi
 
 ## 反馈与贡献
 
-反馈请注明操作系统、架构、commit、复现步骤和脱敏日志，区分编译失败、界面问题、认证失败与真实网络问题。提交改动时补充回归测试，并明确记录哪些检查通过、失败或未运行。
+反馈请注明操作系统、架构、提交标识、复现步骤和脱敏日志，区分编译失败、界面问题、认证失败与真实网络问题。提交改动时补充回归测试，并明确记录哪些检查通过、失败或未运行。

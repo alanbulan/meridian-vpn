@@ -1,67 +1,52 @@
-# Connection failure classification
+# 连接失败分类
 
-`core.Snapshot.Failure` is a bounded `FailureKind` value, separate from lifecycle
-state and user-facing text. Zero (`FailureNone`) means no failure is recorded.
-Unannotated failures are classified only by the engine's trusted lifecycle
-phase: backend start, readiness, or connection lost. Raw error strings are never
-parsed to guess authentication, certificate, or transport outcomes.
+`core.Snapshot.Failure` 是取值范围受限的 `FailureKind` 值，独立于生命周期
+状态和面向用户的文本。零值（`FailureNone`）表示没有记录失败。
+未标注的失败仅根据引擎可信的生命周期阶段分类：后端启动、就绪检查或连接丢失。
+绝不通过解析原始错误字符串来猜测认证、证书或传输结果。
 
-Trusted adapters may return `NewConnectionError` with authentication, trust,
-configuration, or transport classifications. This type stores only a validated
-numeric enum, has fixed messages, and does not retain or unwrap a raw cause.
-Unknown/invalid codes normalize to `FailureUnknown`. NetworkManager now reports locally observed unavailable capability, invalid
-configuration, backend-start, readiness and established-connection-loss facts.
-An unsuccessful OpenConnect command or malformed authentication result remains
-unknown unless a trusted helper supplies a structured classification. The
-adapter cannot distinguish password rejection, certificate rejection and
-transport failure from a generic command failure. No existing production
-adapter currently supplies a trusted transient-transport reason. Error wrappers may themselves contain
-secrets, so the engine exposes only the classification, never wrapper text.
-Unavailable capability messages are likewise replaced with a static message at
-the engine boundary.
+受信任的适配器可以返回 `NewConnectionError`，标注认证、信任、配置或传输分类。
+该类型仅存储经过验证的数字枚举，使用固定消息，不保留或展开原始错误原因。
+未知或无效代码会统一为 `FailureUnknown`。NetworkManager 现在会报告本地观察到的
+能力不可用、配置无效、后端启动失败、就绪检查失败以及已建立连接丢失等事实。
+OpenConnect 命令执行失败或认证结果格式无效时，除非受信任的辅助程序提供结构化分类，
+否则仍记为未知。适配器无法仅凭通用命令失败区分密码拒绝、证书拒绝与传输失败。
+目前没有生产适配器提供可信的瞬时传输故障原因。
+错误包装本身可能包含秘密，因此引擎只暴露分类，绝不暴露包装文本。
+能力不可用的消息同样会在引擎边界处替换为静态消息。
 
-Cleanup uncertainty takes precedence over every other failure, including joined
-errors and cancellation, and leaves `CleanupFailed` quarantined. Joined typed
-failures are independent of their ordering: trust, authentication, configuration,
-backend unavailability, unknown and lifecycle failures all precede transport.
-A transport label therefore cannot hide a more restrictive known failure. Successful
-user-requested cancellation records no failure. Each newly authorized attempt
-clears the previous classification; preflight validation/admission rejections do
-not overwrite an active attempt's result.
+清理结果不确定的优先级高于其他所有失败，包括合并错误和取消操作，
+并会将 `CleanupFailed` 保持在隔离状态。合并的带类型错误不受排列顺序影响：
+信任、认证、配置、后端不可用、未知以及生命周期失败均优先于传输失败。
+因此，传输标签不能遮蔽已知的、更严格的失败。
+用户请求的取消操作成功时，不记录失败。每次新授权的尝试都会清除先前分类；
+预检校验或准入拒绝不会覆盖正在进行的尝试的结果。
 
-The desktop only offers its one-time, delayed fresh-authentication reminder for
-established connection loss or a typed transport failure after successful
-cleanup. Other failures show fixed classified text without inviting another
-sign-in. The ordinary manual connection action remains available after confirmed
-cleanup, with fresh credentials and network authorization required. Changing the
-selected session gateway clears password, PSK, key passphrase/PIN, network
-authorization and proxy consent before the new target can be connected.
+桌面端仅在清理成功后，针对已建立连接丢失或带类型的传输失败，
+提供一次延迟的重新认证提醒。其他失败显示固定的分类文本，不提示再次登录。
+确认清理完成后，仍可手动发起普通连接，但必须重新提供凭据和网络变更授权。
+切换会话网关时，在连接新目标之前，会清除密码、PSK、密钥口令或 PIN、
+网络变更授权以及代理同意。
 
-Reminder evidence is bound to `Snapshot.AttemptID`, a process-local counter that
-changes only when the engine admits a new connection attempt. The terminal
-snapshot retains its attempt identity. If polling misses an intervening retry,
-a prior session's connected observation, delayed reminder or visible reminder
-is discarded instead of being attached to the new failure. A later established
-session can still produce its own one-time reminder. Profile changes also
-invalidate pending reminder evidence. This identity is not persisted and does
-not grant retry permission.
+提醒依据绑定到 `Snapshot.AttemptID`。这是一个进程内计数器，
+仅在引擎接受新的连接尝试时变化；终态快照仍保留该尝试标识。
+如果轮询错过了中间的一次重试，旧会话的已连接观察、延迟提醒或可见提醒会被丢弃，
+不会附加到新尝试的失败上。之后成功建立的会话仍可产生自己的单次提醒。
+切换配置也会使待处理的提醒依据失效。该标识不会持久化，也不授予重试权限。
 
-The GUI records the exact gateway selected for each admitted attempt separately
-from credentials. The loss reminder opens a blank authentication form for that
-same gateway, including an explicitly selected backup, and displays its full
-configured address. It never silently switches recovery back to the primary
-address. If the recorded attempt/profile no longer matches or the gateway has
-been removed, recovery stops with a notice; the user can still choose the normal
-manual connection action. Submission rechecks the configured target and fresh
-network/proxy consent before calling the engine. This target metadata is only
-in memory and is neither a saved password nor permission to retry.
+GUI 将每次获准尝试实际选择的网关与凭据分开记录。
+连接丢失提醒会为同一网关打开空白认证表单，包括用户明确选择的备用网关，
+并显示其完整配置地址，不会静默切回主网关。
+如果记录的尝试或配置已不匹配，或者网关已被移除，恢复流程会停止并显示提示；
+用户仍可选择普通手动连接。提交时，在调用引擎之前会重新检查配置中的目标，
+以及新取得的网络和代理授权。目标元数据只保存在内存中，
+既不是已保存的密码，也不构成重试权限。
 
-These codes are diagnostic groundwork, **not retry permission**. There is no
-retryability flag, timer, backoff, automatic reconnect, retained credential, or
-new network operation. Future reconnect work still needs explicit authorization,
-fresh authentication, verified cleanup and protocol-aware safety decisions.
+这些代码是诊断基础，**不是重试权限**。这里没有可重试标志、重试定时器、
+退避、自动重连、保留的凭据或新的网络操作。未来的重连工作仍需要明确授权、
+重新认证、经过验证的清理，以及针对具体协议的安全决策。
 
-Tests use in-memory adapters and sessions for phase classification, typed and
-wrapped errors, cleanup priority, cancellation, reset and secret redaction. Additional tests exercise fake NetworkManager command outcomes, joined
-classifications in both orders, reminder gating and gateway-change consent
-reset. They do not activate a real VPN or modify system networking.
+测试使用内存中的适配器和会话，覆盖阶段分类、带类型及包装后的错误、
+清理优先级、取消、重置和秘密脱敏。其他测试覆盖模拟 NetworkManager 命令结果、
+两种排列顺序的合并分类、提醒条件和网关切换后的授权清除。
+这些测试不会激活真实 VPN，也不会修改系统网络。

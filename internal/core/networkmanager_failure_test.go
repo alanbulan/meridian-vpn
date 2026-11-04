@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Only in-memory command outcomes are used. No NetworkManager process runs.
@@ -69,5 +70,28 @@ func TestNetworkManagerClassifiesOnlyObservedFacts(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNetworkManagerLostVerificationIsNotTransientEvidence(t *testing.T) {
+	r := &mockRunner{}
+	s, err := testNM(r).Start(context.Background(), profile(), []byte("synthetic-password"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Stop()
+	if err := <-s.Ready(); err != nil {
+		t.Fatal(err)
+	}
+	r.mu.Lock()
+	r.notReady = true
+	r.mu.Unlock()
+	select {
+	case err := <-s.Done():
+		if classifyFailure(err, FailureUnknown) != FailureConnectionLost {
+			t.Fatal("lost verification was not classified as connection loss", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("fake NetworkManager monitor did not report loss")
 	}
 }

@@ -127,3 +127,14 @@ func TestRecoveryReminderRespectsFailureClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestClassifiedFailuresHaveLocalizedMessages(t *testing.T) {
+	a := NewWithAdapter(filepath.Join(t.TempDir(), "profiles.json"), unavailableTestAdapter{})
+	a.Config.Settings.Language = "zh"
+	for kind := core.FailureUnknown; kind <= core.FailureTransport; kind++ {
+		message := core.NewConnectionError(kind).Error()
+		if a.tr(message) == message {
+			t.Fatalf("missing Chinese failure message for kind %v", kind)
+		}
+	}
+}

@@ -58,7 +58,7 @@ class MacOSPackageTests(unittest.TestCase):
                 with self.assertRaises(ValueError):m.validate_abi(p,"arm64")
     def test_abi_matches_exact_source_and_architecture(self):
         source_hash=hashlib.sha256()
-        for source in sorted((m.ROOT/"internal/macosvpn").glob("*.go"))+sorted((m.ROOT/"internal/core").glob("*.go"))+[m.ROOT/"go.mod",m.ROOT/"go.sum"]:
+        for source in sorted((m.ROOT/"internal/macosvpn").glob("*.go"))+sorted((m.ROOT/"internal/core").glob("*.go"))+sorted((m.ROOT/"internal/windowsvpn").glob("*.go"))+[m.ROOT/"go.mod",m.ROOT/"go.sum"]:
             source_hash.update(source.relative_to(m.ROOT).as_posix().encode()+b"\x00"+source.read_bytes()+b"\x00")
         evidence={"schema":1,"mode":"abi","platform":"Darwin","result":"passed","stage":"complete","network_changes":False,"live_vpn_verified":False,"tests_passed":["TestMacOSReadOnlyABI"],"architecture":"arm64","source_sha256":source_hash.hexdigest(),"test_binary_sha256":"a"*64}
         with tempfile.TemporaryDirectory() as tmp:

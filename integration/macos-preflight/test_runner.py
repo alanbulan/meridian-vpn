@@ -137,6 +137,9 @@ class PreflightEvidenceTests(unittest.TestCase):
             source = root / "internal/macosvpn/example.go"
             source.parent.mkdir(parents=True)
             source.write_bytes(b"package macosvpn\n")
+            dependency = root / "internal/windowsvpn/example.go"
+            dependency.parent.mkdir(parents=True)
+            dependency.write_bytes(b"package windowsvpn\n")
             (root / "go.mod").write_bytes(b"module mygo-vpn\n")
             (root / "go.sum").write_bytes(b"")
             def launch(command, env, timeout):
@@ -144,6 +147,8 @@ class PreflightEvidenceTests(unittest.TestCase):
                     return b"go version go1.27.3 darwin/arm64\n"
                 if command[1] == "-C":
                     source.write_bytes(b"changed checkout, not the build input")
+                    dependency.write_bytes(b"changed dependency, not the build input")
+                    self.assertEqual((Path(command[2]) / "internal/windowsvpn/example.go").read_bytes(), b"package windowsvpn\n")
                     self.assertEqual((Path(command[2]) / "internal/macosvpn/example.go").read_bytes(), b"package macosvpn\n")
                     Path(command[command.index("-o") + 1]).write_bytes(b"synthetic")
                     return b""
@@ -151,7 +156,7 @@ class PreflightEvidenceTests(unittest.TestCase):
             with mock.patch.object(runner, "ROOT", root), mock.patch.object(runner, "run_bounded", side_effect=launch):
                 result = runner.execute("go", "abi", None, Path(tmp) / "report")
             expected = runner.hashlib.sha256()
-            for name, data in [("internal/macosvpn/example.go", b"package macosvpn\n"), ("go.mod", b"module mygo-vpn\n"), ("go.sum", b"")]:
+            for name, data in [("internal/macosvpn/example.go", b"package macosvpn\n"), ("internal/windowsvpn/example.go", b"package windowsvpn\n"), ("go.mod", b"module mygo-vpn\n"), ("go.sum", b"")]:
                 expected.update(name.encode() + b"\x00" + data + b"\x00")
             self.assertEqual(result["source_sha256"], expected.hexdigest())
 
@@ -164,6 +169,7 @@ class PreflightEvidenceTests(unittest.TestCase):
                     return b"go version go1.27.3 darwin/arm64\n"
                 if command[1] == "-C":
                     self.assertTrue((Path(command[2]) / "internal/macosvpn/native_smoke_darwin_test.go").is_file())
+                    self.assertTrue((Path(command[2]) / "internal/windowsvpn/borrowed_session_other.go").is_file())
                     Path(command[command.index("-o") + 1]).write_bytes(b"synthetic test binary, never executed")
                     return b""
                 self.assertEqual(env["MERIDIAN_MACOS_SERVICE_ID"], "private-service")

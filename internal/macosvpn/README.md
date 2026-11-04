@@ -228,3 +228,13 @@ VPN connectivity. Activation stays unintegrated and disabled.
 上下文为阶段之间的等待设置期限；同步 Apple API 本身不可被该机制强制中断。Connect 的等待上限为90秒、Check 为10秒、清理等待为30秒，**不是硬性墙钟超时保证**。本轮只运行注入单测，没有通过该适配器执行真实连接/断开；生产整合仍取决于路由、有效 DNS、IPv6、退出恢复、并发系统修改与隔离真实网关验收。
 
 如果等待、观测或停止的原生边界发生 panic，适配器将该会话标记为不可重入并保留隔离；不会把恢复 Go panic 误认为原生调用已安全完成，也不会立即再次进入可能仍持锁的 Session。该情况必须报告清理不确定，不能自动重连。普通返回的清理错误仍可按既有规则重试；panic 与普通错误有不同恢复边界。
+
+## 独立策略证据与 core 生命周期桥接（尚未启用）
+
+新增 `ExistingCoreAdapter` 实现 `core.Adapter`/`core.Session` 契约；普通密码/PSK 模式不变，新模式标识为尚未加入 Engine 的 `macos-system-l2tp`。测试验证先记录基线、受控连接、验证路由/DNS/IPv6与连接代际、再发布 Ready，随后持续检查，失败则撤销本应用兴趣并验证清理。生产策略验证器明确返回不可用，因而生产入口在调用系统连接前失败关闭。只有内部注入测试可满足完整证明，不能以测试通过宣布 VPN 已可用。
+
+`ReadKernelRoutes` 通过固定只读 sysctl 获取有界内核路由表，严格解析 IPv4/IPv6、作用域和接口；`ReadDNSConfiguration` 运行固定 `/usr/sbin/scutil --dns`，限制时间、输出字节与解析字段，不发送 DNS 查询，不记录原始输出。解析器配置不等于实际查询使用的解析器，更不能证明应用专用 DNS、加密 DNS 或 IPv6 无旁路。
+
+`ReadNetworkPolicySnapshot` 两次读取并比较稳定的规范化摘要；不是原子快照，也不排除两次之间发生再恢复的修改。`CompareNetworkRestoration` 只证明所表示路由与解析器字段相等，`CompleteCleanupVerified` 始终为 false；未表示的路由指标、每应用策略、防火墙、接口残留及变更归属尚无完整证明。绝不通过覆盖整个旧配置来“恢复”他人的并发变更。
+
+原生读回专用测试必须显式设置 `MERIDIAN_MACOS_POLICY_READBACK=1`，仅在候选 CI 中读取当前 runner 路由和解析器，不启动/停止服务。默认单测使用注入数据。同步 Apple 调用仍不能硬中断；core Stop 超时返回清理失败并保留执行者，清理重试也有等待上限，绝不并发重入尚未返回的清理调用。

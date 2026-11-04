@@ -109,7 +109,7 @@ def execute(go, mode, service_id, reports):
             snapshot = Path(tmp) / "source"
             snapshot.mkdir(mode=0o700)
             source_hash = hashlib.sha256()
-            for source in sorted((ROOT / "internal/macosvpn").glob("*.go")) + [ROOT / "go.mod", ROOT / "go.sum"]:
+            for source in sorted((ROOT / "internal/macosvpn").glob("*.go")) + sorted((ROOT / "internal/core").glob("*.go")) + [ROOT / "go.mod", ROOT / "go.sum"]:
                 relative = source.relative_to(ROOT)
                 data = source.read_bytes()
                 target = snapshot / relative

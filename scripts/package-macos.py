@@ -88,7 +88,7 @@ def validate_abi(path, arch):
         "architecture": "arm64" if arch == "arm64" else "x86_64"}.items()):
         raise ValueError("缺少完整且匹配架构的原生只读验证")
     source_hash = hashlib.sha256()
-    for source in sorted((ROOT / "internal/macosvpn").glob("*.go")) + [ROOT / "go.mod", ROOT / "go.sum"]:
+    for source in sorted((ROOT / "internal/macosvpn").glob("*.go")) + sorted((ROOT / "internal/core").glob("*.go")) + [ROOT / "go.mod", ROOT / "go.sum"]:
         source_hash.update(source.relative_to(ROOT).as_posix().encode() + b"\x00" + source.read_bytes() + b"\x00")
     if evidence.get("source_sha256") != source_hash.hexdigest() or not re.fullmatch(r"[0-9a-f]{64}", evidence.get("test_binary_sha256", "")):
         raise ValueError("原生证据与当前源码不匹配")

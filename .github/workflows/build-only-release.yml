@@ -9,7 +9,7 @@ concurrency:
   group: meridian-build-only-release
   cancel-in-progress: false
 env:
-  SOURCE_SHA: REPLACE_WITH_40_HEX_INTEGRATED_SHA
+  SOURCE_SHA: c867b7a2200bc02eccf39a66bd73216a8e6f15bc
   RELEASE_VERSION: 0.1.0-alpha.2
   GOTOOLCHAIN: local
   GOWORK: 'off'

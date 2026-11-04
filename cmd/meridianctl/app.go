@@ -437,6 +437,7 @@ func (a application) exportProfiles(path string, args []string, out, errOut io.W
 		cfg.SelectedID = cfg.Profiles[0].ID
 	}
 	cfg.Settings = core.Settings{}
+	cfg.MacServiceSelection = nil // Device-local expectations are not exported profiles.
 	for i := range cfg.Profiles {
 		cfg.Profiles[i].AllowProxySystemAuth = false
 	}

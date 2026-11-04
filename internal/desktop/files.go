@@ -74,6 +74,8 @@ func (a *App) ExportProfiles(path string, selected *core.Profile) error {
 		cfg.Profiles[i].AllowProxySystemAuth = false
 	}
 	cfg.Settings = core.Settings{}
+	// Device-local remembered service expectations are not portable profiles.
+	cfg.MacServiceSelection = nil
 	return (core.Store{Path: path}).Save(cfg)
 }
 func sameFilePath(a, b string) bool {

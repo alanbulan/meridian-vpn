@@ -53,11 +53,20 @@ type Settings struct {
 	MinimizeToTray bool   `json:"minimize_to_tray"`
 	DarkMode       bool   `json:"dark_mode"`
 }
+
+// SavedMacServiceSelection stores expectations only, never authority or credentials.
+type SavedMacServiceSelection struct {
+	ServiceID string   `json:"service_id"`
+	Gateway   string   `json:"gateway"`
+	Targets   []string `json:"targets"`
+}
+
 type Config struct {
-	Version    int       `json:"version"`
-	Profiles   []Profile `json:"profiles"`
-	Settings   Settings  `json:"settings"`
-	SelectedID string    `json:"selected_id,omitempty"`
+	MacServiceSelection *SavedMacServiceSelection `json:"mac_service_selection,omitempty"`
+	Version             int                       `json:"version"`
+	Profiles            []Profile                 `json:"profiles"`
+	Settings            Settings                  `json:"settings"`
+	SelectedID          string                    `json:"selected_id,omitempty"`
 }
 type Store struct{ Path string }
 
@@ -198,6 +207,11 @@ func (s Store) Load() (Config, error) {
 	return cfg, nil
 }
 func validateConfig(c Config) error {
+	if s := c.MacServiceSelection; s != nil {
+		if err := ValidateProfile(Profile{ID: s.ServiceID, Name: "macOS service", Protocol: ProtocolMacOSSystemL2TP, Gateway: s.Gateway, SystemService: &SystemServiceOptions{ServiceID: s.ServiceID, Targets: s.Targets}}); err != nil {
+			return err
+		}
+	}
 	if c.Settings.Language != "" && c.Settings.Language != "zh" && c.Settings.Language != "en" && c.Settings.Language != "system" {
 		return errors.New("unsupported language")
 	}

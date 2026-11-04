@@ -1,7 +1,7 @@
 name: macOS 开发预览安装包与原生只读验证
 on:
   push:
-    branches: [candidate/macos-preview-20261104, candidate/macos-install-20261104]
+    branches: [candidate/product-selection-20261104, candidate/macos-preview-20261104, candidate/macos-install-20261104]
   pull_request:
     paths: [internal/core/**, internal/macosvpn/**, cmd/meridian-macos-inspect/**, cmd/meridian-macos-service/**, internal/desktop/**, integration/macos-preflight/**, integration/macos-install/**, packaging/macos/**, scripts/package-macos.py, scripts/test_macos_package.py, .github/workflows/macos-preview.yml]
   workflow_dispatch:

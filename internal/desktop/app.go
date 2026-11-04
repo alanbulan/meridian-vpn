@@ -98,6 +98,9 @@ func NewWithAdapter(path string, adapter core.Adapter) *App {
 		a.LoadBlocked = true
 		a.Notice = "Could not load configuration. Existing file will not be overwritten automatically."
 	}
+	if !a.LoadBlocked {
+		a.restoreMacServiceSelection()
+	}
 	return a
 }
 func (a *App) commit(cfg core.Config) bool {
@@ -190,6 +193,11 @@ func (a *App) pollRecheck() {
 
 func (a *App) copyConfig() core.Config {
 	cfg := a.Config
+	if cfg.MacServiceSelection != nil {
+		selection := *cfg.MacServiceSelection
+		selection.Targets = append([]string(nil), selection.Targets...)
+		cfg.MacServiceSelection = &selection
+	}
 	cfg.Profiles = append([]core.Profile(nil), cfg.Profiles...)
 	for i := range cfg.Profiles {
 		if cfg.Profiles[i].SystemService != nil {

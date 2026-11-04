@@ -88,6 +88,50 @@ func prepareMacService(ctx context.Context, input macServiceInput) (macServicePr
 		return adapter, p, nil
 	}}, nil
 }
+func (a *App) restoreMacServiceSelection() {
+	a.macService.reset()
+	if s := a.Config.MacServiceSelection; s != nil {
+		input := macServiceInput{s.ServiceID, s.Gateway, strings.Join(s.Targets, " ")}
+		if _, _, err := macServiceProfile(input); err == nil {
+			a.macService.input = input
+		}
+	}
+}
+
+func (a *App) macServiceSelectionEditable() bool {
+	return !a.LoadBlocked && !a.FileBusy && !a.busy() && !a.ShuttingDown && !a.Checking && a.Engine.Snapshot().State != core.CleanupFailed && a.macService.result == nil
+}
+
+func (a *App) saveMacServiceSelection() {
+	if !a.macServiceSelectionEditable() {
+		return
+	}
+	p, _, err := macServiceProfile(a.macService.input)
+	if err != nil {
+		a.Notice = err.Error()
+		return
+	}
+	cfg := a.copyConfig()
+	cfg.MacServiceSelection = &core.SavedMacServiceSelection{ServiceID: p.SystemService.ServiceID, Gateway: p.Gateway, Targets: append([]string(nil), p.SystemService.Targets...)}
+	if a.commit(cfg) {
+		a.restoreMacServiceSelection()
+		a.Notice = "已保存选择；每次连接仍须重新检查并授权。未保存凭据或授权。"
+	}
+}
+
+func (a *App) forgetMacServiceSelection() {
+	if !a.macServiceSelectionEditable() {
+		return
+	}
+	cfg := a.copyConfig()
+	cfg.MacServiceSelection = nil
+	if a.commit(cfg) {
+		a.macService.reset()
+		a.macService.input = macServiceInput{}
+		a.Notice = "已忘记 Meridian 保存的选择；系统服务及其凭据未作修改。"
+	}
+}
+
 func (a *App) beginMacServiceCheck(prepare func(context.Context, macServiceInput) (macServicePrepared, error)) {
 	if a.LoadBlocked || a.FileBusy || a.busy() || a.ShuttingDown || a.Checking || a.Engine.Snapshot().State == core.CleanupFailed || a.macService.result != nil {
 		return
@@ -117,6 +161,8 @@ func (a *App) pollMacService() {
 			return
 		}
 		if result.err != nil {
+			a.macService.prepared = nil
+			a.macService.consent = macosvpn.ExistingServiceConsent{}
 			a.Notice = "系统服务只读检查未通过；请核对服务标识、期望网关及断开状态。"
 			return
 		}
@@ -181,6 +227,13 @@ func (a *App) macSystemServiceForm(c *ui.Context) {
 	ui.TextInput(c.Key("mac-service-targets"), &m.input.Targets).FillWidth().Disabled(disabled)
 	if before != m.input {
 		m.reset()
+	}
+	ui.Text(c, "保存的选择只用于填入表单；服务已删除或配置改变时需更新选择并重新检查。").FillWidth()
+	if ui.Button(c.Key("mac-save-selection"), "保存选择（不保存授权）").Disabled(disabled).Clicked() {
+		a.saveMacServiceSelection()
+	}
+	if ui.Button(c.Key("mac-forget-selection"), "忘记保存的选择").Disabled(disabled || a.Config.MacServiceSelection == nil).Clicked() {
+		a.forgetMacServiceSelection()
 	}
 	if ui.Button(c.Key("mac-check"), "只读检查所选服务").Disabled(disabled).Clicked() {
 		a.beginMacServiceCheck(prepareMacService)

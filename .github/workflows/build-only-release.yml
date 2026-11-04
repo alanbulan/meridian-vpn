@@ -1,4 +1,4 @@
-name: 恢复已核对的 Linux 与 Windows 预览草稿
+name: 补充同源 macOS Intel 预览安装包
 on:
   push:
     branches: [release/build-only-20261104]
@@ -24,11 +24,38 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           github-token: ${{ github.token }}
-          run-id: '41856242587'
-          artifact-ids: '13338415995,13338126131'
-          path: build/release-inputs
+          run-id: '41853185954'
+          artifact-ids: '13335853347'
+          path: build/intel-artifact
           merge-multiple: false
-      - name: 仅发布已有两平台产物，不构建、不测试、不执行安装器
+      - name: 只补充 Intel 安装包，不构建、不测试、不执行安装器
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/resume-linux-windows-preview.py --artifacts build/release-inputs --version 0.1.0-alpha.2 --source c867b7a2200bc02eccf39a66bd73216a8e6f15bc
+        run: python3 scripts/append-intel-preview.py
+  build-arm64:
+    if: github.repository == 'alanbulan/meridian-vpn'
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      SOURCE_SHA: c867b7a2200bc02eccf39a66bd73216a8e6f15bc
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+      GOENV: 'off'
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 仅编译与封装 Apple Silicon 安装包，不运行测试或程序
+        run: python3 scripts/build-only-package.py --target darwin-arm64 --version 0.1.0-alpha.2 --source "$SOURCE_SHA" --output build/build-only
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: build-only-darwin-arm64
+          path: build/build-only/
+          if-no-files-found: error
+          retention-days: 14

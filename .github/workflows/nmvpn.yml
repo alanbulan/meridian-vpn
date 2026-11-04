@@ -1,6 +1,9 @@
 name: NetworkManager offline contract tests
 
 on:
+  push:
+    branches:
+      - 'dev/nmvpn-offline-core-20261103'
   pull_request:
   workflow_dispatch:
 

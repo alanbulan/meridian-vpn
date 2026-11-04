@@ -128,8 +128,15 @@ CHECK(adapter_ppp, IF_TYPE_PPP == 23);
 CHECK(adapter_up, IfOperStatusUp == 1);
 CHECK(address_preferred, IpDadStatePreferred == 4);
 CHECK(address_transient, IP_ADAPTER_ADDRESS_TRANSIENT == 2);
-ULONG (WINAPI *meridian_adapters_contract)(ULONG, ULONG, PVOID,
-    PIP_ADAPTER_ADDRESSES, PULONG) = GetAdaptersAddresses;
+/* dllimport function addresses are not ISO C static initializers in MSVC.
+   A local assignment retains the exact type/calling-convention check without
+   C4232. This function is only compiled to an object, never linked or called. */
+void meridian_verify_adapters_signature(void)
+{
+    ULONG (WINAPI *contract)(ULONG, ULONG, PVOID,
+        PIP_ADAPTER_ADDRESSES, PULONG) = GetAdaptersAddresses;
+    (void)contract;
+}
 
 /* Every decoded socket/lifetime offset is checked against the actual SDK. */
 CHECK(socket_pointer, offsetof(SOCKET_ADDRESS, lpSockaddr) == 0);

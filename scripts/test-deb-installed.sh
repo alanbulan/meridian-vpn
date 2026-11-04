@@ -12,7 +12,7 @@ chmod 755 /usr/sbin/policy-rc.d
 # installation integrity/source checks exercise the complete desktop package.
 printf 'path-include=/usr/share/doc/meridian\npath-include=/usr/share/doc/meridian/*\n' > /etc/dpkg/dpkg.cfg.d/zz-meridian-test-docs
 apt-get update
-apt-get install -y --no-install-recommends /input/meridian_0.1.0~alpha.1-1_amd64.deb xvfb xauth xdotool dbus-x11 desktop-file-utils fonts-dejavu-core
+apt-get install -y --no-install-recommends /input/meridian_0.1.0~alpha.1-1_amd64.deb xvfb xauth xdotool openbox x11-utils dbus-x11 desktop-file-utils fonts-dejavu-core
 dpkg-query -W -f='${Package} ${Version}\n' libc6 libopenconnect5 libgtk-3-0t64 2>/dev/null || true
 [ "$(dpkg-query -W -f='${Version}' meridian)" = '0.1.0~alpha.1-1' ]
 [ "$(readlink -f /usr/bin/meridian)" = /usr/lib/meridian/meridian ]
@@ -30,6 +30,8 @@ runuser -u meridian-test -- /usr/lib/meridian/meridian-auth-helper --protocol-ve
 # No profile or gateway is configured. Verify a real visible X11 window, then
 # close the unconnected application; never click Connect or invoke networking.
 runuser -u meridian-test -- dbus-run-session -- xvfb-run -a sh -eu -c '
+  openbox > /tmp/meridian-wm.log 2>&1 &
+  sleep 1
   meridian > /tmp/meridian-gui.log 2>&1 &
   pid=$!
   trap "kill -TERM $pid 2>/dev/null || true" EXIT
@@ -42,6 +44,10 @@ runuser -u meridian-test -- dbus-run-session -- xvfb-run -a sh -eu -c '
     fi
     sleep 1
   done
+  xwininfo -root -tree || true
+  kill -QUIT "$pid" || true
+  sleep 1
+  cat /tmp/meridian-wm.log
   cat /tmp/meridian-gui.log
   exit 1
 '

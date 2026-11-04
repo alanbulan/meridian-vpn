@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"mygo-vpn/internal/windowsvpn"
 	"reflect"
 	"sync"
 	"time"
@@ -29,6 +30,9 @@ type LogEntry struct {
 	Message string
 }
 type Snapshot struct {
+	// AttemptID identifies an admitted connection attempt, including its terminal
+	// state. It is process-local and contains no profile or credential data.
+	AttemptID            uint64
 	State                string
 	Failure              FailureKind
 	Message              string
@@ -37,6 +41,9 @@ type Snapshot struct {
 	Uploaded, Downloaded uint64
 	MetricsAvailable     bool
 	ConnectedAt          time.Time
+	// VerificationScope is present only while a scoped session is Connected.
+	// Empty retains the existing broker/interface readiness contract.
+	VerificationScope string
 }
 
 // Session.Ready must originate from a trusted broker verifying active VPN state
@@ -46,6 +53,9 @@ type Snapshot struct {
 // confirm cleanup before returning nil, including after Done has fired.
 // Ready and Done each publish at most one result; any terminal result must be
 // published before Stop returns. Channels may remain open after that result.
+// macos-system-l2tp additionally requires ScopedVerification on the adapter and
+// successful session. Its finite target-route scope never implies global DNS,
+// IPv6 leak prevention, exclusive service ownership or whole-device restoration.
 type Session interface {
 	Ready() <-chan error
 	Done() <-chan error
@@ -68,6 +78,15 @@ type CredentialAdapter interface {
 }
 
 func validateCredentials(p Profile, c Credentials) error {
+	if p.Protocol == ProtocolMacOSSystemL2TP && (len(c.IPsecPSK) != 0 || len(c.Password) != 0 || len(c.KeyPassword) != 0) {
+		return errors.New("macOS system-service mode does not accept credentials; credentials remain managed by macOS")
+	}
+	if p.Protocol == WindowsBorrowedProtocol {
+		if len(c.IPsecPSK) != 0 || len(c.KeyPassword) != 0 || windowsvpn.ValidateBorrowedPassword(c.Password) != nil {
+			return errors.New("existing Windows VPN requires only a valid session password")
+		}
+		return nil
+	}
 	if len(c.IPsecPSK) > 4096 || bytes.ContainsAny(c.IPsecPSK, "\r\n\x00") {
 		return errors.New("invalid IPsec PSK")
 	}
@@ -92,17 +111,20 @@ func validateCredentials(p Profile, c Credentials) error {
 func (c Credentials) clear() { clear(c.Password); clear(c.KeyPassword); clear(c.IPsecPSK) }
 
 type Engine struct {
-	mu             sync.Mutex
-	adapter        Adapter
-	state, message string
-	failure        FailureKind
-	logs           []LogEntry
-	cancel         context.CancelFunc
-	session        Session
-	generation     uint64
-	finished       chan struct{}
-	shuttingDown   bool
-	connectedAt    time.Time
+	mu              sync.Mutex
+	adapter         Adapter
+	state, message  string
+	failure         FailureKind
+	logs            []LogEntry
+	cancel          context.CancelFunc
+	session         Session
+	generation      uint64
+	finished        chan struct{}
+	shuttingDown    bool
+	connectedAt     time.Time
+	attemptScope    string
+	verifiedScope   string
+	cleanupRetrying bool
 }
 
 func NewEngine(a Adapter) *Engine {
@@ -118,7 +140,10 @@ func (e *Engine) add(level, msg string) {
 }
 func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
-	snapshot := Snapshot{State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
+	snapshot := Snapshot{AttemptID: e.generation, State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
+	if e.state == Connected {
+		snapshot.VerificationScope = e.verifiedScope
+	}
 	session := e.session
 	e.mu.Unlock()
 	if snapshot.State == Connected {
@@ -140,13 +165,16 @@ func (e *Engine) Connect(p Profile, password string, authorized bool) error {
 	return e.ConnectWithCredentials(p, c, authorized)
 }
 func (e *Engine) ConnectWithCredentials(p Profile, credentials Credentials, authorized bool) error {
+	return e.ConnectWithAuthorization(p, credentials, SessionAuthorization{NetworkChanges: authorized})
+}
+func (e *Engine) ConnectWithAuthorization(p Profile, credentials Credentials, authorization SessionAuthorization) error {
 	if err := ValidateProfile(p); err != nil {
 		return err
 	}
 	if err := validateCredentials(p, credentials); err != nil {
 		return err
 	}
-	if !authorized {
+	if !authorization.NetworkChanges {
 		return errors.New("explicit authorization is required before changing network routes or DNS")
 	}
 	e.mu.Lock()
@@ -157,8 +185,23 @@ func (e *Engine) ConnectWithCredentials(p Profile, credentials Credentials, auth
 	if e.state == Connecting || e.state == Connected || e.state == Disconnecting || e.state == CleanupFailed {
 		return errors.New("a connection operation is already active")
 	}
+	if p.Protocol == WindowsBorrowedProtocol {
+		if !authorization.WindowsCredentialPersistence || !authorization.WindowsSharedReference {
+			return errors.New("fresh Windows credential-persistence and shared-reference consent is required")
+		}
+		if _, ok := e.adapter.(AuthorizedAdapter); !ok {
+			return errors.New("backend does not support explicit Windows borrowed authorization")
+		}
+	}
 	if nilInterface(e.adapter) {
 		return errors.New("no backend adapter configured")
+	}
+	scope := profileVerificationScope(p)
+	if verificationScope(e.adapter) != scope {
+		e.failure = FailureBackendUnavailable
+		e.message = NewConnectionError(FailureBackendUnavailable).Error()
+		e.add("warning", "Connection blocked: backend verification scope does not match the selected protocol.")
+		return NewConnectionError(FailureBackendUnavailable)
 	}
 	if _, ok := e.adapter.(CredentialAdapter); !ok && (p.Protocol == "l2tp" || p.InteractiveAuth || p.ClientCertificate != "" || len(credentials.KeyPassword) != 0) {
 		return errors.New("backend does not support certificate or interactive authentication")
@@ -177,54 +220,84 @@ func (e *Engine) ConnectWithCredentials(p Profile, credentials Credentials, auth
 	e.failure = FailureNone
 	e.state = Connecting
 	e.message = "Waiting for verified tunnel readiness"
-	e.add("info", "Connection requested; credentials are not logged or persisted.")
+	e.attemptScope = scope
+	e.verifiedScope = ""
+	if scope == SystemServiceTargetRoutes {
+		e.message = "正在等待所选系统服务与指定目标路由验证"
+	}
+	if p.Protocol == WindowsBorrowedProtocol {
+		e.add("info", "Existing Windows VPN requested with per-use consent; Windows credential persistence may apply.")
+	} else {
+		e.add("info", "Connection requested; credentials are not logged or persisted.")
+	}
 	e.finished = make(chan struct{})
 	credentials = Credentials{IPsecPSK: bytes.Clone(credentials.IPsecPSK), Password: bytes.Clone(credentials.Password), KeyPassword: bytes.Clone(credentials.KeyPassword)}
 	p.AdditionalGateways = append([]string(nil), p.AdditionalGateways...)
+	p.SystemService = cloneSystemServiceOptions(p.SystemService)
 	if p.L2TP != nil {
 		options := *p.L2TP
 		p.L2TP = &options
 	}
-	go e.run(ctx, generation, e.finished, p, credentials)
+	if p.WindowsBorrowed != nil {
+		options := *p.WindowsBorrowed
+		p.WindowsBorrowed = &options
+	}
+	go e.run(ctx, generation, e.finished, p, credentials, authorization)
 	return nil
 }
 
 // CleanupError means privileged cleanup was not confirmed. The UI must not
 // report Disconnected or permit another connection in this state.
-type CleanupError struct{}
+type CleanupError struct{ scope string }
 
-func (*CleanupError) Error() string {
+func (e *CleanupError) Error() string {
+	if e != nil && e.scope == WindowsBorrowedObservedInterface {
+		return "Windows reference cleanup remains unconfirmed; keep Meridian open and inspect the existing connection"
+	}
+	if e != nil && e.scope == SystemServiceTargetRoutes {
+		return "所选系统服务清理尚未确认；重新连接或退出前请检查该服务"
+	}
 	return "VPN cleanup could not be confirmed; inspect the system VPN service before reconnecting or quitting"
 }
-func (e *Engine) run(ctx context.Context, generation uint64, finished chan struct{}, p Profile, credentials Credentials) {
+func (e *Engine) run(ctx context.Context, generation uint64, finished chan struct{}, p Profile, credentials Credentials, authorization SessionAuthorization) {
 	defer close(finished)
+	scope := profileVerificationScope(p)
+	cleanupError := &CleanupError{scope: scope}
 	var session Session
 	var err error
-	if adapter, ok := e.adapter.(CredentialAdapter); ok {
+	if p.Protocol == WindowsBorrowedProtocol {
+		session, err = e.adapter.(AuthorizedAdapter).StartWithAuthorization(ctx, p, credentials, authorization)
+	} else if adapter, ok := e.adapter.(CredentialAdapter); ok {
 		session, err = adapter.StartWithCredentials(ctx, p, credentials)
 	} else {
 		session, err = e.adapter.Start(ctx, p, credentials.Password)
 	}
 	credentials.clear()
+	if !nilInterface(session) {
+		e.mu.Lock()
+		e.session = session
+		e.mu.Unlock()
+	}
 	if err != nil || nilInterface(session) {
 		if !nilInterface(session) {
 			e.beginCleanup()
 			cleanupErr := session.Stop()
 			pendingCleanup := pendingCleanupFailure(session)
 			if cleanupErr != nil || pendingCleanup {
-				e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
+				e.complete(CleanupFailed, cleanupError.Error(), FailureCleanup)
 				return
 			}
 		}
 		if classifyFailure(err, FailureStart) == FailureCleanup {
-			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
+			e.complete(CleanupFailed, cleanupError.Error(), FailureCleanup)
 			return
 		}
 		e.mu.Lock()
 		if ctx.Err() != nil {
-			e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
+			e.completeLocked(Disconnected, disconnectedMessage(scope), FailureNone)
 		} else {
-			e.completeLocked(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.", classifyFailure(err, FailureStart))
+			failure := classifyFailure(err, FailureStart)
+			e.completeLocked(Failed, failureMessage(failure, "Backend could not start. Check prerequisites, authentication and gateway configuration."), failure)
 		}
 		e.mu.Unlock()
 		return
@@ -232,7 +305,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	e.mu.Lock()
 	e.session = session
 	e.mu.Unlock()
-	stop := func(failureMessage string, failure FailureKind) {
+	stop := func(message string, failure FailureKind) {
 		e.beginCleanup()
 		// Stop may complete while cancellation races with a queued terminal
 		// notification. Observe both channels after cleanup so select ordering
@@ -240,15 +313,15 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 		stopErr := session.Stop()
 		pendingCleanup := pendingCleanupFailure(session)
 		if stopErr != nil || failure == FailureCleanup || pendingCleanup {
-			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
+			e.complete(CleanupFailed, cleanupError.Error(), FailureCleanup)
 		} else {
 			// Serialize the cancellation check with Disconnect so a user request
 			// racing with cleanup cannot be overwritten by a failure result.
 			e.mu.Lock()
-			if ctx.Err() == nil && failureMessage != "" {
-				e.completeLocked(Failed, failureMessage, failure)
+			if ctx.Err() == nil && message != "" {
+				e.completeLocked(Failed, failureMessage(failure, message), failure)
 			} else {
-				e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
+				e.completeLocked(Disconnected, disconnectedMessage(scope), FailureNone)
 			}
 			e.mu.Unlock()
 		}
@@ -262,9 +335,13 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 			stop("Tunnel ended without verified readiness", classifyFailure(err, FailureReadiness))
 			return
 		}
+		if verificationScope(session) != scope {
+			stop("Session verification scope does not match the selected protocol", FailureReadiness)
+			return
+		}
 	case err := <-session.Done():
 		if classifyFailure(err, FailureUnknown) == FailureCleanup {
-			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
+			e.complete(CleanupFailed, cleanupError.Error(), FailureCleanup)
 		} else {
 			stop("Tunnel ended without verified readiness", classifyFailure(err, FailureReadiness))
 		}
@@ -274,7 +351,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	select {
 	case err := <-session.Done():
 		if classifyFailure(err, FailureUnknown) == FailureCleanup {
-			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
+			e.complete(CleanupFailed, cleanupError.Error(), FailureCleanup)
 		} else {
 			stop("Tunnel ended without verified readiness", classifyFailure(err, FailureReadiness))
 		}
@@ -285,8 +362,17 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	if ctx.Err() == nil {
 		e.state = Connected
 		e.connectedAt = time.Now()
-		e.message = "Tunnel verified by the trusted broker and its interface"
-		e.add("info", "Tunnel readiness verified.")
+		e.verifiedScope = scope
+		if scope == SystemServiceTargetRoutes {
+			e.message = "系统服务和指定目标路由已验证；不提供全应用 DNS/IPv6 防泄漏保证"
+			e.add("info", e.message)
+		} else if p.Protocol == WindowsBorrowedProtocol {
+			e.message = "Existing Windows VPN observed; limited mode without full route/DNS leak protection"
+			e.add("info", "Existing Windows VPN identity and assigned interface observed; exclusive ownership is not claimed.")
+		} else {
+			e.message = "Tunnel verified by the trusted broker and its interface"
+			e.add("info", "Tunnel readiness verified.")
+		}
 	}
 	e.mu.Unlock()
 	select {
@@ -294,9 +380,15 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 		stop("", FailureNone)
 	case err := <-session.Done():
 		if classifyFailure(err, FailureUnknown) == FailureCleanup {
-			e.complete(CleanupFailed, (&CleanupError{}).Error(), FailureCleanup)
+			e.complete(CleanupFailed, cleanupError.Error(), FailureCleanup)
 		} else {
-			stop("Tunnel connection was lost; cleanup completed. Sign in again to reconnect.", classifyFailure(err, FailureConnectionLost))
+			message := "Tunnel connection was lost; cleanup completed. Sign in again to reconnect."
+			if scope == WindowsBorrowedObservedInterface {
+				message = "Existing Windows VPN observation was lost; Meridian reference cleanup verified. A fresh connection needs new consent; whole-device restoration was not verified."
+			} else if scope == SystemServiceTargetRoutes {
+				message = "所选系统服务连接已丢失；该服务及已观察的 PPP 接口和路由清理已确认。重新连接需要再次授权；未验证整机网络恢复。"
+			}
+			stop(message, classifyFailure(err, FailureConnectionLost))
 		}
 	}
 }
@@ -309,7 +401,8 @@ func (e *Engine) beginCleanup() {
 	defer e.mu.Unlock()
 	e.state = Disconnecting
 	e.connectedAt = time.Time{}
-	e.message = "Waiting for verified tunnel cleanup"
+	e.verifiedScope = ""
+	e.message = cleanupPendingMessage(e.attemptScope)
 }
 
 func (e *Engine) complete(state, msg string, failure FailureKind) {
@@ -324,10 +417,13 @@ func (e *Engine) completeLocked(state, msg string, failure FailureKind) {
 		e.cancel()
 	}
 	e.cancel = nil
-	e.session = nil
+	if state != CleanupFailed {
+		e.session = nil
+	}
 	e.state = state
 	e.failure = failure
 	e.connectedAt = time.Time{}
+	e.verifiedScope = ""
 	e.message = msg
 	level := "info"
 	if state == Failed || state == CleanupFailed {
@@ -339,13 +435,15 @@ func (e *Engine) Disconnect() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.state == CleanupFailed {
-		return &CleanupError{}
+		return &CleanupError{scope: e.attemptScope}
 	}
 	if e.cancel == nil {
 		return nil
 	}
 	e.state = Disconnecting
-	e.message = "Waiting for verified tunnel cleanup"
+	e.connectedAt = time.Time{}
+	e.verifiedScope = ""
+	e.message = cleanupPendingMessage(e.attemptScope)
 	e.add("info", "Disconnect requested.")
 	e.cancel()
 	return nil
@@ -373,7 +471,7 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.state == CleanupFailed {
-		return &CleanupError{}
+		return &CleanupError{scope: e.attemptScope}
 	}
 	return nil
 }

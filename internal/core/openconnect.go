@@ -50,6 +50,9 @@ func OpenConnectArgs(p Profile) ([]string, error) {
 	if e := ValidateProfile(p); e != nil {
 		return nil, e
 	}
+	if p.Protocol == ProtocolMacOSSystemL2TP || p.Protocol == WindowsBorrowedProtocol {
+		return nil, errors.New("limited system VPN mode requires its scoped platform adapter")
+	}
 	args := []string{"--non-inter", "--passwd-on-stdin", "--protocol=" + p.Protocol}
 	if p.Username != "" {
 		args = append(args, "--user="+p.Username)

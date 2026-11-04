@@ -42,7 +42,7 @@ func systemConnectionProcs() (*syscall.LazyProc, *syscall.LazyProc, error) {
 // process. No RasDial, RasHangUp, credentials or profile mutation API is loaded.
 // RAS may start its service. No result permits dialing: pending external dials
 // may be invisible, and a new connection can appear after this function returns.
-// This API is not wired to the application; snapshots must not be persisted or
+// Only the explicit standalone acceptance probe invokes this API; snapshots must not be persisted or
 // exported automatically. It never returns a handle usable for disconnection.
 func ObserveSystemConnections(entry EntryEvidence) (ConnectionSnapshot, error) {
 	if entry.properties.GUID == [16]byte{} || !validSelection(entry.entry) || !supportedEntry(entry.properties, entry.gateway) { return ConnectionSnapshot{}, ErrConnectionObservation }

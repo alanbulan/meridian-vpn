@@ -1,0 +1,76 @@
+name: Linux versioned candidate
+
+on:
+  push:
+    branches: [candidate/linux-minimal-20261104]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Candidate version without v prefix (for example 0.1.0-alpha.1)'
+        required: true
+        type: string
+      with_helper:
+        description: 'Build the optional authentication-only MFA helper'
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 30
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: '0'
+      CANDIDATE_VERSION: ${{ inputs.version || '0.1.0-alpha.1' }}
+      WITH_HELPER: ${{ github.event_name == 'push' || inputs.with_helper }}
+    steps:
+      - name: Prepare official build dependencies in disposable container
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates git python3 build-essential pkg-config libopenconnect-dev \
+            libgtk-3-0 libpango-1.0-0 libfontconfig1 libgl1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: Verify modules and offline code
+        run: |
+          go mod download
+          go mod verify
+          go test -count=1 ./...
+          go vet ./...
+          python3 -m unittest discover -s scripts -v
+      - name: Build and check versioned candidate (no network activation)
+        # Trust only this Actions-owned checkout for this step. Container UID
+        # differs from the mounted checkout owner; never persist or wildcard it.
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+        run: |
+          git status --porcelain
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          mkdir -p build/release
+          if [ "$WITH_HELPER" = true ]; then
+            python3 scripts/package-linux.py --version "$CANDIDATE_VERSION" \
+              --output build/release/meridian-linux-amd64.tar.gz --with-helper
+          else
+            python3 scripts/package-linux.py --version "$CANDIDATE_VERSION" \
+              --output build/release/meridian-linux-amd64.tar.gz
+          fi
+          cd build/release
+          sha256sum meridian-linux-amd64.tar.gz > SHA256SUMS
+      - name: Upload unsigned candidate, never publish
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: meridian-linux-amd64-candidate
+          path: build/release/
+          if-no-files-found: error
+          retention-days: 7

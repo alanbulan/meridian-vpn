@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/egoist/mygo"
+	"mygo-vpn/internal/buildinfo"
 	"mygo-vpn/internal/diagnostics"
 	"time"
 )
@@ -13,7 +14,7 @@ func (a *App) ExportDiagnostics(ctx context.Context, path string) error {
 	if sameFilePath(path, a.Store.Path) {
 		return errors.New("cannot overwrite the active configuration")
 	}
-	report := diagnostics.Collect(ctx, "0.1")
+	report := diagnostics.Collect(ctx, buildinfo.Version)
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return err

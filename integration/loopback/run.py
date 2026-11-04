@@ -20,6 +20,10 @@ AUTH_TESTS = {
         'RoundBound', 'RejectsUnsupportedForm', 'ClientCertificate',
         'HostnameResolution', 'ConfiguredGroup')
 }
+CLI_AUTH_TESTS = {'TestTerminalPTY', 'TestRealCLIMFAChallengeRetry', 'TestRealCLIMFACancelPrompt'}
+AUTH_REQUIRED = ({('mygo-vpn/internal/core', test) for test in AUTH_TESTS}
+                 | {('mygo-vpn/cmd/meridianctl', test) for test in CLI_AUTH_TESTS})
+AUTH_PACKAGES = {package for package, _ in AUTH_REQUIRED}
 NATIVE_TEST_FILES = (
     'univpn-integration.py', 'univpn-codec.c', 'univpn-hook.c',
     'univpn-session.c', 'univpn-session-integration.py', 'univpn-fd-session.c',
@@ -30,7 +34,7 @@ NATIVE_TEST_FILES = (
 def verify_auth_results(path):
     """No green result from missing, skipped, failed, or truncated fixtures."""
     passed = set()
-    package_passed = False
+    packages_passed = set()
     with path.open(encoding='utf-8') as stream:
         for line in stream:
             event = json.loads(line)
@@ -39,13 +43,13 @@ def verify_auth_results(path):
                 raise ValueError('authentication fixture skipped or failed: ' + (test or 'package'))
             if action == 'pass':
                 if test:
-                    passed.add(test)
-                elif event.get('Package') == 'mygo-vpn/internal/core':
-                    package_passed = True
-    missing = AUTH_TESTS - passed
-    if missing or not package_passed:
-        raise ValueError('incomplete authentication evidence; missing: ' + ', '.join(sorted(missing)))
-    return len(AUTH_TESTS)
+                    passed.add((event.get('Package'), test))
+                elif event.get('Package') in AUTH_PACKAGES:
+                    packages_passed.add(event['Package'])
+    missing = AUTH_REQUIRED - passed
+    if missing or packages_passed != AUTH_PACKAGES:
+        raise ValueError('incomplete authentication evidence; missing: ' + ', '.join(package + ':' + test for package, test in sorted(missing)))
+    return len(AUTH_REQUIRED)
 
 
 def command(args, log, cwd=ROOT, env=None):
@@ -66,7 +70,8 @@ def auth(args, reports):
     # stderr is separate so build failures cannot corrupt the JSON evidence.
     with log.open('w', encoding='utf-8') as output, (reports / 'auth-stderr.log').open('w') as errors:
         subprocess.run([args.go, 'test', '-count=1', '-timeout=10m', '-json',
-                        './internal/core', '-run', '^(TestRealOpenConnect|TestRealMFA)'],
+                        './internal/core', './cmd/meridianctl', '-run',
+                        '^(TestRealOpenConnect|TestRealMFA|TestRealCLIMFA|TestTerminalPTY)'],
                        cwd=ROOT, env=env, stdout=output, stderr=errors,
                        check=True, timeout=660)
     count = verify_auth_results(log)

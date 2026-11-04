@@ -40,6 +40,10 @@ func (a *App) setDraftProtocol(protocol string) {
 	a.Draft.AdditionalGateways = nil
 	a.AdditionalGatewaysText = ""
 	a.Draft.L2TP = nil
+	a.Draft.WindowsBorrowed = nil
+	a.Draft.SystemService = nil
+	a.Draft.MTU = 0
+	a.MTUText = ""
 	a.MRUText = ""
 	a.Draft.ClientCertificate = ""
 	a.Draft.ClientKey = ""
@@ -51,6 +55,9 @@ func (a *App) setDraftProtocol(protocol string) {
 	a.Draft.DisableUDP = false
 	a.clearCredentials()
 	a.editorGeneration++
+	if protocol == core.WindowsBorrowedProtocol {
+		a.Draft.WindowsBorrowed = &core.WindowsBorrowedOptions{}
+	}
 	if protocol == "l2tp" {
 		a.Draft.L2TP = &core.L2TPOptions{PPPAuth: "mschapv2"}
 	}

@@ -89,6 +89,10 @@ go build -buildvcs=false -trimpath -o build/meridianctl.exe ./cmd/meridianctl
 
 `make cross` 可交叉编译 Windows amd64 与 macOS arm64 界面。交叉编译与目标系统运行是不同验证阶段。
 
+### Linux 版本化候选包
+
+版本化 Linux amd64 GUI/CLI、可选认证 helper、精确源码与许可证通知打包见 [Linux 候选包说明](docs/LINUX-RELEASE.md)。候选工作流仅构建上传，不自动发布、不选择项目许可证，也不把构建通过当作真实 VPN 验收。
+
 ### Linux 连接前准备
 
 由管理员通过发行版包管理器安装和维护 OpenConnect、NetworkManager、对应的 OpenConnect 或 L2TP/IPsec 插件，以及正常的 D-Bus / Polkit 桌面授权环境。应用不自动安装依赖、不调用 sudo，也不要求以 root 启动 GUI。
@@ -110,7 +114,7 @@ go build -buildvcs=false -trimpath -o build/meridianctl.exe ./cmd/meridianctl
 ./build/meridianctl diagnostics --json
 ```
 
-以上命令保持离线/只读。Linux另提供显式 `connect --profile N --authorize-network --credentials-stdin` 前台连接：通过非终端stdin接收有界凭据JSON，Ctrl+C/SIGTERM清理本进程拥有的会话。终端MFA、跨进程disconnect和自动重连尚未实现，真实网关/路由DNS恢复仍未验收。诊断只检查依赖与就绪状态，存在阻断项时返回退出码 1。导出文件可能含网关、账号和本地路径，分享前仍需审阅。完整命令见 [CLI 文档](cmd/meridianctl/README.md)。
+以上命令保持离线/只读。Linux另提供显式 `connect --profile N --authorize-network --credentials-stdin` 前台连接：通过非终端stdin接收有界凭据JSON，Ctrl+C/SIGTERM清理本进程拥有的会话。Linux amd64/arm64 另可显式添加 `--interactive-auth`，通过受限控制终端与可选可信 helper 完成结构化 MFA；跨进程disconnect和自动重连尚未实现，真实网关/路由DNS恢复仍未验收。诊断只检查依赖与就绪状态，存在阻断项时返回退出码 1。导出文件可能含网关、账号和本地路径，分享前仍需审阅。完整命令见 [CLI 文档](cmd/meridianctl/README.md)。
 
 ## 技术架构
 

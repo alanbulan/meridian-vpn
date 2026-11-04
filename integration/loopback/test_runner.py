@@ -17,11 +17,13 @@ class EvidenceTests(unittest.TestCase):
             return runner.verify_auth_results(path)
 
     def good(self):
-        return ([{'Action': 'pass', 'Test': t} for t in runner.AUTH_TESTS]
-                + [{'Action': 'pass', 'Package': 'mygo-vpn/internal/core'}])
+        return ([{'Action': 'pass', 'Package': package, 'Test': test}
+                 for package, test in sorted(runner.AUTH_REQUIRED)]
+                + [{'Action': 'pass', 'Package': package}
+                   for package in sorted(runner.AUTH_PACKAGES)])
 
     def test_all_required_fixtures_pass(self):
-        self.assertEqual(self.check_events(self.good()), 18)
+        self.assertEqual(self.check_events(self.good()), 21)
 
     def test_empty_or_partial_or_missing_package_fails(self):
         for events in ([], self.good()[1:], self.good()[:-1]):
@@ -36,6 +38,17 @@ class EvidenceTests(unittest.TestCase):
     def test_wrong_package_is_not_completion(self):
         with self.assertRaises(ValueError):
             self.check_events(self.good()[:-1] + [{'Action': 'pass', 'Package': 'another/package'}])
+
+    def test_test_pass_from_wrong_package_is_not_evidence(self):
+        events = self.good()
+        events[0] = dict(events[0], Package='another/package')
+        with self.assertRaises(ValueError):
+            self.check_events(events)
+
+    def test_missing_cli_fixture_is_not_success(self):
+        events = [e for e in self.good() if e.get('Test') != 'TestRealCLIMFAChallengeRetry']
+        with self.assertRaises(ValueError):
+            self.check_events(events)
 
     def test_malformed_json_is_not_success(self):
         with tempfile.TemporaryDirectory() as directory:

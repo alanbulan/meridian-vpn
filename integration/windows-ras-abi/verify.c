@@ -1,7 +1,9 @@
 /* Compile-only Windows SDK ABI contract. Never link or call Rasapi32. */
 #define WINVER 0x0a00
 #define _WIN32_WINNT 0x0a00
+#include <winsock2.h>
 #include <windows.h>
+#include <iphlpapi.h>
 #include <ras.h>
 #include <stddef.h>
 
@@ -95,3 +97,50 @@ CHECK(dial_size, sizeof(RASDIALPARAMSW) == 2104 + 2 * sizeof(void *));
 DWORD CALLBACK meridian_callback_signature(ULONG_PTR, DWORD, HRASCONN, UINT,
                                           RASCONNSTATE, DWORD, DWORD);
 RASDIALFUNC2 meridian_callback_contract = meridian_callback_signature;
+
+/* Compile-only direct-call ABI contracts. This object is never linked/run. */
+DWORD (WINAPI *meridian_dial_contract)(LPRASDIALEXTENSIONS, LPCWSTR,
+    LPRASDIALPARAMSW, DWORD, LPVOID, LPHRASCONN) = RasDialW;
+DWORD (WINAPI *meridian_hangup_contract)(HRASCONN) = RasHangUpW;
+
+/* Direct-handle PPP IPv4 projection, modern Unicode structure. */
+CHECK(ppp_ipv4_size, sizeof(RASPPPIPW) == 80);
+CHECK(ppp_ipv4_error, offsetof(RASPPPIPW, dwError) == 4);
+CHECK(ppp_ipv4_address, offsetof(RASPPPIPW, szIpAddress) == 8);
+CHECK(ppp_ipv4_server, offsetof(RASPPPIPW, szServerIpAddress) == 40);
+CHECK(ppp_ipv4_options, offsetof(RASPPPIPW, dwOptions) == 72);
+CHECK(ppp_ipv4_server_options, offsetof(RASPPPIPW, dwServerOptions) == 76);
+CHECK(ppp_ipv4_protocol, RASP_PppIp == 0x8021);
+DWORD (WINAPI *meridian_projection_contract)(HRASCONN, RASPROJECTION,
+    LPVOID, LPDWORD) = RasGetProjectionInfoW;
+
+/* IP Helper uses default SDK packing, independent of ras.h's restored pack. */
+CHECK(adapter_next, offsetof(IP_ADAPTER_ADDRESSES, Next) == 8);
+CHECK(adapter_unicast, offsetof(IP_ADAPTER_ADDRESSES, FirstUnicastAddress) == 8 + 2 * sizeof(void *));
+CHECK(adapter_type, offsetof(IP_ADAPTER_ADDRESSES, IfType) == 28 + 9 * sizeof(void *));
+CHECK(adapter_oper, offsetof(IP_ADAPTER_ADDRESSES, OperStatus) == 32 + 9 * sizeof(void *));
+CHECK(adapter_luid, offsetof(IP_ADAPTER_ADDRESSES, Luid) == (sizeof(void *) == 8 ? 224 : 176));
+CHECK(unicast_next, offsetof(IP_ADAPTER_UNICAST_ADDRESS, Next) == 8);
+CHECK(unicast_socket, offsetof(IP_ADAPTER_UNICAST_ADDRESS, Address) == 8 + sizeof(void *));
+CHECK(unicast_dad, offsetof(IP_ADAPTER_UNICAST_ADDRESS, DadState) == 16 + 3 * sizeof(void *));
+CHECK(unicast_prefix, offsetof(IP_ADAPTER_UNICAST_ADDRESS, OnLinkPrefixLength) == 32 + 3 * sizeof(void *));
+CHECK(adapter_ppp, IF_TYPE_PPP == 23);
+CHECK(adapter_up, IfOperStatusUp == 1);
+CHECK(address_preferred, IpDadStatePreferred == 4);
+CHECK(address_transient, IP_ADAPTER_ADDRESS_TRANSIENT == 2);
+ULONG (WINAPI *meridian_adapters_contract)(ULONG, ULONG, PVOID,
+    PIP_ADAPTER_ADDRESSES, PULONG) = GetAdaptersAddresses;
+
+/* Every decoded socket/lifetime offset is checked against the actual SDK. */
+CHECK(socket_pointer, offsetof(SOCKET_ADDRESS, lpSockaddr) == 0);
+CHECK(socket_length, offsetof(SOCKET_ADDRESS, iSockaddrLength) == sizeof(void *));
+CHECK(socket_size, sizeof(SOCKET_ADDRESS) == 2 * sizeof(void *));
+CHECK(unicast_socket_length,
+    offsetof(IP_ADAPTER_UNICAST_ADDRESS, Address) + offsetof(SOCKET_ADDRESS, iSockaddrLength)
+    == 8 + 2 * sizeof(void *));
+CHECK(unicast_valid_lifetime, offsetof(IP_ADAPTER_UNICAST_ADDRESS, ValidLifetime) == 20 + 3 * sizeof(void *));
+CHECK(unicast_preferred_lifetime, offsetof(IP_ADAPTER_UNICAST_ADDRESS, PreferredLifetime) == 24 + 3 * sizeof(void *));
+CHECK(sockaddr_ipv4_size, sizeof(SOCKADDR_IN) == 16);
+CHECK(sockaddr_ipv4_family, offsetof(SOCKADDR_IN, sin_family) == 0);
+CHECK(sockaddr_ipv4_address, offsetof(SOCKADDR_IN, sin_addr) == 4);
+CHECK(sockaddr_ipv4_family_value, AF_INET == 2);

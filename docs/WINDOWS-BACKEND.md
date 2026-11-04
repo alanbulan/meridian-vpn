@@ -119,7 +119,7 @@ names across phonebooks, not for logs or telemetry. Entry names and paths can
 contain personal or organization information; do not automatically persist,
 export or display them outside the explicit local selection workflow. These entries may be dial-up
 or otherwise unsupported; discovery is not a compatibility check or connection
-permission. No user-interface or CLI path invokes it yet.
+permission. No application UI or main CLI path invokes enumeration automatically.
 
 The boundary validates the pointer-free RASENTRYNAMEW ABI, limits buffer size
 and retries, and rejects malformed counts, unterminated strings, and invalid
@@ -256,7 +256,8 @@ never be passed to `RasHangUp` merely because it was observed.
 
 The wrapper loads only enumeration/status procedures and performs no dialing,
 hangup, credential read/write, profile creation/edit/deletion or network changes.
-No application entry point invokes it. Loading RAS can still start its service.
+The separate, explicitly acknowledged read-only acceptance probe can invoke
+observation; the GUI and main CLI do not. Loading RAS can still start its service.
 No actual RAS procedure is executed by the tests; the Windows runner uses fake
 functions and compile-only SDK assertions. Synchronous native query duration
 and real system behavior remain unverified; allocation/retry bounds are not a
@@ -428,3 +429,206 @@ credential-persistence behavior before any real dial is enabled.
 
 References: [RASDIALFUNC2 behavior](https://learn.microsoft.com/en-us/windows/win32/api/ras/nc-ras-rasdialfunc2)
 and [Go Windows callback implementation](https://go.dev/src/syscall/syscall_windows.go).
+
+### Explicit read-only acceptance utility
+
+`cmd/meridian-ras-inspect` provides a separate manual entry point for existing
+profile/property and connection observations. It requires exact phonebook/entry
+selection, an independently supplied gateway and acknowledgement of possible
+RAS service startup. Its redacted JSON never grants dialing or claims a live
+tunnel/native quiescence. Tests inject all native boundaries. See its
+[build/run instructions](../cmd/meridian-ras-inspect/README.md); actual Windows
+metadata reads and enterprise acceptance remain unperformed until separately
+recorded. The utility does not add a VPN backend or credential operation.
+
+### Borrowed-profile session coordinator (injected only)
+
+The unexported `borrowedCoordinator` now joins callback routing, packed dial
+parameters and the single-reference ledger. It has no production native
+implementation, no default driver and no GUI/core adapter wiring. Its trusted
+injected operations have no profile-create/delete, PSK or credential-management
+methods. It requires separate per-attempt network, possible Windows credential
+persistence and shared-reference grants. These grants are not serialized and
+do not establish native isolation or runtime correctness.
+
+Each attempt owns pinned mutable phonebook/parameter buffers containing a
+nonzero callback ID. A bounded process anchor retains up to 32 active or
+quarantined input owners, even if a caller drops its coordinator. The caller's
+password is unchanged. An unknown invocation result, uncertain release,
+surviving/shared handle, failed termination probe or unconfirmed native input
+quiescence keeps buffers pinned and blocks reconnect. This can retain a secret
+copy for the session or indefinitely after an unrecoverable boundary failure;
+it is not encrypted storage or a crash-recovery/physical-erasure guarantee.
+
+Only the direct invocation result creates a release obligation. Early or late
+callback handles are never adopted. Cancellation before a direct return marks
+the operation canceled and waits for that invocation; it does not guess a handle
+or detach a native consumer. A waiting Stop can time out without granting
+cleanup success. Repeated cleanup attempts may probe/join, but never issue a
+second Hangup for an already-consumed reference. A single cleanup call makes at
+most one status probe. Context deadlines do not make blocking native calls
+interruptible; a future implementation must establish their cancellation rules.
+
+A connected callback alone cannot set the internal ready state. Fresh profile
+revalidation surrounds independently supplied handle, entry GUID, gateway,
+interface and address evidence. Queue faults, mismatched callback identities,
+paused authentication, failed evidence and later profile drift fail closed.
+Pending callback validation and readiness commit share the router lock. This
+is point-in-time readiness, not continuous monitoring: a later callback requires
+a subsequent check to update the coordinator. This state is not route/DNS
+correctness or a production tunnel acceptance claim.
+
+Erasure/unpinning occurs only before any native invocation, or after its direct
+result, one-reference termination (when a handle exists), and a separate trusted
+Quiesce operation all confirm cleanup. Callback-route retirement alone is
+insufficient. No production implementation of Quiesce is supplied: its actual
+Windows semantics, shared-connection behavior and credential persistence still
+require authorized target-system validation before real dialing can be enabled.
+
+### Direct native call transport (not enabled)
+
+The unexported call transport now expresses the exact six-argument RasDialW
+and one-argument RasHangUpW boundaries. It preserves nonzero direct handles
+on failed calls, uses DWORD results rather than GetLastError, passes the exact
+pinned phonebook and parameters, starts with a null output handle, and selects
+RASDIALFUNC2 with null extensions. It neither retries release nor erases inputs.
+It has no DLL resolver and is not wired into the GUI, CLI or borrowedOperations.
+Only the coordinator/reference ledger can authorize its eventual use.
+
+Portable tests inject typed functions; Windows ABI tests invoke only Go-created
+function stubs, not RAS. SDK assignments compile-check the direct signatures.
+This is implemented transport code, not a validated native backend: independent
+quiescence, handle-bound interface/address observation, cancellation behavior,
+shared references and authorized real-gateway acceptance still block enablement.
+See Microsoft's [RasDialW contract](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw)
+and [RasHangUpW contract](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rashangupw).
+
+### Direct-handle address validation and unresolved lifetime semantics
+
+A dormant injected RasGetProjectionInfoW transport now reads the modern
+80-byte RASPPPIPW result. The validator checks two observations of the exact
+direct handle, selected profile GUID/path/name, connection correlation ID,
+connected status, configured gateway and negotiated local IPv4. Missing,
+malformed, failed or changing observations fail closed. The PPP peer address
+is not treated as the VPN gateway. This slice intentionally supplies no
+interface index and cannot promote a native session to ready by itself.
+
+Important SDK distinctions prevent unsafe identity shortcuts:
+
+- RASCONN.luid is the **logon-session** LUID, not a network-interface NET_LUID.
+- RASCONN.guidEntry identifies the phonebook entry; guidCorrelationId identifies
+  its RAS event correlation. Neither is documented as an adapter GUID.
+- RASDIALPARAMS.dwIfIndex selects the **underlying** interface on which to dial,
+  not the resulting VPN interface.
+- Matching a projected address against GetAdaptersAddresses can yield a useful
+  candidate, but is not a documented exact-handle identity or exclusivity
+  guarantee. Address ambiguity and subsequent interface changes must fail closed.
+
+The ordinary deletion endpoint is now encoded as `terminatedRASInputs`:
+initial Dial returned, exactly one successful HangUp, status confirmed
+ERROR_INVALID_HANDLE for that exact direct reference, and callback-route
+retirement. Microsoft's Disconnecting guidance permits process exit after this
+deletion endpoint. **Inference:** standard RAS input buffers may then be reclaimed;
+absence of separate buffer-lifetime prose is not an additional blocker. The
+coordinator checks this predicate before its additional injected Quiesce hook,
+which remains responsible for any custom consumers beyond the standard transport.
+
+This does not claim native callback-stack quiescence. A process-lifetime
+trampoline can still have a scalar-only return frame; it cannot reacquire a
+retired route or access attempt inputs. No function pointer is freed. A valid
+shared handle does not satisfy the deletion predicate, and never justifies
+another HangUp. Reclamation before deletion while other references survive
+remains unproven and conservatively quarantined. A successful initial return,
+route retirement alone, or a fixed sleep is not substituted for deletion.
+
+Sources: [SDK header](https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/Ras.h),
+[RASPPPIP](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa377634%28v%3Dvs.85%29),
+[RASCONN](https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa376725%28v%3Dvs.85%29),
+[RasDialW](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rasdialw),
+[RasHangUpW](https://learn.microsoft.com/en-us/windows/win32/api/ras/nf-ras-rashangupw),
+[Disconnecting](https://learn.microsoft.com/en-us/windows/win32/rras/disconnecting),
+[GetAdaptersAddresses](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses).
+
+### Injected native session integration and adapter correlation
+
+`nativeSessionOperations` now implements the coordinator's operation boundary,
+joining the direct-call transport, fresh RAS profile/status/projection reads,
+interface observations and documented deletion gate. The Windows binding fixes
+the notifier to the process-lifetime trampoline and its matching router. It does
+not resolve DLLs or invoke any operation during construction, and has no exported
+constructor in that low-level binding. The explicit limited-mode facade below
+now provides system inventory and flag-selected UI wiring.
+
+The adapter source must provide actual IP Helper NET_LUID, IPv4 interface index,
+interface type, operational status and unicast addresses. Correlation requires
+one and only one projected-address match across the inventory, on an active PPP
+adapter. Duplicate index/LUID rows, duplicate address matches (even on another
+down/non-PPP adapter), absent addresses and changing LUID/index fail closed.
+Two complete RAS-plus-adapter observations must agree, followed by another RAS
+recheck. This is observed, point-in-time correlation, not a direct documented
+handle-to-interface conversion, exclusive ownership or route/DNS validation.
+
+Integration tests use fake native procedures through the entire connect,
+check, deletion cleanup and reconnect flow. They also cover adapter drift and
+shared-handle quarantine. Windows-only tests connect our own ABI stubs through
+the real callback router; they never resolve or call RAS. Real Windows execution,
+SDK checks and approved enterprise-gateway acceptance remain required. The
+native inventory and explicit application wiring are described below.
+
+### Native IPv4 adapter inventory and explicit system binding
+
+The native IP Helper inventory is now implemented using GetAdaptersAddresses
+(AF_INET, unicast retained). A bounded allocation/retry loop decodes only pointers
+inside its owned result buffer. It checks record lengths, list cycles, node/count
+limits, sockaddr family/size and SDK offsets for x86/x64. It retains unusable
+address matches so tentative, duplicate-detection failure, expired, nonpreferred
+or transient addresses cannot accidentally become a unique usable match. No
+adapter address, display name or RAS logon LUID is used as ownership authority.
+
+The session now remembers its first verified RAS correlation and adapter
+NET_LUID/index/address through later checks. A different but internally stable
+adapter cannot be silently adopted. Regression tests cover this and a RAS change
+during the final adapter snapshot, plus pre-invocation cancellation.
+
+`newSystemBorrowedSession` provides an unexported, explicitly selected real-system constructor:
+it resolves RAS and IP Helper procedures from the Windows system directory,
+fixes the callback router/trampoline, and joins the reviewed call boundaries.
+Construction loads DLLs (potentially starting the RAS service), but does not dial
+or enumerate. The limited-mode facade now invokes it after per-use consent;
+no test invokes it. SDK execution and approved live-gateway acceptance remain
+outstanding.
+No real-system behavior has been validated by the injected tests or cross-builds.
+
+IP Helper source contracts: [GetAdaptersAddresses](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getadaptersaddresses),
+[adapter fields](https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_addresses_lh),
+[unicast fields and address state](https://learn.microsoft.com/en-us/windows/win32/api/iptypes/ns-iptypes-ip_adapter_unicast_address_lh).
+
+
+### Explicit experimental Windows application mode
+
+Launch Meridian with `--enable-windows-borrowed` on Windows to select the existing
+Windows VPN editor/backend. The default startup remains unchanged. This flag
+only selects the UI; it does not connect, load RAS or grant session authorization.
+Each connection requires the exact local PBK path and entry, independently supplied
+gateway, username/domain, password and fresh network/persistence/shared-reference
+consent. The app does not request a PSK or edit/delete the Windows profile.
+
+The session worker holds cancellation and input ownership, verifies readiness,
+and rechecks the same RAS/adapter identity every two seconds. UI wording describes
+observed existing Windows connectivity, not exclusive ownership, a kill switch,
+full-tunnel routing or DNS leak protection. No real enterprise gateway has been
+validated. Windows can cache credentials despite Meridian not saving them.
+
+Disconnect/shutdown waits for confirmed owned-reference cleanup. If native work
+blocks or deletion remains unconfirmed, the app stays open, preserves cleanup
+ownership and disables reconnect. Retry cleanup only probes the already-consumed
+reference; it never issues another HangUp. Shared references can keep cleanup
+quarantined indefinitely. The user must inspect the connection in Windows rather
+than having Meridian disconnect another application's reference. A context
+deadline does not prove native cancellation or permit freeing inputs.
+
+Injected lifecycle tests and UI widget tests cover consent gates/resets, editor
+copy isolation, repeated connect/cleanup, shared-reference quarantine, and
+backend recheck preserving explicit mode. They are not native Windows acceptance,
+installer validation or evidence of real gateway interoperability. Publication
+remains subject to the previously outstanding repository authorization gate.

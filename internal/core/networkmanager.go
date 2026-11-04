@@ -159,28 +159,28 @@ func (n *NetworkManager) StartWithCredentials(ctx context.Context, p Profile, cr
 		return nil, ctx.Err()
 	}
 	if !n.cap.Available {
-		return nil, errors.New(n.cap.Message)
+		return nil, NewConnectionError(FailureBackendUnavailable)
 	}
 	if e := ValidateProfile(p); e != nil {
-		return nil, e
+		return nil, NewConnectionError(FailureConfiguration)
 	}
 	if err := validateCredentials(p, credentials); err != nil {
-		return nil, err
+		return nil, NewConnectionError(FailureConfiguration)
 	}
 	if p.Protocol == "l2tp" {
 		return n.startL2TP(ctx, p, credentials)
 	}
 	if n.oc == "" {
-		return nil, errors.New("OpenConnect plugin is unavailable")
+		return nil, NewConnectionError(FailureBackendUnavailable)
 	}
 	if p.Protocol != "anyconnect" {
-		return nil, errors.New("Linux broker currently supports AnyConnect only")
+		return nil, NewConnectionError(FailureConfiguration)
 	}
 	if err := validateCredentials(p, credentials); err != nil {
-		return nil, err
+		return nil, NewConnectionError(FailureConfiguration)
 	}
 	if strings.ContainsAny(p.Gateway, ",\\") {
-		return nil, errors.New("gateway contains unsupported delimiters")
+		return nil, NewConnectionError(FailureConfiguration)
 	}
 	authCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
@@ -188,7 +188,7 @@ func (n *NetworkManager) StartWithCredentials(ctx context.Context, p Profile, cr
 	var e error
 	if p.InteractiveAuth {
 		if n.mfa == nil || n.authPrompt == nil {
-			return nil, errors.New("interactive authentication requires the optional helper and an active authentication dialog")
+			return nil, NewConnectionError(FailureBackendUnavailable)
 		}
 		fields, e = n.mfa.Authenticate(authCtx, p, credentials, n.authPrompt)
 	} else {
@@ -203,7 +203,10 @@ func (n *NetworkManager) StartWithCredentials(ctx context.Context, p Profile, cr
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("authentication failed; check gateway, credentials, client certificate and supported authentication method")
+		// A failed authentication command can mean credentials, trust, transport
+		// or an unsupported exchange. Preserve only explicit structured evidence;
+		// never guess from its exit status or discarded diagnostic text.
+		return nil, NewConnectionError(classifyFailure(e, FailureUnknown))
 	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -232,7 +235,7 @@ func (n *NetworkManager) StartWithCredentials(ctx context.Context, p Profile, cr
 		return nil, err
 	}
 	if addErr != nil {
-		return fail(errors.New("NetworkManager could not create a temporary profile; check OS permissions"))
+		return fail(NewConnectionError(FailureStart))
 	}
 	var passwd bytes.Buffer
 	for _, pair := range [][2]string{{"cookie", fields["COOKIE"]}, {"gateway", fields["CONNECT_URL"]}, {"gwcert", fields["FINGERPRINT"]}, {"resolve", fields["RESOLVE"]}} {
@@ -245,10 +248,10 @@ func (n *NetworkManager) StartWithCredentials(ctx context.Context, p Profile, cr
 		passwd.Bytes()[i] = 0
 	}
 	if e != nil {
-		return fail(errors.New("NetworkManager activation failed"))
+		return fail(NewConnectionError(FailureStart))
 	}
 	if !s.verified(authCtx) {
-		return fail(errors.New("NetworkManager did not confirm the active tunnel and interface"))
+		return fail(NewConnectionError(FailureReadiness))
 	}
 	if ctx.Err() != nil {
 		return fail(ctx.Err())
@@ -349,7 +352,9 @@ func (s *nmSession) monitor() {
 				if s.ctx.Err() != nil {
 					return
 				}
-				_ = s.stopWithCause(errors.New("tunnel verification was lost"))
+				// Lost verification proves only loss of the owned tunnel, not a
+				// transient transport fault or permission to retry authentication.
+				_ = s.stopWithCause(NewConnectionError(FailureConnectionLost))
 				return
 			}
 		}

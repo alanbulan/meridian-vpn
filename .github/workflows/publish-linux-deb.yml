@@ -1,0 +1,26 @@
+name: 发布已验收的 Linux 安装包
+on:
+  push:
+    branches: [candidate/linux-minimal-20261104]
+    paths: [.github/workflows/publish-linux-deb.yml, scripts/publish-linux-deb.py]
+permissions:
+  contents: read
+concurrency:
+  group: append-linux-deb-v0.1.0-alpha.1
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'alanbulan/meridian-vpn' && github.ref == 'refs/heads/candidate/linux-minimal-20261104'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: 验证完整安装验收并追加安装包，不替换原文件
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-linux-deb.py

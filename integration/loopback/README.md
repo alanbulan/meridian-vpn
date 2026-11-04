@@ -31,10 +31,18 @@ Use the actual absolute system OpenConnect path if different. The helper must
 be in a private/trusted directory, including its ancestors; do not put it under
 world-writable `/tmp`. No production credentials are accepted by this command.
 `auth.jsonl` is the original `go test -json` evidence; stderr has its own log.
-The runner requires all 18 named top-level real-authentication tests plus the
-package pass. Any skip (including a subtest), failure, malformed output, or
+The runner requires all 21 named top-level authentication/PTY tests plus both
+package passes. Any skip (including a subtest), failure, malformed output, or
 missing expected test makes this suite fail, rather than reporting integration
 success from ordinary unit-test success.
+
+The CLI fixtures allocate an isolated controlling PTY. They check hidden answers,
+full terminal-attribute restoration after success, size rejection, EOF, timeout,
+and handled signals, including Ctrl+\. A real helper fixture combines localhost
+TLS, password login, rejected OTP, retry, numeric method selection, and cookie
+receipt through the actual CLI terminal prompt. Another cancels that real helper
+at its prompt. stdout/stderr are redirected and checked for prompt/secret leaks.
+These are authentication-only tests, not foreground VPN lifecycle acceptance.
 
 ## Experimental native regression
 
@@ -57,6 +65,12 @@ and an explicit `live_vpn_acceptance: false` summary are written under reports.
 These tests are regression checks, not an OS-enforced malicious-code sandbox.
 Do not run the production worker bootstrap or install a privileged service.
 
+The CLI fixture uses the production helper discovery checks, unlike the core
+fixture's explicit executable injection. Its helper path and every ancestor must
+be owned by root/the current user, non-symlink, and not group/world writable.
+CI builds it under the unprivileged fixture user's home rather than weakening
+those checks for a shared checkout.
+
 ## Runner regressions and evidence limits
 
 ```sh
@@ -68,7 +82,7 @@ a nested Git checkout, including inherited Git directory overrides. Preparation
 must isolate Git discovery: otherwise `git apply` can find the parent repository
 and return success while silently skipping all extracted-tree paths.
 
-Six runner/preparation tests passed during this change. The current editing
+Runner/preparation tests are exercised locally with the command above. The current editing
 host lacks the required Go/C development dependencies, so it did **not** execute
 real authentication or compile/run native fixtures. The new CI results, not
 this local parser result or old archived fixture logs, establish whether those

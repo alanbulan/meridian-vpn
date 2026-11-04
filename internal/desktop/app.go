@@ -5,6 +5,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"mygo-vpn/internal/autostart"
+	"mygo-vpn/internal/buildinfo"
 	"mygo-vpn/internal/core"
 	"net/url"
 	"strconv"
@@ -17,54 +18,71 @@ type adapterCheck struct {
 	auth    core.Capability
 }
 
+// sessionTarget retains only the explicitly selected endpoint, never credentials.
+// It is process-local and bound to the engine attempt that accepted the form.
+type sessionTarget struct {
+	attemptID uint64
+	profileID string
+	gateway   string
+}
+
 type App struct {
-	Startup                *autostart.Manager
-	StartupStatus          autostart.Status
-	StartupError           string
-	StartupConfirm         bool
-	StartupBusy            bool
-	observedConnected      bool
-	reauthAt               time.Time
-	reauthProfileID        string
-	reauthVisible          bool
-	AuthCapability         core.Capability
-	Store                  core.Store
-	Config                 core.Config
-	Engine                 *core.Engine
-	Window                 *mygo.Window
-	Page                   string
-	Draft                  core.Profile
-	Editing                bool
-	Notice                 string
-	DeleteID               string
-	TrayAvailable          bool
-	LoadBlocked            bool
-	Capability             core.Capability
-	Adapter                core.Adapter
-	Password               string
-	KeyPassword            string
-	IPsecPSK               string
-	GatewayChoice          string
-	AdditionalGatewaysText string
-	SwitchID               string
-	SwitchPending          bool
-	Authorized             bool
-	ProxyConsent           bool
-	ConnectPanel           bool
-	Search                 string
-	ConnectedAt            time.Time
-	ShuttingDown           bool
-	Checking               bool
-	recheckResults         chan adapterCheck
-	FileBusy               bool
-	AdvancedOpen           bool
-	MTUText                string
-	MRUText                string
-	editorGeneration       uint64
-	SystemLanguage         string
-	authRequests           chan *authRequest
-	authCurrent            *authRequest
-	authValues             map[string]string
+	windowsActiveProfile      *core.Profile
+	windowsActiveAttemptID    uint64
+	WindowsBorrowedEnabled    bool
+	WindowsPersistenceConsent bool
+	WindowsSharedConsent      bool
+	CleanupRetrying           bool
+	macService                macServiceUI
+	Startup                   *autostart.Manager
+	StartupStatus             autostart.Status
+	StartupError              string
+	StartupConfirm            bool
+	StartupBusy               bool
+	observedConnected         bool
+	reauthAt                  time.Time
+	reauthProfileID           string
+	reauthAttemptID           uint64
+	reauthVisible             bool
+	sessionTarget             sessionTarget
+	AuthCapability            core.Capability
+	Store                     core.Store
+	Config                    core.Config
+	Engine                    *core.Engine
+	Window                    *mygo.Window
+	Page                      string
+	Draft                     core.Profile
+	Editing                   bool
+	Notice                    string
+	DeleteID                  string
+	TrayAvailable             bool
+	LoadBlocked               bool
+	Capability                core.Capability
+	Adapter                   core.Adapter
+	Password                  string
+	KeyPassword               string
+	IPsecPSK                  string
+	GatewayChoice             string
+	AdditionalGatewaysText    string
+	SwitchID                  string
+	SwitchPending             bool
+	Authorized                bool
+	ProxyConsent              bool
+	ConnectPanel              bool
+	Search                    string
+	ConnectedAt               time.Time
+	ShuttingDown              bool
+	Checking                  bool
+	recheckResults            chan adapterCheck
+	FileBusy                  bool
+	AdvancedOpen              bool
+	MTUText                   string
+	MRUText                   string
+	editorGeneration          uint64
+	SystemLanguage            string
+	authRequests              chan *authRequest
+	authCurrent               *authRequest
+	authValues                map[string]string
 }
 
 func New(path string) *App { return NewWithAdapter(path, defaultAdapter()) }
@@ -101,6 +119,7 @@ func (a *App) setTray(enabled bool) {
 	a.commit(cfg)
 }
 func (a *App) navigate(page string) {
+	a.macService.reset()
 	if a.authCurrent != nil {
 		a.authCurrent = nil
 		a.authValues = nil
@@ -119,9 +138,12 @@ func (a *App) clearCredentials() {
 	a.GatewayChoice = ""
 	a.Authorized = false
 	a.ProxyConsent = false
+	a.WindowsPersistenceConsent = false
+	a.WindowsSharedConsent = false
 	a.ConnectPanel = false
 }
 func (a *App) BeginShutdown() {
+	a.macService.reset()
 	a.clearReauthentication()
 	a.ShuttingDown = true
 	a.authCurrent = nil
@@ -170,6 +192,15 @@ func (a *App) copyConfig() core.Config {
 	cfg := a.Config
 	cfg.Profiles = append([]core.Profile(nil), cfg.Profiles...)
 	for i := range cfg.Profiles {
+		if cfg.Profiles[i].SystemService != nil {
+			options := *cfg.Profiles[i].SystemService
+			options.Targets = append([]string(nil), options.Targets...)
+			cfg.Profiles[i].SystemService = &options
+		}
+		if cfg.Profiles[i].WindowsBorrowed != nil {
+			options := *cfg.Profiles[i].WindowsBorrowed
+			cfg.Profiles[i].WindowsBorrowed = &options
+		}
 		if cfg.Profiles[i].L2TP != nil {
 			options := *cfg.Profiles[i].L2TP
 			cfg.Profiles[i].L2TP = &options
@@ -191,8 +222,21 @@ func (a *App) startEdit(p *core.Profile) {
 	a.AdvancedOpen = false
 	a.clearCredentials()
 	a.Draft = core.Profile{Protocol: "anyconnect"}
+	if a.WindowsBorrowedEnabled {
+		a.Draft.Protocol = core.WindowsBorrowedProtocol
+		a.Draft.WindowsBorrowed = &core.WindowsBorrowedOptions{}
+	}
 	if p != nil {
 		a.Draft = *p
+		if p.SystemService != nil {
+			options := *p.SystemService
+			options.Targets = append([]string(nil), options.Targets...)
+			a.Draft.SystemService = &options
+		}
+		if p.WindowsBorrowed != nil {
+			options := *p.WindowsBorrowed
+			a.Draft.WindowsBorrowed = &options
+		}
 		if p.L2TP != nil {
 			options := *p.L2TP
 			a.Draft.L2TP = &options
@@ -348,6 +392,7 @@ func (a *App) View(c *ui.Context) {
 	_, viewportHeight := c.Size()
 	bodyHeight := max(float32(0), viewportHeight-70)
 	paneHeight := max(float32(0), bodyHeight-20)
+	a.pollMacService()
 	a.pollRecheck()
 	a.pollSwitch()
 	a.pollAuth()
@@ -395,6 +440,8 @@ func (a *App) View(c *ui.Context) {
 							a.editor(c)
 						} else {
 							switch a.Page {
+							case "MacSystemService":
+								a.macSystemServiceForm(c)
 							case "Settings":
 								a.settings(c)
 							case "Activity":
@@ -429,6 +476,11 @@ func (a *App) connectionStatus(c *ui.Context) {
 	p := a.selected()
 	snapshot := a.Engine.Snapshot()
 	state := snapshot.State
+	if a.macServiceOwnsAttempt(snapshot) {
+		p = a.macService.activeProfile
+	} else if a.windowsOwnsAttempt(snapshot) {
+		p = a.windowsActiveProfile
+	}
 	ui.Column(c).Width(294).Height(paneHeight).MinHeight(0).MaxHeight(paneHeight).Shrink(0).Padding(20, 22).Gap(12).Background(a.sidebar()).Border(1, t.Border).Radius(16, 0, 0, 16).Children(func() {
 		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Padding(2, 2, 10).Children(func() {
 			ui.Column(c).Gap(7).AlignItems(ui.Center).Children(func() {
@@ -482,6 +534,12 @@ func (a *App) connectionStatus(c *ui.Context) {
 		}
 		a.stat(c, "Authentication", auth)
 		ui.Spacer(c)
+		if a.macServiceOwnsAttempt(snapshot) {
+			ui.Text(c, "有限验证：系统服务与指定目标路由；不保证全应用 DNS/IPv6 防泄漏。").FontSize(11).FillWidth()
+		}
+		if a.windowsOwnsAttempt(snapshot) {
+			ui.Text(c, "Limited Windows verification: observed interface only; no full route/DNS leak protection.").FontSize(11).FillWidth().Wrap()
+		}
 		if !a.Capability.Available || p != nil && p.InteractiveAuth && !a.AuthCapability.Available || p != nil && !a.supportsProtocol(p.Protocol) || state == core.CleanupFailed || state == core.Failed {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, icons["info"]).Size(13, 13).TextColor(t.TextMuted)
@@ -495,6 +553,10 @@ func (a *App) connectionStatus(c *ui.Context) {
 		if a.busy() {
 			if ui.Button(c.Key("disconnect"), a.tr("Disconnect")).FillWidth().Height(42).Disabled(state == core.Disconnecting).Clicked() {
 				_ = a.Engine.Disconnect()
+			}
+		} else if a.macServiceOwnsAttempt(snapshot) {
+			if ui.PrimaryButton(c.Key("mac-recheck-connect"), "重新检查系统服务").FillWidth().Height(42).Disabled(a.ShuttingDown || state == core.CleanupFailed).Clicked() {
+				a.navigate("MacSystemService")
 			}
 		} else {
 			disabled := !a.canConnect(p)
@@ -559,7 +621,7 @@ func (a *App) connectionList(c *ui.Context) {
 					cfg.SelectedID = q.ID
 					a.commit(cfg)
 				}
-				if a.Engine.Snapshot().State == core.Connected && !selected {
+				if a.Engine.Snapshot().State == core.Connected && !selected && !a.macServiceOwnsAttempt(a.Engine.Snapshot()) && !a.windowsOwnsAttempt(a.Engine.Snapshot()) {
 					if iconButton(c, "switch", a.tr("Switch connection"), icons["refresh"]).Disabled(a.SwitchPending).Clicked() {
 						a.SwitchID = q.ID
 					}
@@ -630,13 +692,13 @@ func (a *App) editor(c *ui.Context) {
 		ui.TextInput(c.Key("description"), &a.Draft.Description).Placeholder(a.tr("Optional")).FillWidth()
 		a.label(c, "Gateway")
 		gatewayPlaceholder := "https://vpn.example.com"
-		if a.Draft.Protocol == "l2tp" {
+		if a.Draft.Protocol == "l2tp" || a.Draft.Protocol == core.WindowsBorrowedProtocol {
 			gatewayPlaceholder = "vpn.example.com"
 		}
 		ui.TextInput(c.Key("profile-gateway"), &a.Draft.Gateway).Placeholder(gatewayPlaceholder).FillWidth()
 		a.label(c, "Protocol")
 		protocol := a.Draft.Protocol
-		ui.Select(c.Key("profile-protocol"), &protocol, core.Protocols).FillWidth()
+		ui.Select(c.Key("profile-protocol"), &protocol, a.profileProtocols()).FillWidth()
 		if protocol != a.Draft.Protocol {
 			a.setDraftProtocol(protocol)
 		}
@@ -650,13 +712,16 @@ func (a *App) editor(c *ui.Context) {
 		}).Clicked() {
 			a.AdvancedOpen = !a.AdvancedOpen
 		}
+		if a.Draft.Protocol == core.WindowsBorrowedProtocol {
+			a.windowsBorrowedFields(c)
+		}
 		if a.AdvancedOpen && a.Draft.Protocol == "l2tp" {
 			a.l2tpFields(c)
 		}
 		if a.AdvancedOpen && a.Draft.Protocol == "univpn" {
 			a.univpnFields(c)
 		}
-		if a.AdvancedOpen && a.Draft.Protocol != "l2tp" && a.Draft.Protocol != "univpn" {
+		if a.AdvancedOpen && a.Draft.Protocol != "l2tp" && a.Draft.Protocol != "univpn" && a.Draft.Protocol != core.WindowsBorrowedProtocol {
 			a.label(c, "Additional gateways (up to 15, separated by spaces)")
 			ui.TextInput(c.Key("additional-gateways"), &a.AdditionalGatewaysText).FillWidth()
 			a.clientCertificateFields(c)
@@ -714,6 +779,7 @@ func (a *App) activity(c *ui.Context) {
 	})
 }
 func (a *App) settings(c *ui.Context) {
+	a.macServiceSettingsEntry(c)
 	a.startupSettings(c)
 	t := c.Theme()
 	ui.Column(c).FillWidth().Padding(22).Gap(20).Background(t.Surface).Border(1, t.Border).Radius(14).Children(func() {
@@ -760,16 +826,27 @@ func (a *App) settings(c *ui.Context) {
 			ui.Icon(c, icons["info"]).Size(18, 18).TextColor(t.Accent)
 			ui.Text(c, a.tr("Diagnostics")).Bold().Grow(1)
 			if iconButton(c, "check-backend", a.tr("Recheck prerequisites"), icons["refresh"]).Disabled(a.busy() || a.Checking || a.ShuttingDown || a.Engine.Snapshot().State == core.CleanupFailed).Clicked() {
-				a.beginRecheck(defaultAdapter)
+				a.beginRecheck(a.platformAdapter)
 			}
 		})
 		ui.Text(c, a.tr(a.Capability.Message)).FillWidth().FontSize(13)
 		if p := a.selected(); p != nil && p.InteractiveAuth && !a.AuthCapability.Available {
 			a.label(c, "Interactive authentication helper is not installed")
 		}
-		a.label(c, "Linux · AnyConnect / L2TP-IPsec · NetworkManager")
+		if a.WindowsBorrowedEnabled {
+			a.label(c, "Existing Windows VPN · experimental limited mode")
+		} else if a.macServiceOwnsAttempt(a.Engine.Snapshot()) {
+			a.label(c, "macOS system service · limited target-route verification")
+		} else {
+			a.label(c, "Linux · AnyConnect / L2TP-IPsec · NetworkManager")
+		}
 		a.label(c, "Experimental UniVPN requires a separately configured trusted broker")
 		a.label(c, "UniVPN compatibility is not established; ask IT for the gateway and protocol.")
+		if a.Engine.Snapshot().State == core.CleanupFailed && (a.windowsOwnsAttempt(a.Engine.Snapshot()) || a.macServiceOwnsAttempt(a.Engine.Snapshot())) {
+			if ui.Button(c.Key("retry-scoped-cleanup"), "Retry cleanup verification").Disabled(a.CleanupRetrying).Clicked() {
+				a.retryScopedCleanup()
+			}
+		}
 		if a.Engine.Snapshot().State == core.CleanupFailed || a.Engine.Snapshot().State == core.Failed {
 			ui.Text(c, a.tr(a.Engine.Snapshot().Message)).TextColor(t.Danger).FillWidth()
 		}
@@ -794,7 +871,7 @@ func (a *App) settings(c *ui.Context) {
 	if ui.Button(c, a.tr("Capabilities & reference fields")).Clicked() {
 		a.Page = "Support"
 	}
-	a.label(c, "Meridian 0.1 / MyGo 0.7.4 / pure Go native UI")
+	a.label(c, fmt.Sprintf(a.tr("Meridian %s / MyGo 0.7.4 / pure Go native UI"), buildinfo.Version))
 }
 func (a *App) connectForm(c *ui.Context) {
 	t := c.Theme()
@@ -802,9 +879,12 @@ func (a *App) connectForm(c *ui.Context) {
 		ui.Text(c, a.tr("Session authentication")).FontSize(16).Bold()
 		if selected := a.selected(); selected != nil {
 			choices := append([]string{selected.Gateway}, selected.AdditionalGateways...)
+			a.label(c, "Gateway for this session")
+			ui.Text(c, a.GatewayChoice).FillWidth()
 			if len(choices) > 1 {
-				a.label(c, "Gateway for this session")
-				ui.Select(c.Key("session-gateway"), &a.GatewayChoice, choices).FillWidth()
+				gateway := a.GatewayChoice
+				ui.Select(c.Key("session-gateway"), &gateway, choices).FillWidth()
+				a.selectSessionGateway(gateway)
 			}
 			if selected.Protocol == "l2tp" {
 				a.label(c, "IPsec pre-shared key (this session only)")
@@ -819,29 +899,16 @@ func (a *App) connectForm(c *ui.Context) {
 		ui.TextInput(c.Key("session-password"), &a.Password).Password().FillWidth()
 		ui.Checkbox(c.Key("authorize-network"), &a.Authorized, a.tr("Authorize network changes"))
 		p := a.selected()
+		if p != nil && p.Protocol == core.WindowsBorrowedProtocol {
+			a.windowsBorrowedConsent(c)
+		}
 		needsProxyConsent := p != nil && p.ProxyURL != ""
 		if needsProxyConsent {
 			ui.Checkbox(c.Key("proxy-consent"), &a.ProxyConsent, a.tr("Allow proxy to use system authentication for this connection"))
 		}
 		ui.Row(c).Gap(10).Children(func() {
-			if ui.PrimaryButton(c.Key("confirm-connect"), a.tr("Connect")).Disabled(!a.Authorized || !a.canConnect(a.selected()) || needsProxyConsent && !a.ProxyConsent).Clicked() {
-				if p := a.selected(); p != nil {
-					sessionProfile := *p
-					sessionProfile.AllowProxySystemAuth = a.ProxyConsent
-					if a.GatewayChoice != "" {
-						sessionProfile.Gateway = a.GatewayChoice
-						sessionProfile.AdditionalGateways = nil
-					}
-					credentials := core.Credentials{Password: []byte(a.Password), KeyPassword: []byte(a.KeyPassword), IPsecPSK: []byte(a.IPsecPSK)}
-					err := a.Engine.ConnectWithCredentials(sessionProfile, credentials, a.Authorized)
-					clear(credentials.Password)
-					clear(credentials.KeyPassword)
-					clear(credentials.IPsecPSK)
-					if err != nil {
-						a.Notice = err.Error()
-					}
-				}
-				a.clearCredentials()
+			if ui.PrimaryButton(c.Key("confirm-connect"), a.tr("Connect")).Disabled(!a.Authorized || !a.canConnect(a.selected()) || needsProxyConsent && !a.ProxyConsent || !a.windowsConsentReady(p)).Clicked() {
+				a.submitConnection()
 			}
 			if ui.Button(c.Key("cancel-connect"), a.tr("Cancel")).Clicked() {
 				a.clearCredentials()

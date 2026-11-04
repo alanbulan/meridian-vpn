@@ -4,23 +4,40 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"log"
+	"mygo-vpn/internal/buildinfo"
 	"mygo-vpn/internal/desktop"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
 func main() {
+	// Version queries never open a window or read user configuration.
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		fmt.Printf("Meridian %s (%s)\n", buildinfo.Version, buildinfo.Commit)
+		return
+	}
 	base, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
 	}
 	config := flag.String("config", filepath.Join(base, "meridian", "profiles.json"), "Local configuration file (never contains credentials)")
+	limitedWindows := flag.Bool("enable-windows-borrowed", false, "Enable experimental existing-Windows-VPN UI; requires fresh per-use consent; no exclusive ownership or full leak protection")
 	flag.Parse()
-	a := desktop.New(*config)
+	var a *desktop.App
+	if *limitedWindows {
+		if runtime.GOOS != "windows" {
+			log.Fatal("existing Windows VPN mode is available only on Windows")
+		}
+		a = desktop.NewWindowsBorrowed(*config)
+	} else {
+		a = desktop.New(*config)
+	}
 	quitting, quitReady := false, false
 	requestQuit := func() {}
 	requestQuit = func() {
@@ -49,7 +66,7 @@ func main() {
 				quitting = false
 				if err != nil {
 					a.ShuttingDown = false
-					a.Notice = "VPN 清理未完成，请先检查 NetworkManager，应用将保持打开。"
+					a.Notice = "VPN cleanup is unconfirmed. Inspect the system VPN service; this application will remain open."
 					if a.Window != nil {
 						a.Window.Show()
 						a.Window.Invalidate()

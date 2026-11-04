@@ -14,7 +14,7 @@ import (
 // These offsets include the Windows 8+ szEncPassword pointer, always NULL here.
 type dialParameterLayout struct {
 	size, entry, phone, callbackNumber, username, password, domain int
-	subEntry, callbackID, interfaceIndex, encryptedPassword int
+	subEntry, callbackID, interfaceIndex, encryptedPassword        int
 }
 
 func rasDialParameterLayout(pointerBytes int) (dialParameterLayout, bool) {
@@ -22,7 +22,7 @@ func rasDialParameterLayout(pointerBytes int) (dialParameterLayout, bool) {
 		return dialParameterLayout{}, false
 	}
 	return dialParameterLayout{
-		size: 2104 + 2*pointerBytes,
+		size:  2104 + 2*pointerBytes,
 		entry: 4, phone: 518, callbackNumber: 776,
 		username: 1034, password: 1548, domain: 2062,
 		subEntry: 2096, callbackID: 2100,
@@ -45,13 +45,35 @@ func rasDialParameterLayout(pointerBytes int) (dialParameterLayout, bool) {
 // pointer remain zero. The selected entry's phone number would be used by RAS;
 // a future caller must separately validate/revalidate that profile and target.
 func withDialParameters(entry PhonebookEntry, username, domain string, password []byte, consume func([]uint16, []uint32) error) error {
+	if consume == nil {
+		return ErrOperation
+	}
+	phonebook, parameters, err := marshalDialParameters(entry, username, domain, password)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		clear(parameters)
+		clear(phonebook)
+		runtime.KeepAlive(parameters)
+		runtime.KeepAlive(phonebook)
+	}()
+	if consume(phonebook, parameters) != nil {
+		return ErrOperation
+	}
+	return nil
+}
+
+// marshalDialParameters transfers mutable storage to one internal lifetime
+// owner. It does not pin it or establish when a native consumer stops using it.
+func marshalDialParameters(entry PhonebookEntry, username, domain string, password []byte) ([]uint16, []uint32, error) {
 	layout, ok := rasDialParameterLayout(int(unsafe.Sizeof(uintptr(0))))
-	if !ok || consume == nil || !validSelection(entry) ||
+	if !ok || !validSelection(entry) ||
 		len(username) > 1024 || !validText(username, 256) ||
 		len(domain) > 60 || domain == "*" || (domain != "" && !validText(domain, 15)) ||
 		len(password) == 0 || len(password) > 1024 || !utf8.Valid(password) ||
 		bytes.ContainsAny(password, "\x00\r\n") || secretUnits(password) > 256 {
-		return ErrOperation
+		return nil, nil, ErrOperation
 	}
 	parameters := make([]uint32, layout.size/4)
 	phonebook := make([]uint16, 0, len(entry.PhonebookPath)+1)
@@ -59,23 +81,13 @@ func withDialParameters(entry PhonebookEntry, username, domain string, password 
 		phonebook = utf16.AppendRune(phonebook, r)
 	}
 	phonebook = append(phonebook, 0)
-	defer func() {
-		clear(parameters)
-		clear(phonebook)
-		runtime.KeepAlive(parameters)
-		runtime.KeepAlive(phonebook)
-	}()
 	parameters[0] = uint32(layout.size)
 	buffer := wordBytes(parameters)
 	writeDialUTF16(buffer[layout.entry:layout.phone], []byte(entry.Name))
 	writeDialUTF16(buffer[layout.username:layout.password], []byte(username))
 	writeDialUTF16(buffer[layout.password:layout.domain], password)
 	writeDialUTF16(buffer[layout.domain:layout.subEntry], []byte(domain))
-	if consume(phonebook, parameters) != nil {
-		// Native or injected errors must not leak credentials or local paths.
-		return ErrOperation
-	}
-	return nil
+	return phonebook, parameters, nil
 }
 
 // Inputs are validated and the destination zeroed before encoding. Password

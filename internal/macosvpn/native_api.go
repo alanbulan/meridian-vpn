@@ -1,0 +1,119 @@
+package macosvpn
+
+import "errors"
+
+// ABI: Apple SCNetworkConnection.h uses int32_t for Status and unsigned-char
+// Boolean for Start/Stop. CFIndex is signed pointer-width on supported macOS.
+// No Go callbacks or pointers are retained by SystemConfiguration.
+type nativeAPI struct {
+	evidenceAPI
+	inspectionAPI
+	release           func(uintptr)
+	createString      func(uintptr, string, uint32) uintptr
+	stringLength      func(uintptr) int
+	stringCString     func(uintptr, *byte, int, uint32) uint8
+	preferencesCreate func(uintptr, uintptr, uintptr) uintptr
+	serviceCopy       func(uintptr, uintptr) uintptr
+	serviceEnabled    func(uintptr) uint8
+	serviceInterface  func(uintptr) uintptr
+	interfaceType     func(uintptr) uintptr
+	lowerInterface    func(uintptr) uintptr
+	createConnection  func(uintptr, uintptr, uintptr, uintptr) uintptr
+	status            func(uintptr) int32
+	start             func(uintptr, uintptr, uint8) uint8
+	stop              func(uintptr, uint8) uint8
+}
+
+const utf8Encoding uint32 = 0x08000100
+
+func (a *nativeAPI) text(v uintptr) string {
+	if v == 0 {
+		return ""
+	}
+	length := a.stringLength(v)
+	if length < 1 || length > maxServiceIDBytes {
+		return ""
+	}
+	var b [maxServiceIDBytes + 1]byte
+	if a.stringCString(v, &b[0], len(b), utf8Encoding) == 0 {
+		return ""
+	}
+	// These native fields are deliberately ASCII-only. Comparing UTF-16 length
+	// with decoded bytes rejects embedded NULs and non-ASCII ambiguity.
+	for i, c := range b {
+		if c == 0 {
+			if i != length {
+				return ""
+			}
+			return string(b[:i])
+		}
+		if c >= 128 {
+			return ""
+		}
+	}
+	return ""
+}
+func openWithAPI(a *nativeAPI, id string) (connection, error) {
+	name := a.createString(0, "Meridian L2TP existing service", utf8Encoding)
+	if name == 0 {
+		return nil, errors.New("could not allocate service reference")
+	}
+	defer a.release(name)
+	prefs := a.preferencesCreate(0, name, 0)
+	if prefs == 0 {
+		return nil, errors.New("could not read system VPN services")
+	}
+	defer a.release(prefs)
+	sid := a.createString(0, id, utf8Encoding)
+	if sid == 0 {
+		return nil, errors.New("could not allocate service identifier")
+	}
+	defer a.release(sid)
+	service := a.serviceCopy(prefs, sid)
+	if service == 0 {
+		return nil, errors.New("system VPN service not found")
+	}
+	defer a.release(service)
+	if a.serviceEnabled(service) == 0 {
+		return nil, errors.New("system VPN service is disabled")
+	}
+	iface := a.serviceInterface(service)
+	if iface == 0 || a.text(a.interfaceType(iface)) != "PPP" {
+		return nil, errors.New("service is not PPP over L2TP")
+	}
+	lower := a.lowerInterface(iface)
+	if lower == 0 || a.text(a.interfaceType(lower)) != "L2TP" {
+		return nil, errors.New("service is not PPP over L2TP")
+	}
+	ref := a.createConnection(0, sid, 0, 0)
+	if ref == 0 {
+		return nil, errors.New("could not open system VPN connection")
+	}
+	return &nativeConnection{a: a, ref: ref, serviceID: id}, nil
+}
+
+type nativeConnection struct {
+	a         *nativeAPI
+	ref       uintptr
+	serviceID string
+}
+
+func (n *nativeConnection) status() Status { return Status(n.a.status(n.ref)) }
+func (n *nativeConnection) start() error {
+	if n.a.start(n.ref, 0, 0) == 0 {
+		return errors.New("system rejected VPN start; check system configuration and authorization")
+	}
+	return nil
+}
+func (n *nativeConnection) stop() error {
+	if n.a.stop(n.ref, 0) == 0 {
+		return errors.New("system rejected VPN stop")
+	}
+	return nil
+}
+func (n *nativeConnection) close() {
+	if n.ref != 0 {
+		n.a.release(n.ref)
+		n.ref = 0
+	}
+}

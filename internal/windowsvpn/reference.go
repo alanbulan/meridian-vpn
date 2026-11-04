@@ -12,32 +12,35 @@ const rasInvalidHandle = uint32(6)
 // dialReference is an unexported, injected bookkeeping primitive for ONE
 // future RasDial invocation. It does not call RasDial, reserve an entry, prove
 // ownership/exclusivity or authorize any OS operation. It is not wired to the
-// Controller or a native driver. No secrets or filesystem paths are stored.
+// owned-entry Controller. The limited-mode coordinator supplies native calls.
+// No secrets or filesystem paths are stored.
 //
 // Only the direct return from that invocation may be recorded. An enumerated
 // handle, callback handle or a previous attempt's handle is NOT a new reference.
 // Every nonzero direct result is a debt, even when RasDial reports an error.
-// Actual native provenance/callback lifetime remains unimplemented and must be
-// established before using this primitive with real system functions.
+// The limited-mode native binding records only its direct call result and
+// separately verifies callback/input lifetime before releasing storage.
 // Copies of the wrapper share the same ledger. Retain one constructor result
 // per direct RasDial invocation; never create a second ledger for one result.
 // The zero value is deliberately unusable rather than lazily creating debt.
-type dialReference struct { state *dialReferenceState }
+type dialReference struct{ state *dialReferenceState }
 
 type dialReferenceState struct {
-	mu sync.Mutex
-	returned, tainted bool
-	handle uintptr
-	dialCode uint32
+	mu                                sync.Mutex
+	returned, tainted                 bool
+	handle                            uintptr
+	dialCode                          uint32
 	releaseAttempted, releaseReturned bool
-	releaseCode uint32
-	polling, terminated bool
+	releaseCode                       uint32
+	polling, terminated               bool
 }
 
 func newDialReference() *dialReference { return &dialReference{state: &dialReferenceState{}} }
 
 func (reference *dialReference) recordDialReturn(handle uintptr, code uint32) error {
-	if reference == nil || reference.state == nil { return ErrOperation }
+	if reference == nil || reference.state == nil {
+		return ErrOperation
+	}
 	r := reference.state
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -48,7 +51,10 @@ func (reference *dialReference) recordDialReturn(handle uintptr, code uint32) er
 		return ErrOperation
 	}
 	r.returned, r.handle, r.dialCode = true, handle, code
-	if handle == 0 && code == 0 { r.tainted = true; return ErrOperation }
+	if handle == 0 && code == 0 {
+		r.tainted = true
+		return ErrOperation
+	}
 	return nil
 }
 
@@ -56,13 +62,21 @@ func (reference *dialReference) recordDialReturn(handle uintptr, code uint32) er
 // direct-result handle. Mark consumption BEFORE crossing the native boundary:
 // neither an error, panic/uncertain outcome nor concurrent Stop may reissue it.
 // This is distinct from retrying termination probes or owned-object cleanup.
-// No production hangup function is provided by this package.
+// The explicit native binding supplies HangUp; this ledger never resolves it.
 func (reference *dialReference) release(hangup func(uintptr) uint32) error {
-	if reference == nil || reference.state == nil { return ErrCleanup }
+	if reference == nil || reference.state == nil {
+		return ErrCleanup
+	}
 	r := reference.state
 	r.mu.Lock()
-	if !r.returned || r.handle == 0 || hangup == nil { r.mu.Unlock(); return ErrCleanup }
-	if r.releaseAttempted { r.mu.Unlock(); return errReleaseConsumed }
+	if !r.returned || r.handle == 0 || hangup == nil {
+		r.mu.Unlock()
+		return ErrCleanup
+	}
+	if r.releaseAttempted {
+		r.mu.Unlock()
+		return errReleaseConsumed
+	}
 	r.releaseAttempted = true
 	handle := r.handle
 	r.mu.Unlock()
@@ -70,7 +84,9 @@ func (reference *dialReference) release(hangup func(uintptr) uint32) error {
 	r.mu.Lock()
 	r.releaseCode, r.releaseReturned = code, true
 	r.mu.Unlock()
-	if code != 0 { return ErrCleanup }
+	if code != 0 {
+		return ErrCleanup
+	}
 	return nil
 }
 
@@ -81,12 +97,23 @@ func (reference *dialReference) release(hangup func(uintptr) uint32) error {
 // A future driver supplies its own cancellation/deadline around repeated probes;
 // this function does not turn a blocking native query into cancellable work.
 func (reference *dialReference) checkTermination(status func(uintptr) uint32) error {
-	if reference == nil || reference.state == nil { return ErrCleanup }
+	if reference == nil || reference.state == nil {
+		return ErrCleanup
+	}
 	r := reference.state
 	r.mu.Lock()
-	if !r.releaseReturned || r.releaseCode != 0 || r.tainted || status == nil { r.mu.Unlock(); return ErrCleanup }
-	if r.terminated { r.mu.Unlock(); return nil }
-	if r.polling { r.mu.Unlock(); return ErrBusy }
+	if !r.releaseReturned || r.releaseCode != 0 || r.tainted || status == nil {
+		r.mu.Unlock()
+		return ErrCleanup
+	}
+	if r.terminated {
+		r.mu.Unlock()
+		return nil
+	}
+	if r.polling {
+		r.mu.Unlock()
+		return ErrBusy
+	}
 	r.polling = true
 	handle := r.handle
 	r.mu.Unlock()
@@ -96,7 +123,9 @@ func (reference *dialReference) checkTermination(status func(uintptr) uint32) er
 	code := status(handle)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.tainted || code != rasInvalidHandle { return ErrCleanup }
+	if r.tainted || code != rasInvalidHandle {
+		return ErrCleanup
+	}
 	r.terminated = true
 	return nil
 }
@@ -109,7 +138,9 @@ func (reference *dialReference) checkTermination(status func(uintptr) uint32) er
 // A failed dial returning no handle has no reference to release, but this
 // method does not authorize cleanup or infer callback quiescence in that case.
 func (reference *dialReference) referenceTerminationConfirmed() bool {
-	if reference == nil || reference.state == nil { return false }
+	if reference == nil || reference.state == nil {
+		return false
+	}
 	r := reference.state
 	r.mu.Lock()
 	defer r.mu.Unlock()

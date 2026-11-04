@@ -20,10 +20,12 @@ const usage = `Meridian CLI: configuration, readiness checks and Linux foregroun
 Usage: meridianctl [--config FILE] COMMAND
 
 Commands:
-  connect --profile INDEX --authorize-network --credentials-stdin
+  connect --profile INDEX --authorize-network --credentials-stdin [--interactive-auth]
       Linux foreground VPN. Read credentials from a private non-terminal stdin
       JSON stream. Ctrl+C/SIGTERM disconnects only this process-owned session.
       Requires explicit permission for gateway authentication and routes/DNS.
+      Interactive profiles also require --interactive-auth and a foreground
+      Linux controlling terminal for hidden, bounded MFA prompts.
   profiles list [--json] [--show-private]
       List profile indexes and configured feature flags. Names, IDs, gateways,
       accounts and local paths are hidden unless --show-private is requested.
@@ -54,20 +56,22 @@ Exit codes: 0 success/ready, 1 invalid/unavailable/failure, 2 usage error.
 `
 
 type application struct {
-	version     string
-	configDir   func() (string, error)
-	diagnostics func(context.Context, string) diagnostics.Report
+	version      string
+	configDir    func() (string, error)
+	diagnostics  func(context.Context, string) diagnostics.Report
 	vpnSupported func() bool
-	vpnAdapter func() core.Adapter
-	credentials func(context.Context) (core.Credentials, error)
+	vpnAdapter   func() core.Adapter
+	credentials  func(context.Context) (core.Credentials, error)
+	authTerminal func() (authTerminal, error)
 }
 
 func newApplication() application {
 	return application{
-		version: version, configDir: os.UserConfigDir, diagnostics: diagnostics.Collect,
+		version: applicationVersion(), configDir: os.UserConfigDir, diagnostics: diagnostics.Collect,
 		vpnSupported: foregroundVPNSupported,
-		vpnAdapter: func() core.Adapter { return core.NewNetworkManager() },
-		credentials: func(ctx context.Context) (core.Credentials, error) { return readCredentialInput(ctx, os.Stdin) },
+		authTerminal: openAuthTerminal,
+		vpnAdapter:   func() core.Adapter { return core.NewNetworkManager() },
+		credentials:  func(ctx context.Context) (core.Credentials, error) { return readCredentialInput(ctx, os.Stdin) },
 	}
 }
 

@@ -16,10 +16,104 @@ func (a *App) openConnectForm() {
 	a.Page = "Overview"
 }
 
+// Credentials and consent belong to the exact gateway shown when entered.
+// Changing the dropdown cannot carry them to another gateway in the profile.
+func (a *App) selectSessionGateway(gateway string) {
+	if gateway == a.GatewayChoice {
+		return
+	}
+	p := a.selected()
+	if p == nil {
+		return
+	}
+	if !gatewayAllowed(p, gateway) {
+		return
+	}
+	a.clearCredentials()
+	a.GatewayChoice = gateway
+	a.ConnectPanel = true
+}
+
+func gatewayAllowed(p *core.Profile, gateway string) bool {
+	if p == nil || gateway == "" {
+		return false
+	}
+	if gateway == p.Gateway {
+		return true
+	}
+	for _, other := range p.AdditionalGateways {
+		if gateway == other {
+			return true
+		}
+	}
+	return false
+}
+
+// Every GUI attempt records the exact admitted target after fresh consent.
+// Validating the target again prevents a stale form from selecting an endpoint
+// removed from the profile while the form was open.
+func (a *App) submitConnection() {
+	defer a.clearCredentials()
+	p := a.selected()
+	if !a.canConnect(p) || !a.Authorized || !a.windowsConsentReady(p) || !gatewayAllowed(p, a.GatewayChoice) || (p.ProxyURL != "" && !a.ProxyConsent) {
+		a.Notice = "Review the connection and authorize network changes before connecting"
+		return
+	}
+	sessionProfile := *p
+	sessionProfile.AllowProxySystemAuth = a.ProxyConsent
+	sessionProfile.Gateway = a.GatewayChoice
+	sessionProfile.AdditionalGateways = nil
+	credentials := core.Credentials{Password: []byte(a.Password), KeyPassword: []byte(a.KeyPassword), IPsecPSK: []byte(a.IPsecPSK)}
+	var err error
+	if sessionProfile.Protocol == core.WindowsBorrowedProtocol {
+		err = a.Engine.ConnectWithAuthorization(sessionProfile, credentials, core.SessionAuthorization{NetworkChanges: a.Authorized, WindowsCredentialPersistence: a.WindowsPersistenceConsent, WindowsSharedReference: a.WindowsSharedConsent})
+	} else {
+		err = a.Engine.ConnectWithCredentials(sessionProfile, credentials, a.Authorized)
+	}
+	clear(credentials.Password)
+	clear(credentials.KeyPassword)
+	clear(credentials.IPsecPSK)
+	if err != nil {
+		a.Notice = err.Error()
+		return
+	}
+	if sessionProfile.Protocol == core.WindowsBorrowedProtocol {
+		owned := sessionProfile
+		options := *sessionProfile.WindowsBorrowed
+		owned.WindowsBorrowed = &options
+		a.windowsActiveProfile = &owned
+		a.windowsActiveAttemptID = a.Engine.Snapshot().AttemptID
+	}
+	a.sessionTarget = sessionTarget{attemptID: a.Engine.Snapshot().AttemptID, profileID: p.ID, gateway: sessionProfile.Gateway}
+	a.Notice = ""
+}
+
+// Recovery stays on the lost session's explicitly chosen gateway. It opens a
+// blank form, never retries or transfers authorization. If that target is no
+// longer configured, the ordinary manual connection flow remains available.
+func (a *App) openRecoveryForm() {
+	if a.macServiceOwnsAttempt(a.Engine.Snapshot()) || a.windowsOwnsAttempt(a.Engine.Snapshot()) {
+		a.clearReauthentication()
+		return
+	}
+	target := a.sessionTarget
+	snapshot := a.Engine.Snapshot()
+	p := a.selected()
+	if !a.canConnect(p) || !a.Config.Settings.ReauthOnLoss || a.SwitchPending || !a.reauthVisible || snapshot.State != core.Failed || (snapshot.Failure != core.FailureConnectionLost && snapshot.Failure != core.FailureTransport) || target.attemptID != snapshot.AttemptID || target.attemptID != a.reauthAttemptID || p == nil || target.profileID != p.ID || !gatewayAllowed(p, target.gateway) {
+		a.clearReauthentication()
+		a.clearCredentials()
+		a.Notice = "The previous session gateway is unavailable; choose a connection and sign in again"
+		return
+	}
+	a.openConnectForm()
+	a.selectSessionGateway(target.gateway)
+	a.Notice = ""
+}
+
 // Switching never carries credentials or proxy consent to another connection.
 // The next authentication form opens only after the old tunnel's cleanup succeeds.
 func (a *App) beginSwitch(id string) {
-	if a.ShuttingDown || a.SwitchPending || a.Engine.Snapshot().State != core.Connected {
+	if a.ShuttingDown || a.SwitchPending || a.Engine.Snapshot().State != core.Connected || a.macServiceOwnsAttempt(a.Engine.Snapshot()) || a.windowsOwnsAttempt(a.Engine.Snapshot()) {
 		return
 	}
 	found := false

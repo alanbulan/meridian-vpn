@@ -126,7 +126,7 @@ func (r *ActivationReceipt) ipv4ObservationInput(ctx context.Context, a *Activat
 	}
 	b := *a.binding
 	want := Binding{
-		Identity: Identity{BootID: m.record.BootID, BusID: m.record.BusID, Owner: m.record.Owner, UUID: m.record.UUID, ActivePath: m.record.ActivePath, Interface: m.record.Interface, Session: b.Identity.Session},
+		Identity:       Identity{BootID: m.record.BootID, BusID: m.record.BusID, Owner: m.record.Owner, UUID: m.record.UUID, ActivePath: m.record.ActivePath, Interface: m.record.Interface, Session: b.Identity.Session},
 		ConnectionPath: dbus.ObjectPath(m.record.ConnectionPath), PluginOwner: m.record.PluginOwner,
 	}
 	o := copyOffer(a.offer)

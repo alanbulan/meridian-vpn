@@ -290,4 +290,3 @@ func (r *ActivationReceipt) Correlate(ctx context.Context, activation *Activatio
 	r.activation = activation
 	return Binding{Identity: Identity{BootID: m.record.BootID, BusID: m.record.BusID, Owner: m.record.Owner, UUID: m.record.UUID, ActivePath: m.record.ActivePath, Interface: m.record.Interface}, ConnectionPath: dbus.ObjectPath(m.record.ConnectionPath), PluginOwner: m.record.PluginOwner}, nil
 }
-

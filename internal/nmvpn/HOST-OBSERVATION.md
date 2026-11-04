@@ -71,9 +71,9 @@ A copied receipt cannot repeat the observation. This cannot implement
 HostBinding.CheckLive, ProveAbsent, a host lease or core.Ready. It does not poll
 until activation or automatically wire the normal application.
 
-The reviewed NM source limits address/route export to 100 records and excludes
-non-unicast routes; deprecated Routes additionally omit defaults and non-main
-tables. This observer rejects 100 or more projected routes and accepts at most
+The reviewed NM source bounds address export, limits route export to 100 records,
+and excludes non-unicast routes; deprecated Routes additionally omit defaults and
+non-main tables. This observer rejects 100 or more projected routes and accepts at most
 98 offered routes plus one connected prefix. That bound avoids accepting an
 observed truncation boundary but does not recover omitted route types. IP4Config
 also uses cached, rate-limited platform notifications. Even two matching samples

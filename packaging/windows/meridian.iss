@@ -1,3 +1,7 @@
+; PREPROCVER is the vendor-documented encoded compiler version.
+#if (PREPROCVER & 0xFFFFFF00) != 0x06070100
+  #error Inno Setup 6.7.1 compiler engine required
+#endif
 ; Per-user preview installer. No service, driver, firewall, network or autostart.
 #ifndef StageDir
   #error StageDir required

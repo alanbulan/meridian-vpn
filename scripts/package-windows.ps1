@@ -17,12 +17,12 @@ if ($signature.Status -ne 'Valid') { throw "Installer compiler signature is not 
 # Vendor's current publisher is documented at https://jrsoftware.org/isdl-verify.php
 if ($signature.SignerCertificate.Subject -notmatch '(^|,\s*)CN=Pyrsys B\.V\.(,|$)') { throw 'Unexpected installer compiler signer' }
 # Inno's signed ISCC launcher leaves both PE version-resource fields unset.
-# Pin the exact signed official-runner bytes, then verify its own version banner.
+# Pin exact signed official-runner bytes; the ISS preprocessor pins engine6.7.1.
 $compilerHash=(Get-FileHash $iscc -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($compilerHash -ne 'eb6f4410c8db367a5f74127e8025ad2ccacc0afabbe783959d237df3050f97fb') { throw 'Installer compiler hash changed' }
 $compilerBanner=(& $iscc /? 2>&1 | Out-String)
 Write-Output $compilerBanner
-if ($compilerBanner -notmatch '\b6\.7\.1\b') { throw 'Installer compiler version banner mismatch' }
+if ($compilerBanner -notmatch 'Inno Setup 6 Command-Line Compiler') { throw 'Unexpected compiler help banner' }
 $out = [System.IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path $out) { throw 'Output directory already exists' }
 $stage = Join-Path $root 'build/windows-installer-stage'

@@ -135,26 +135,8 @@ func StartUniVPNNMBroker(ctx context.Context, activation *nmvpn.Activation, laun
 	if ctx == nil || activation == nil || launcher == nil || nilInterface(hosts) {
 		return nil, errUniVPNNM
 	}
-	l := *launcher
-	l.AllowedCAFiles = cloneUniVPNNMBools(launcher.AllowedCAFiles)
-	l.TransportGateways = make(map[string]fdtransport.Endpoint, len(launcher.TransportGateways))
-	for gateway, endpoint := range launcher.TransportGateways {
-		l.TransportGateways[gateway] = endpoint
-	}
-	args = append([]string(nil), args...)
-	if executable != l.Executable || !l.NativeSessionChannel || nilInterface(l.Isolation) || nilInterface(l.Transport) || nilInterface(l.PacketProvider) || validateUniVPNBrokerArgs(args, l.AllowedCAFiles) != nil {
-		return nil, errUniVPNNM
-	}
-	if _, err := l.transportEndpoint(args[len(args)-1]); err != nil {
-		return nil, errUniVPNNM
-	}
-	username := ""
-	for _, arg := range args[:len(args)-2] {
-		if strings.HasPrefix(arg, "--user=") {
-			username = strings.TrimPrefix(arg, "--user=")
-		}
-	}
-	if username == "" || username != activation.Username() {
+	l, args, err := snapshotUniVPNNMLaunch(launcher, executable, args, activation.Username())
+	if err != nil {
 		return nil, errUniVPNNM
 	}
 	return startUniVPNNM(ctx, activation, policy, uniVPNNMDependencies{
@@ -171,8 +153,40 @@ func StartUniVPNNMBroker(ctx context.Context, activation *nmvpn.Activation, laun
 			return p, err
 		},
 		source:   UniVPNNativeOfferSource{},
-		launcher: &l,
+		launcher: l,
 	})
+}
+
+// Shared admission/snapshot for the bridge and service composition. Argument
+// validation may read trusted CA metadata, but never changes state. The service
+// checks executable bytes and deployment providers separately BEFORE NM mutation.
+func snapshotUniVPNNMLaunch(launcher *UniVPNExecLauncher, executable string, args []string, plannedUsername string) (*UniVPNExecLauncher, []string, error) {
+	if launcher == nil {
+		return nil, nil, errUniVPNNM
+	}
+	l := *launcher
+	l.AllowedCAFiles = cloneUniVPNNMBools(launcher.AllowedCAFiles)
+	l.TransportGateways = make(map[string]fdtransport.Endpoint, len(launcher.TransportGateways))
+	for gateway, endpoint := range launcher.TransportGateways {
+		l.TransportGateways[gateway] = endpoint
+	}
+	args = append([]string(nil), args...)
+	if executable != l.Executable || !l.NativeSessionChannel || nilInterface(l.Isolation) || nilInterface(l.Transport) || nilInterface(l.PacketProvider) || validateUniVPNBrokerArgs(args, l.AllowedCAFiles) != nil {
+		return nil, nil, errUniVPNNM
+	}
+	if _, err := l.transportEndpoint(args[len(args)-1]); err != nil {
+		return nil, nil, errUniVPNNM
+	}
+	username := ""
+	for _, arg := range args[:len(args)-2] {
+		if strings.HasPrefix(arg, "--user=") {
+			username = strings.TrimPrefix(arg, "--user=")
+		}
+	}
+	if username == "" || username != plannedUsername {
+		return nil, nil, errUniVPNNM
+	}
+	return &l, args, nil
 }
 
 func cloneUniVPNNMBools(in map[string]bool) map[string]bool {
@@ -469,4 +483,15 @@ func (b *UniVPNNMBroker) ProveAbsent(ctx context.Context, binding nmvpn.Binding)
 		return &CleanupError{}
 	}
 	return nil
+}
+
+
+// Done observes this generation's lifetime without taking a second process Wait
+// or revealing a replaceable PID. It closes on cancellation/exit/local teardown,
+// not proof of cleanup. A successfully started broker always returns a channel.
+func (b *UniVPNNMBroker) Done() <-chan struct{} {
+	if b == nil || b.self != b || b.run == nil {
+		return nil
+	}
+	return b.run.Done()
 }

@@ -1,8 +1,9 @@
 # Experimental NetworkManager-owned configuration core
 
-Linux-only, independent, and not integrated into the application. There is no
-running VPN service, automatic system-bus connection, TUN operation, or production
-broker in this package. `DBusPeer` supplies an experimental NM wire adapter with
+Linux-only and not enabled in the normal application. A conditional one-shot
+[service composition](SERVICE.md) now wires the actual plugin, manager, native
+bridge and publication controller, but there is no installed VPN service,
+automatic system-bus connection, or production host-authority implementation. `DBusPeer` supplies an experimental NM wire adapter with
 a required, independently trusted broker; it is not application-ready. It does **not** implement `UniVPNHostLeaseProvider`, prove exclusive
 host ownership, or turn a successful publish into `core.Ready`.
 
@@ -379,3 +380,24 @@ disabled for this experimental path. Tests inject all TUN, namespace and netlink
 operations; no real-kernel acceptance has run. The previous product gates remain
 open rather than being marked complete by mock or CI evidence.
 
+
+## Conditional service composition
+
+`core.NewUniVPNNMService` now supplies the concrete native factory for
+`nmvpn.Service.Run`: the same pinned Plugin accepts Connect, the manager correlates
+its actual activation receipt, the native bridge prepares retained resources,
+and DBusPeer/Controller publish and withdraw that exact generation. Missing host
+authority, global-policy admission/revocation, launch inputs or durable barriers
+fail closed before activation. No configured default enables the path.
+
+A mandatory policy-revocation channel cancels forward work and initiates bounded
+cleanup even after publication. It is provider evidence, not a new host lease.
+Caller cancellation preserves the plugin bus through shutdown; uncertain in-flight
+D-Bus calls still invalidate it. Each partial native result is retained and closed,
+STOPPED is emitted only after local close, and activation intent remains quarantined
+even after independent network-absence proof. Nothing here returns `core.Ready`.
+
+See [SERVICE.md](SERVICE.md) for ownership, callback lock order, startup timeout,
+private-bus verification and the still-missing executable/registration/deployment
+and real-host acceptance gates. Synthetic NM and fake host authority are tests,
+not interchangeable production providers.

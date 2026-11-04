@@ -29,6 +29,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Test VM evidence checker offline only
+        run: python3 -m unittest discover -s integration/nmvpn-real -v
       - name: Capture formatting evidence
         run: |
           mkdir -p reports/nmvpn

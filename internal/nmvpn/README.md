@@ -418,3 +418,73 @@ liveness, supply the independent HostBinding, authorize Ready or cleanup, or
 change application enablement. Core tests inject only the cross-package read;
 existing private-bus tests cover the NM observer separately. No combined live
 NM/TUN/gateway acceptance is implied.
+
+## Concrete kernel policy readback
+
+`packetrelay.ObserveKernelPolicy(ctx, expectedNamespace)` reads IPv4 and IPv6
+addresses, routes across tables, and routing-policy rules through fixed rtnetlink
+dump requests. It verifies the independently supplied namespace identity before
+socket creation, after creation and after the dumps, retaining namespace handles
+until completion. It never calls setns, invokes a command or changes networking.
+
+Only matching kernel sender, sequence and destination port replies are accepted.
+Every dump must end successfully; truncation, interrupted/filtered dumps, errors,
+malformed attributes, namespace drift and uncertain descriptor close return no
+observation. Polling has a two-second deadline, received data is capped at 1 MiB
+and 4096 records, and the receive buffer is fixed at 64 KiB. In-flight namespace
+inspection syscalls cannot be interrupted by context.
+
+Records retain complete fixed headers and attributes. Unknown attributes are
+**not approved** merely because they can be structurally retained. This reader
+is concrete kernel I/O, but a policy implementation must still interpret or
+reject every relevant field and separately inspect DNS, firewall and dispatcher
+policy. Sequential dumps are not atomic and cannot prove absence, readiness or
+exclusive ownership. The supplied namespace ID does not itself establish host
+provenance. No normal application path is enabled by this reader. Offline tests
+exercise the production socket loop through private per-call fixtures; live
+kernel capture and real VPN gateway acceptance have not run.
+
+`UniVPNNMLocalBinding.ObserveKernelPolicy` connects the reader to the retained
+original TUN observation: it checks the local association and kernel link before
+and after reading that exact namespace. Failed reads preserve existing cleanup
+owners and never return partial policy data. This read path is usable only after
+the broker already has independent host authority; it cannot bootstrap or
+replace the missing production HostBinding.
+
+## Conservative IPv4 delta evaluation
+
+`packetrelay.EvaluateKernelIPv4Delta` compares readback against an independently
+vetted baseline and a trusted, explicit IPv4 policy. It requires the original
+namespace, byte-identical baseline records, exactly one permanent TUN address
+and every provisioned route tuple. Destinations, tables, types, scope, protocol,
+priority, output interface and preferred-source presence are checked together.
+When present, preferred source must be the provisioned tunnel address. Kernel
+routes require that attribute; static routes explicitly provision presence or
+absence, so four-element NM route tuples can be matched without treating the
+attribute as an unchecked optional field. An absent attribute does not prove
+which source every application will bind or select. Local-table broadcast routes are supported only as
+explicitly provisioned subnet-base or upper-broadcast /32 tuples, with kernel
+protocol, link scope and zero priority, for prefixes shorter than /31. Modern
+kernels normally add the upper route; older kernels can add both. Neither is
+automatically optional. Pre-existing direct addresses or routes on the target
+TUN index are rejected; this does not prove absence of indirect references. Unknown added attributes, gateways, multipath, new
+rules, IPv6 additions, default routes, outer-endpoint capture, duplicates and
+missing entries fail. Route order is immaterial. Baseline unknown fields remain
+unchanged, but are not thereby approved. Legitimate baseline changes, including
+address-lifetime updates, conservatively reject evaluation.
+
+This narrow evaluator is not a complete host policy provider: it cannot prove
+that a caller-supplied baseline is safe, that a copied observation is fresh, or
+that a numeric interface index denotes the retained TUN. DNS, firewall and
+dispatcher inspection, continuous revocation and real cleanup authority remain
+required. In particular, `HostFilePins` only pins explicitly listed files; it
+cannot prove that no other dispatcher hook/configuration fragment or dynamic
+resolver policy exists. No Session/Ready or automatic cleanup is enabled.
+
+Compatibility reasoning was checked against Linux `fib_add_ifaddr` in
+[v5.10](https://github.com/torvalds/linux/blob/v5.10/net/ipv4/fib_frontend.c)
+and [v6.6](https://github.com/torvalds/linux/blob/v6.6/net/ipv4/fib_frontend.c),
+and NetworkManager's
+[VPN route parser](https://github.com/NetworkManager/NetworkManager/blob/main/src/core/vpn/nm-vpn-connection.c).
+These source checks explain the explicit broadcast and preferred-source cases;
+they do not replace testing the exact deployed NM/kernel versions.

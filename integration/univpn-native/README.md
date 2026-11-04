@@ -1,222 +1,81 @@
-# Experimental UniVPN native transport
+# 实验性 UniVPN 原生传输
 
-This is an isolated source restoration and reviewed Linux-only watchdog addition,
-not a claim of production gateway compatibility. The native engine implements
-password authentication, persistent control TLS plus data TLS, IPv4 packets,
-heartbeats, strict framing and peer identity continuity. It does not implement
-MFA, client-certificate authentication, QUIC, IPv6, proprietary endpoint policy,
-server discovery or gateway updates.
+这是一次隔离的源码恢复，并增加了经过审查、仅适用于 Linux 的看门狗机制，不代表已兼容生产网关。原生引擎实现密码认证、持续控制 TLS 加数据 TLS、IPv4 数据包、心跳、严格帧格式和对端身份连续性。它没有实现 MFA、客户端证书认证、QUIC、IPv6、专有终端策略、服务器发现或网关更新。
 
-## Provenance and licenses
+## 来源与许可证
 
-- Bruce-lhq/univpn-connect commit `954274ba3b0a061b844279311afd9350f203ba7f`.
-- OpenConnect commit `70d1e79d1e55849dfc71dcc199b1edb535b547e4`.
-- Official base archive SHA256:
-  `c193f6f0f197bf4cdcc15d74c8803f9073406ddcd2f4d4ce8455ee1f76dcb72f`.
-- Four original patches are unchanged. Patch 0005 adds Meridian's Linux
-  monotonic watchdog and three loopback tests. Patch 0006 makes UniVPN hooks
-  direct-exec (no shell), keeps them in the native process group, and propagates
-  pre-init/connect hook errors on Linux; other protocols retain upstream behavior.
-  Patch 0007 adds the opt-in native-owned session lifecycle channel described below.
-- `licenses/` preserves MIT management-code license, upstream third-party
-  notices, and OpenConnect LGPL-2.1. The native code is LGPL, NOT MIT relicensed.
-- `source/openconnect-upstream.tar.gz` plus the complete patch chain is the
-  corresponding source for the experimental binary. `source/univpn.c` and
-  `source/univpn-codec.h` are readable copies, not independent build inputs.
+- Bruce-lhq/univpn-connect 提交 `954274ba3b0a061b844279311afd9350f203ba7f`。
+- OpenConnect 提交 `70d1e79d1e55849dfc71dcc199b1edb535b547e4`。
+- 官方基础归档 SHA256：`c193f6f0f197bf4cdcc15d74c8803f9073406ddcd2f4d4ce8455ee1f76dcb72f`。
+- 最初四个补丁保持不变。补丁 0005 增加 Meridian 的 Linux 单调时钟看门狗及三项回环测试。补丁 0006 在 Linux 上让 UniVPN 钩子直接执行（不经过 shell）、保持在原生进程组内，并传播预初始化/连接钩子错误；其他协议保留上游行为。补丁 0007 增加下文所述、需要显式启用且由原生进程持有的会话生命周期通道。
+- `licenses/` 保留管理代码的 MIT 许可证、上游第三方声明及 OpenConnect LGPL-2.1。原生代码采用 LGPL，**没有**重新许可为 MIT。
+- `source/openconnect-upstream.tar.gz` 加完整补丁链构成实验性二进制的对应源码。`source/univpn.c` 和 `source/univpn-codec.h` 是便于阅读的副本，不是独立构建输入。
 
-## Reproduce on Linux
+## 在 Linux 上复现
 
-Prerequisites: compiler, make, autoconf, automake, libtool, pkg-config, OpenSSL
-and libxml2 development headers, zlib development headers, Python 3, git.
-No installer is run by these scripts. Dependencies must already be available
-or privately staged. The default vpnc script is `/bin/false`, intentionally
-preventing accidental use of a host route/DNS configuration script.
+前置条件：编译器、make、autoconf、automake、libtool、pkg-config、OpenSSL 和 libxml2 开发头文件、zlib 开发头文件、Python 3、git。这些脚本不运行安装器；依赖必须已准备好或在私有目录暂存。默认 vpnc 脚本为 `/bin/false`，刻意阻止意外使用宿主路由/DNS 配置脚本。
 
-From this directory:
+在本目录执行：
 
 ```
 python3 scripts/prepare_native.py --archive source/openconnect-upstream.tar.gz --destination "$PWD/build/openconnect"
 (cd build/openconnect && sh ../../scripts/build_native.sh)
 ```
 
-The prepare script verifies the official archive hash and exact patch list,
-rejects archive links/device entries/path escapes, then checks and applies each
-patch. The build runs the real native executable against a loopback TLS mock
-using OpenConnect script-tun socket mode: **no kernel TUN, root, routes or DNS**.
-The 17 mock tests take about two minutes. Only generated mock credentials and
-short-lived self-signed test certificates are used.
+准备脚本验证官方归档哈希和精确补丁列表，拒绝归档链接、设备条目及路径逃逸，再逐个检查并应用补丁。构建流程使用 OpenConnect 的 script-tun 套接字模式，让真实原生可执行文件连接回环 TLS 模拟网关：**不使用内核 TUN、root、路由或 DNS**。17 项模拟测试约需两分钟。仅使用生成的模拟凭据和短期自签名测试证书。
 
-`RESULTS.txt` is this restoration's actual test result. `BUILD-LOG.txt` is the
-build log. SHA256SUMS inventories the packaged source/patches, not a signature.
+`RESULTS.txt` 是本次恢复的实际测试结果，`BUILD-LOG.txt` 是构建日志。SHA256SUMS 列出打包源码/补丁的校验值，不是签名。
 
-## Watchdog behavior
+## 看门狗行为
 
-The Linux monotonic clock bounds each channel independently: 45 seconds without
-a complete valid frame, 15 seconds to complete a fragmented frame, and 15 seconds
-for a queued write. Outbound traffic does not refresh peer liveness, and trickled
-partial bytes do not refresh a frame deadline. Expiry closes the session rather
-than replaying credentials. These policies are conservative experimental
-choices, not verified protocol requirements. Gateways that do not reply to
-heartbeats may be incompatible. Tests cover silent control, silent data and
-partial-frame expiry. Dedicated blocked-write fault injection remains pending.
+Linux 单调时钟分别限制每条通道：45 秒内必须收到完整有效帧，分片帧必须在 15 秒内完成，排队写入必须在 15 秒内完成。出站流量不刷新对端存活时间，缓慢传入的零碎字节也不延长帧截止时间。超时会关闭会话，不会重放凭据。这些是保守的实验性策略，不是经过验证的协议要求。不响应心跳的网关可能不兼容。测试覆盖控制通道静默、数据通道静默和部分帧超时；专门的写入阻塞故障注入仍待完成。
 
-## Application and privileged broker boundary
+## 应用与特权代理服务边界
 
-`internal/core/univpn.go` provides a distinct adapter, strict argument builder,
-and protocol router. The reviewed native executable and trusted continuous-
-session broker must be configured explicitly. An executable alone never marks
-this protocol available. No automatic PATH probing, installation, root request
-or executable launch occurs during capability checks.
+`internal/core/univpn.go` 提供独立适配器、严格参数构造器和协议路由器。必须明确配置经过审查的原生可执行文件及可信的持续会话代理服务。仅存在可执行文件，绝不会使协议被标记为可用。能力检查不会自动探测 PATH、安装、请求 root 权限或启动可执行文件。
 
-The existing NetworkManager adapter performs authentication then hands a cookie
-to a new process. That cannot work here: this UniVPN token requires the original
-control TLS connection to remain live while the second data TLS connection runs.
-A production broker must own one continuous native process, pass secrets over
-stdin/IPC (never argv), create and independently inspect the intended TUN,
-validate assigned addresses/routes, apply authorized route/DNS changes
-transactionally, and verify rollback after every stop/failure. IPC must authenticate
-peer credentials and reject arbitrary executable/options/script injection.
+既有 NetworkManager 适配器先认证，再把 Cookie 交给新进程；这条路径在此不可用，因为此 UniVPN 令牌要求原始控制 TLS 连接持续存活，同时运行第二条数据 TLS 连接。生产代理服务必须持有一个持续运行的原生进程，通过 stdin/IPC 传递秘密（绝不使用 argv），创建并独立检查预期 TUN，验证分配的地址/路由，以事务方式应用获授权的路由/DNS 变更，并在每次停止/失败后验证回滚。IPC 必须认证对端凭据，并拒绝任意可执行文件、选项或脚本注入。
 
-Broker code and mock tests elsewhere in this restoration are preparatory work;
-installation, privileged execution, real interface readiness, route/DNS rollback,
-real gateway compatibility, packaging trust and independent security review are
-not validated by these loopback tests. Do not replace readiness with stdout or
-process-start signals. Do not bypass certificate validation to make tests pass.
+本恢复工作其他位置的代理服务代码和模拟测试只是准备工作；这些回环测试没有验证安装、特权执行、真实接口就绪、路由/DNS 回滚、真实网关兼容、打包信任或独立安全审查。不要用标准输出或进程启动信号替代就绪证明，也不要为使测试通过而绕过证书验证。
 
-## Direct hook hardening
+## 钩子直接执行加固
 
-`tests/univpn-hook.c` exercises the real native script function without a TUN:
-successful execution, failed hook status, no shell interpretation, inherited
-process group, and failed pre-init rejection before device creation. Broker
-descendant containment is still required: a malicious or buggy hook can fork or
-change groups itself. The trusted hook and its deployment are separate from
-these native function tests.
+`tests/univpn-hook.c` 在不使用 TUN 的情况下测试真实原生脚本函数：成功执行、钩子失败状态、不经过 shell 解释、继承进程组，以及创建设备前拒绝失败的预初始化。代理服务仍需约束子孙进程：恶意或有缺陷的钩子可以自行派生进程或改变进程组。可信钩子及其部署与这些原生函数测试是不同事项。
 
-## Native lifecycle channel (patch 0007, Linux only)
+## 原生生命周期通道（补丁 0007，仅 Linux）
 
-Explicit opt-in uses `--meridian-session-fd=N` and
-`--meridian-session-id=<32 lowercase hexadecimal characters>`. The broker
-creates an inherited write-only pipe and a fresh non-secret session nonce.
-The FD must be at least 3, a writable FIFO, and specified once in canonical
-unsigned decimal form on the command line, not in a configuration file.
-Native code sets close-on-exec and nonblocking mode before authentication.
-The session ID must also be specified exactly once. Other protocols and
-script-tun mode are rejected. A closed channel cannot be reused.
+通过 `--meridian-session-fd=N` 和 `--meridian-session-id=<32 lowercase hexadecimal characters>` 显式启用。代理服务创建继承的只写管道，以及新的非秘密会话随机数。文件描述符必须至少为 3、指向可写 FIFO，且只能在命令行中以规范无符号十进制形式指定一次，不能放入配置文件。原生代码在认证前设置执行时关闭及非阻塞模式。会话 ID 也必须且只能指定一次。其他协议及 script-tun 模式会被拒绝。关闭后的通道不能复用。
 
-In this mode the native process bypasses all hooks. It authenticates both TLS
-channels, creates a fresh Linux TUN using `IFF_TUN_EXCL`, obtains its kernel
-index, and sets its alias to `meridian-<session>` via acknowledged netlink.
-Only after actual TUN registration does native code write one configuration
-record. The persistent original control TLS connection remains alive.
-Neither hooks nor stdout are authoritative. No config is emitted for
-script-tun, authentication-only success, failed device acquisition, failed
-alias setup, or unavailable control/data channels.
+在此模式下，原生进程绕过所有钩子。它认证两条 TLS 通道，使用 `IFF_TUN_EXCL` 创建新的 Linux TUN，获取内核索引，再通过获得确认的 netlink 将别名设为 `meridian-<session>`。只有实际注册 TUN 后，原生代码才写出一条配置记录。原始持续控制 TLS 连接保持存活。钩子和标准输出都不是可信依据。script-tun、仅认证成功、获取设备失败、设置别名失败或控制/数据通道不可用时，都不输出配置。
 
-The version-1 newline-delimited JSON config record contains exactly `version`,
-`event` (`config`), `session`, `interface`, `index`, `alias`, `addresses`
-(IPv4 CIDR), `routes` (at most 128), `dns`, and `endpoint` (the numeric connected
-control peer, without a port). DNS remains empty when the gateway supplies no
-supported DNS information. No password, cookie, token, or TLS secret is emitted.
-Records are bounded below 32768 bytes. A single nonblocking write that is
-partial, blocked, or fails terminates setup; receivers must reject truncated
-records. A full pipe is not allowed to stall the TLS liveness loop.
+第 1 版换行分隔 JSON 配置记录恰好包含 `version`、`event`（`config`）、`session`、`interface`、`index`、`alias`、`addresses`（IPv4 CIDR）、`routes`（最多 128 项）、`dns` 和 `endpoint`（实际连接的控制对端数值地址，不含端口）。网关未提供受支持的 DNS 信息时，DNS 保持为空。不输出密码、Cookie、令牌或 TLS 秘密。记录必须小于 32768 字节。单次非阻塞写入若只写出部分、阻塞或失败，就终止设置；接收方必须拒绝截断记录。管道写满不能阻塞 TLS 存活检查循环。
 
-Graceful native shutdown emits `event: no-network` only if no successful
-TUN acquisition ever occurred. It otherwise emits `event: closed`. Both carry
-only version and session identity besides event. `closed` is diagnostic, not
-rollback evidence. `no-network` is not sufficient on its own: the broker must
-also verify process containment, EOF, and independent kernel absence. Abrupt
-EOF, partial setup, or an unknown outcome require conservative quarantine.
-The native acquisition flag is set immediately after successful TUNSETIFF,
-before index lookup or alias mutation; a later failure cannot attest no-network.
+只有从未成功获取 TUN 时，正常原生退出才输出 `event: no-network`；否则输出 `event: closed`。除事件外，两者都只包含版本和会话身份。`closed` 仅用于诊断，不是回滚证据。单独的 `no-network` 也不充分：代理服务还必须验证进程约束、EOF 及独立的内核对象不存在证明。突然 EOF、部分设置或未知结果都需要保守隔离。原生资源获取标志在 TUNSETIFF 成功后立即设置，早于索引查找或别名修改；后续失败不能宣称没有网络资源。
 
-`tests/univpn-session.c` exercises the actual native FD parser, serializer,
-exclusive-device and alias ordering, failure propagation, bounded records,
-closed/full pipes, and terminal reuse rejection using syscall-wrapped TUN and
-netlink. Those tests do not create a kernel TUN or mutate host networking.
-Real privileged setup and rollback remain unvalidated and disabled by default.
+`tests/univpn-session.c` 使用包装系统调用的 TUN/netlink，测试真实原生文件描述符解析器、序列化器、独占设备和别名操作顺序、失败传播、有界记录、关闭/写满管道及终态复用拒绝。这些测试不创建内核 TUN，也不修改宿主网络。真实特权设置和回滚仍未经验证，默认禁用。
 
-`tests/univpn-session --emit-fixture` writes actual config and no-network
-serializer bytes from the syscall-wrapped test. Packaged `tests/testdata/`
-records are generated by that test, not manually authored; their loopback
-endpoint is for parser interoperability tests, not production route policy.
-`tests/univpn-session-integration.py` additionally tests the actual executable's
-CLI, inherited pipe, and successful/rejected TLS authentication against the
-loopback gateway in authenticate-only mode, ensuring neither emits config.
-Channel mode requires both TLS connections to use the same numeric IP, port,
-and IPv6 scope before declaring the native session live; the broker therefore
-needs only one validated endpoint escape route.
+`tests/univpn-session --emit-fixture` 输出系统调用包装测试生成的真实配置及 no-network 序列化字节。打包的 `tests/testdata/` 记录由该测试生成，不是人工编写；其中的回环端点用于解析器互操作测试，不用于生产路由策略。`tests/univpn-session-integration.py` 还在仅认证模式下，使用回环网关测试真实可执行文件的 CLI、继承管道，以及成功/拒绝的 TLS 认证，确保两者均不输出配置。通道模式要求两条 TLS 连接使用相同的数值 IP、端口和 IPv6 作用域，之后才声明原生会话存活；因此代理服务只需一条经过验证的端点逃逸路由。
 
-## Preconnected TLS sockets (patch 0008, Linux/OpenSSL/IPv4)
+## 预连接 TLS 套接字（补丁 0008，Linux/OpenSSL/IPv4）
 
-The native CLI accepts a paired `--meridian-control-fd=N` and
-`--meridian-data-fd=N`. Only canonical decimal descriptors >=3 and below
-FD_SETSIZE are accepted, once each, on the CLI (not configuration files).
-The launcher must own descriptor allocation and reject conflicts with its
-session/TUN descriptors; these are not user-controlled broker arguments.
+原生命令行接受成对的 `--meridian-control-fd=N` 和 `--meridian-data-fd=N`。仅接受大于等于 3 且小于 FD_SETSIZE 的规范十进制描述符，命令行各指定一次，不能来自配置文件。启动器必须负责描述符分配，并拒绝与会话/TUN 描述符冲突；它们不是由用户控制的代理服务参数。
 
-The pair must be distinct underlying connected IPv4 TCP sockets, with the same
-remote address and port and the URL's port. Files, UDP/listening/unconnected
-sockets, duplicate integers or dup aliases, partial pairs, proxies and other
-protocols are rejected. At TLS adoption the native code independently rereads
-each socket's peer tuple, compares it to the validated expectation, and stores
-the actual peer. The original gateway hostname/SNI and CA checks remain intact;
-the data channel also must match the authenticated control certificate.
+这两个描述符必须指向不同的底层已连接 IPv4 TCP 套接字，远端地址和端口相同，且与 URL 的端口一致。文件、UDP/监听/未连接套接字、重复整数或 dup 别名、不完整的配对、代理和其他协议都会被拒绝。接管 TLS 时，原生代码会独立重新读取每个套接字的对端三元组，与已验证的预期值比较，并保存实际对端。原始网关主机名/SNI 和 CA 检查保持不变；数据通道也必须匹配已认证的控制证书。
 
-FD mode never resolves or opens a replacement connection, including after
-consumption or failed TLS. Descriptors are transferred once, marked CLOEXEC,
-and closed on failure/teardown. Unused data sockets close after authentication
-failure. Narrow OpenSSL allocation-error fixes close the acquired descriptor
-and handle null SSL/BIO objects; four fault-injected error tests verify one
-close per acquired descriptor without network access.
+文件描述符模式绝不解析或打开替代连接，包括描述符已使用或 TLS 失败之后。描述符只转移一次，标记 CLOEXEC，并在失败/拆除时关闭。认证失败后会关闭未使用的数据套接字。针对 OpenSSL 分配错误的局部修复会关闭已获取的描述符，并处理空 SSL/BIO 对象；四项故障注入测试在不访问网络的情况下，验证每个已获取描述符只关闭一次。
 
-The real loopback tests exercise successful IPv4 traffic with a deliberately
-unresolvable, certificate-covered hostname, exact SNI on both TLS channels,
-wrong hostname/untrusted CA/data-certificate rejection, descriptor rejection
-cases, reverse argument order and unused-data closure. An LD_PRELOAD test
-interposer rejects connect/getaddrinfo calls in FD-mode fixtures. This is a
-regression guard, **not a production security sandbox**.
+真实回环测试使用刻意不可解析、但被证书覆盖的主机名来验证成功的 IPv4 流量、两条 TLS 通道上的精确 SNI、错误主机名/不受信任 CA/数据证书拒绝、描述符拒绝场景、反向参数顺序和未使用数据通道关闭。LD_PRELOAD 测试拦截器会拒绝文件描述符模式夹具中的 connect/getaddrinfo 调用。这是回归防护，**不是生产安全沙箱**。
 
-`tests/univpn-fd-session.c` and its Python driver combine both real TLS channels
-with the canonical private lifecycle pipe. They prove the authenticated-live
-gate, exact peer checks, one no-network terminal record, and terminal reopening
-rejection without any TUN acquisition. A link-time open guard asserts zero TUN
-open attempts. Existing mock-kernel session tests remain separate.
+`tests/univpn-fd-session.c` 及其 Python 驱动将两条真实 TLS 通道与规范私有生命周期管道结合。在不获取任何 TUN 的情况下，证明只有认证并存活后才能继续、精确对端检查、唯一 no-network 终态记录，以及拒绝终态重新打开。链接时的 open 防护断言尝试打开 TUN 的次数为零。既有模拟内核会话测试仍单独运行。
 
-Both TCP sockets are connected before authentication, but data TLS begins only
-after control authentication. A delayed-auth fixture checks that ordering;
-enterprise gateways may reject the early idle data TCP socket, which remains
-unverified. This patch does not create a network namespace, preopened TUN,
-seccomp/capability policy, or complete host dataplane isolation. Broker/launcher
-wiring must explicitly provide this mode; GUI live connection remains disabled
-until the full reviewed deployment chain exists.
+两条 TCP 套接字都在认证前建立连接，但数据 TLS 仅在控制认证之后开始。延迟认证夹具会检查该顺序；企业网关可能拒绝过早建立但空闲的数据 TCP 套接字，这一点仍未经验证。本补丁不创建网络命名空间、预打开 TUN、seccomp/能力策略，也不实现完整的宿主数据平面隔离。代理服务/启动器的连接逻辑必须明确提供此模式；在完整部署链经过审查并具备之前，GUI 实时连接仍禁用。
 
-## Packet relay and authenticated offer (patch 0009, experimental)
+## 数据包转发与认证提议（补丁 0009，实验性）
 
-`--meridian-packet-fd=N` accepts an inherited connected, unnamed AF_UNIX
-SOCK_SEQPACKET descriptor, protocol zero, once on the CLI. It requires both
-preconnected TCP descriptors and the private session pipe/nonce before any
-authentication. Scripts and raw host TUN handles are not accepted. Descriptor
-collisions, terminal reuse and live-session reauthentication are rejected.
+`--meridian-packet-fd=N` 接收继承的、已连接、无名的 AF_UNIX SOCK_SEQPACKET 描述符，协议号为零，命令行只能指定一次。任何认证开始前，都必须具备两个预连接 TCP 描述符及私有会话管道/随机数。不接受脚本或原始宿主 TUN 句柄。拒绝描述符冲突、终态复用，以及活跃会话重新认证。
 
-The native process attaches this packet socket instead of opening a TUN. It
-does not run interface hooks, vhost, TUN ioctls, or netlink alias operations.
-It uses nonblocking recvmsg/send with complete-message, truncation, ancillary
-data, zero-length/EOF and short-write checks. The native code is a transport,
-not the security packet filter: host TUN must remain in the broker and the
-separate `internal/packetrelay` policy must filter both directions.
+原生进程连接这个数据包套接字，而不是打开 TUN。它不运行接口钩子、vhost、TUN ioctl 或 netlink 别名操作。使用非阻塞 recvmsg/send，检查完整消息、截断、辅助数据、零长度/EOF 和短写。原生代码是传输层，不是安全数据包过滤器：宿主 TUN 必须留在代理服务内，并由独立的 `internal/packetrelay` 策略过滤双向流量。
 
-After both TLS channels authenticate, the private pipe emits version 2 `offer`
-with session nonce, assigned addresses, routes, DNS and the actual endpoint. It
-contains no interface, index, alias or readiness assertion. Termination emits
-version 2 `relay-closed`, never the legacy `no-network`/`closed` cleanup proofs.
-The existing version 1 Go session source intentionally rejects these records.
-A reviewed offer → broker-owned host lease → filtered relay integration remains
-necessary before enabling packet mode; neither offer nor relay closure proves
-host network setup or cleanup.
+两条 TLS 通道认证后，私有管道输出第 2 版 `offer`，包含会话随机数、分配的地址、路由、DNS 和实际端点，不含接口、索引、别名或就绪断言。终止时输出第 2 版 `relay-closed`，绝不输出旧版 `no-network`/`closed` 清理证明。现有第 1 版 Go 会话源会主动拒绝这些记录。启用数据包模式前，仍需完成经过审查的“提议 → 代理服务持有的宿主租约 → 过滤转发”集成；提议和转发关闭都不能证明宿主网络设置或清理已完成。
 
-The packet fixture exercises actual inherited unnamed seqpacket IPC and local
-TLS. Its test interposer aborts on TUN/vhost opens, IP/netlink socket creation,
-DNS/connect and namespace calls. This is test instrumentation, not production
-isolation. No named Unix listener is created, and the previously denied Unix
-listen integration is not retried.
+数据包夹具使用真实继承的无名 seqpacket IPC 和本地 TLS。测试拦截器在 TUN/vhost 打开、IP/netlink 套接字创建、DNS/connect 和命名空间调用时立即中止。这是测试插桩，不是生产隔离。不创建命名 Unix 监听器，也不重试此前被拒绝的 Unix listen 集成。

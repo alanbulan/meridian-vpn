@@ -1,127 +1,122 @@
-# Linux UniVPN continuous-session broker: implementation and deployment boundary
+# Linux UniVPN 持续会话代理服务：实现与部署边界
 
-The implementation in `internal/core/univpn_broker*_linux.go` provides:
+`internal/core/univpn_broker*_linux.go` 中的实现提供：
 
-- An unprivileged Unix socket client implementing `TunnelBroker`.
-- A root-service socket handler with kernel `SO_PEERCRED`, explicit desktop UID admission, a root-owned socket and non-writable root-owned parent directory, bounded requests, connection limits, and deadlines.
-- A server-owned executable path and option allowlist. Arbitrary scripts, proxy settings, certificate bypasses, duplicate options and executable substitutions are rejected. Approved CA files must also be root-owned, non-writable, regular files under trusted parents.
-- A continuous native-process lifecycle with readiness from a trusted network controller, never output text. Cancellation, early exit and failed readiness lead to cleanup. Stop waits for cleanup acknowledgment; uncertainty is `CleanupError`. A dirty backend remains quarantined, including for other client instances, until out-of-band recovery/restart.
-- A Go launcher that does not invoke a shell, requiring a SHA256-pinned root-owned executable and, outside native-channel mode, hook paths. Password goes through an inherited anonymous stdin pipe, never argv/logs/environment. Output is discarded. Leader termination escalates to identity-safe process Kill after two seconds. A mandatory injected isolation provider must prove the entire session cgroup, including hooks, is empty before cleanup. No isolation provider is supplied; the launcher refuses to run without one. Native patch 0006 makes the UniVPN hook a direct exec in the native process group and propagates hook errors; other OpenConnect protocols retain upstream behavior. Hook paths remain constrained to safe ASCII characters. A hook can still detach itself or spawn descendants, so checking only the native leader or its process group is insufficient. No launcher was executed during recovery testing.
+- 实现 `TunnelBroker` 的非特权 Unix 套接字客户端。
+- root 服务套接字处理器，使用内核 `SO_PEERCRED`、明确的桌面 UID 准入策略、归 root 所有的套接字和不可写且归 root 所有的父目录、大小受限的请求、连接数限制和截止时间。
+- 由服务端拥有的可执行程序路径和选项允许列表。拒绝任意脚本、代理设置、证书验证绕过、重复选项和可执行程序替换。获准的 CA 文件也必须归 root 所有、不可写，并且是位于受信任父目录下的普通文件。
+- 持续的原生进程生命周期，就绪状态来自受信任的网络控制器，绝不依据输出文本。取消、提前退出和就绪失败都会触发清理。停止操作等待清理确认；不确定性表现为 `CleanupError`。未清理干净的后端会持续处于隔离状态，对其他客户端实例也不例外，直到通过带外恢复/重启处理。
+- 不调用 shell 的 Go 启动器，要求使用以 SHA256 固定且归 root 所有的可执行程序；原生通道模式以外，还要求提供钩子路径。密码通过继承的匿名 stdin 管道传递，绝不进入 argv/日志/环境变量。输出被丢弃。主进程终止在两秒后升级为身份安全的进程 Kill。必须注入隔离提供方，在清理前证明整个会话 cgroup（包括钩子）已为空。未随附隔离提供方；缺少提供方时，启动器拒绝运行。原生补丁 0006 使 UniVPN 钩子在原生进程组中直接 exec，并传播钩子错误；其他 OpenConnect 协议保持上游行为。钩子路径仍限制为安全 ASCII 字符。钩子仍可能自行脱离或派生子孙进程，因此仅检查原生主进程或其进程组并不足够。恢复测试期间没有执行任何启动器。
 
-## Deliberately unavailable deployment pieces
+## 刻意保持不可用的部署部分
 
-**This is not an installed or live-connect-ready VPN service.** Default GUI setup does not configure this broker. A concrete Linux controller and `ip`/`resolvectl` command adapter now exist, but they are **not live-validated or wired into the GUI/service**. An opt-in native inherited session source is now implemented (see below), but no exclusive namespace/session lease implementation, reviewed deployed native binary, or process-containment implementation is provided. Their interfaces are mandatory and fail closed without deployment implementations. The recovery-built native wrapper is not a root-trusted deployed executable and must not be configured as one.
+**这不是已安装或已准备好真实连接的 VPN 服务。** 默认 GUI 设置不会配置此代理服务。具体的 Linux 控制器和 `ip`/`resolvectl` 命令适配器现已存在，但它们**尚未经过真实连接验证，也未接入 GUI/服务**。需要主动选择启用的原生继承会话源现已实现（见下文），但未提供独占命名空间/会话租约实现、经过审查并部署的原生二进制程序，或进程约束实现。这些接口是必需的；缺少部署实现时会安全拒绝。恢复过程中构建的原生包装程序不是经 root 信任的已部署可执行程序，不得将其配置为此类程序。
 
-A reviewed deployment must still provide all of:
+经过审查的部署仍须提供以下所有内容：
 
-1. Review and integrate the opt-in native inherited session channel, whose identity and lifecycle are bound to the original authenticated native process. The control TLS process must remain alive throughout the connection. A reusable cookie or stdout message is not proof of readiness.
-2. Integrate and review the new narrow controller described below with the native session channel and namespace lease. Prove readiness and cleanup on the actual target Linux/iproute2/systemd versions. Cancellation must stop pending setup before rollback. A timeout quarantines the backend; administrators must establish actual cleanup before restarting it.
-3. A root-owned deployment directory, pinned reviewed native ELF (and hook only outside native-channel mode), and a service-managed Unix listener. Dedicated-group/ACL socket access is permitted; other access is not. Parent directories must not be writable by desktop users. Exact allowed desktop UIDs are required. Configuration/maps are immutable after service start.
-4. A service entry point and service-manager unit, a concrete `UniVPNProcessIsolation` provider that configures process/hook containment before launch and verifies all descendants gone after exit, sandbox/least-privilege policy, startup/restart recovery, deployment packaging, GUI opt-in wiring, and review of allowed gateways and CA policy. Root service code must never inherit caller-provided paths/scripts/environment.
-5. Real authorized Linux integration tests for socket ownership/ACL/peer UID, native/hook identity, process cleanup, route/DNS rollback, DNS loss/recovery, endpoint changes and IPv4/IPv6. No privileged host operation, route/DNS modification, real credentials, or enterprise gateway was used here.
+1. 审查并集成需要主动选择启用的原生继承会话通道，其身份和生命周期必须绑定到最初通过认证的原生进程。控制 TLS 进程必须在整个连接期间保持存活。可复用的 Cookie 或标准输出消息都不能证明就绪。
+2. 将下文描述的新窄范围控制器与原生会话通道、命名空间租约集成并审查。在实际目标 Linux/iproute2/systemd 版本上证明就绪和清理有效。取消操作必须先停止尚未完成的设置，再执行回滚。超时会使后端进入隔离状态；管理员必须在重启前确认实际清理已完成。
+3. 归 root 所有的部署目录、经过固定和审查的原生 ELF（仅在原生通道模式之外还需要钩子），以及由服务管理的 Unix 监听器。允许通过专用组/ACL 访问套接字；不允许其他访问方式。父目录不得允许桌面用户写入。必须明确列出允许的桌面 UID。服务启动后，配置/映射不可变。
+4. 服务入口和服务管理器单元；具体的 `UniVPNProcessIsolation` 提供方，在启动前配置进程/钩子约束，并在退出后验证所有子孙进程均已消失；沙箱/最小权限策略；启动/重启恢复；部署打包；GUI 主动启用接入；以及对允许的网关和 CA 策略的审查。root 服务代码绝不能继承调用方提供的路径/脚本/环境变量。
+5. 经过真实授权的 Linux 集成测试，覆盖套接字所有权/ACL/对端 UID、原生程序/钩子身份、进程清理、路由/DNS 回滚、DNS 丢失/恢复、端点变化和 IPv4/IPv6。此处未使用特权主机操作、路由/DNS 修改、真实凭据或企业网关。
 
-## Safe tests and blocked integration
+## 安全测试与受阻的集成
 
-Use the recovery Go environment, then `go test -race ./internal/core`. Mock tests cover readiness/lifecycle, credential-copy clearing, single-session admission, option rejection, cleanup failure quarantine, and bounded message parsing.
+使用恢复工作所用的 Go 环境，然后运行 `go test -race ./internal/core`。模拟测试覆盖就绪/生命周期、凭据副本清除、单会话准入、选项拒绝、清理失败隔离和有界消息解析。
 
-The actual `net.ListenUnix` peer-credential test was attempted and **blocked by sandbox EPERM**. It is not a passing integration test. Default runs explicitly skip it with that reason. Only in a separately authorized environment allowing local Unix sockets, run `UNIVPN_TEST_SOCKET=1 go test ./internal/core -run TestUniVPNBrokerPeerCredentialsAndDeniedUID -v`. Do not retry denied socket creation through another route in the recovery sandbox.
+曾尝试实际的 `net.ListenUnix` 对端凭据测试，但**被沙箱以 EPERM 阻止**。这不是通过的集成测试。默认运行会明确以该原因跳过此测试。只有在另外获得授权且允许本地 Unix 套接字的环境中，才能运行 `UNIVPN_TEST_SOCKET=1 go test ./internal/core -run TestUniVPNBrokerPeerCredentialsAndDeniedUID -v`。不要在恢复沙箱中通过其他途径重试已被拒绝的套接字创建。
 
 
-## Linux network controller implementation (mock-tested only)
+## Linux 网络控制器实现（仅经过模拟测试）
 
-`internal/core/univpn_network_linux.go` implements `UniVPNNetworkController`.
-`univpn_network_command_linux.go` provides the privileged operation boundary using
-absolute, root-owned regular executables, direct argv (no shell), a scrubbed
-process environment, bounded output and bounded pipe drain after cancellation.
-Constructors do not execute commands or modify networking.
+`internal/core/univpn_network_linux.go` 实现了 `UniVPNNetworkController`。
+`univpn_network_command_linux.go` 提供特权操作边界，使用绝对路径、
+归 root 所有的普通可执行文件、直接 argv（不经过 shell）、经过清理的进程环境、
+大小受限的输出，以及取消后有界的管道排空。
+构造函数不会执行命令或修改网络。
 
-Mandatory inputs are deliberately not replaced by permissive defaults:
+必需输入刻意不以宽松默认值替代：
 
-- An authenticated `UniVPNNetworkSessionSource` must bind configuration to the
-  original continuously authenticated native process and freshly-created TUN.
-  It supplies the kernel ifindex and a fresh broker-generated alias, not an alias
-  or interface claim from the gateway/client. Its `ProveNetworkGone` must account
-  for partial acquisition, rejected configuration and any native/hook-owned state.
-- `UniVPNNetworkLease.AssertHeld` must verify an already-held exclusive lease for
-  the target network namespace and session, retained through cleanup. This must
-  prevent competing CAP_NET_ADMIN writers, not merely lock broker goroutines.
-  The command adapter checks index/alias/kind before mutations, but subprocess
-  name-based `ip` operations cannot atomically check-and-mutate against another
-  privileged writer. Do not deploy it without that isolation guarantee.
-- Immutable administrator allowlists must explicitly approve exact interface
-  addresses, canonical split-route prefixes, DNS servers, DNS routing domains,
-  and endpoint IP addresses. A broad route does not authorize arbitrary pushed
-  more-specific prefixes. Default routes are intentionally unsupported. DNS
-  addresses must be reachable through an approved tunnel route or subnet.
+- 经过认证的 `UniVPNNetworkSessionSource` 必须将配置绑定到
+  最初持续保持认证的原生进程和新创建的 TUN。
+  它提供内核 ifindex 和由代理服务新生成的别名，而不是网关/客户端声明的
+  别名或接口。其 `ProveNetworkGone` 必须考虑部分获取、被拒绝的配置，
+  以及任何归原生程序/钩子所有的状态。
+- `UniVPNNetworkLease.AssertHeld` 必须验证针对目标网络命名空间和会话
+  已持有的独占租约，并持续保留该租约直到清理结束。这必须阻止其他拥有
+  CAP_NET_ADMIN 的竞争写入方，而不能只是锁住代理服务中的 goroutine。
+  命令适配器会在修改前检查索引/别名/类型，但子进程中按名称执行的 `ip` 操作
+  无法相对于另一特权写入方原子地完成检查和修改。
+  缺少这一隔离保证时，不得部署。
+- 不可变的管理员允许列表必须明确批准精确的接口地址、规范化的分流路由前缀、
+  DNS 服务器、DNS 路由域和端点 IP 地址。
+  批准较大范围的路由，并不授权任意下发的更具体前缀。
+  默认路由刻意不受支持。DNS 地址必须可通过获准的隧道路由或子网到达。
 
-The controller rejects a nonempty or unmarked initial TUN. It pins an endpoint
-host escape route before tunnel routes, using create-only route adds, main table,
-protocol 186 and a metric derived from the session alias. Existing exact host
-routes cause refusal rather than replacement. Tunnel route readiness verifies
-ownership attributes in addition to prefixes. Interface addresses and UP state,
-DNS servers, route-only domains and explicit resolver default-route=no are read
-back. DNS changes are per-link through systemd-resolved; resolv.conf is untouched.
-Unrecognized command/resolver output is an error, never proof of readiness.
+控制器拒绝初始状态非空或未标记的 TUN。它在设置隧道路由前，
+先固定一条通往端点的主机逃逸路由，使用仅创建的路由添加操作、主路由表、
+协议 186 和由会话别名派生的度量值。
+若已有完全匹配的主机路由，则拒绝操作而不是替换。
+隧道路由的就绪检查除前缀外，还会验证所有权属性。
+接口地址和 UP 状态、DNS 服务器、仅路由域，以及显式的解析器
+默认路由设置 default-route=no 都会回读验证。
+DNS 修改通过 systemd-resolved 按链路进行；不改动 resolv.conf。
+无法识别的命令/解析器输出是错误，绝不是就绪证明。
 
-Cleanup removes only the same index/alias TUN and a successfully-created owned
-escape route, then reads back absence of interface, routes, resolver servers,
-routing domains/default-route state, and hook/native state. Failed escape
-creation with an uncertain visible outcome does **not** authorize deletion:
-it quarantines the backend for administrator investigation. Replacement
-interfaces, failed commands, missing resolver evidence and partial cleanup also
-fail closed. The native process must already be stopped with its descendants
-proven empty by the broker's separate containment contract.
+清理仅删除索引/别名相同的 TUN，以及成功创建且归自身所有的逃逸路由，
+然后回读验证接口、路由、解析器服务器、路由域/默认路由状态，
+以及钩子/原生程序状态均已不存在。
+如果逃逸路由创建失败且可见结果不确定，**并不**授权删除：
+后端会进入隔离状态，等待管理员调查。
+接口被替换、命令失败、缺少解析器证据和部分清理也都会触发安全拒绝。
+原生进程必须已经停止，且代理服务的独立约束契约已证明其子孙进程全部消失。
 
-`univpn_network_linux_test.go` exercises these boundaries with deterministic fake
-kernel/command/source/lease implementations, including partial mutation failures,
-uncertain adds, foreign/replaced interfaces, rejected pushed policy, cancellation,
-route table/protocol/metric mismatch, stale DNS domains, duplicate DNS readiness
-records and missing absence proofs. These tests execute **no ip/resolvectl
-processes, TUN creation, privileged service or real gateway connection**. They do
-not prove that a target distribution's real command output or privileges work.
+`univpn_network_linux_test.go` 使用确定性的模拟内核/命令/配置源/租约实现，
+测试这些边界，包括部分修改失败、结果不确定的添加、外部/被替换的接口、
+被拒绝的下发策略、取消、路由表/协议/度量值不匹配、过期 DNS 域、
+重复 DNS 就绪记录和缺少不存在证明。
+这些测试**不会执行任何 ip/resolvectl 进程、创建 TUN、运行特权服务
+或连接真实网关**。它们不能证明目标发行版的真实命令输出或权限有效。
 
-## Root-service admission and shutdown
+## root 服务准入与关闭
 
-`AllowedGateways` is an explicit, immutable, server-owned map of exact approved HTTPS URLs. Missing policy disables the backend. Requests to any other URL are rejected before credential delivery or native launch. The policy does not authorize redirect destinations or substitute for controller endpoint/route policy; deployment must review native redirect behavior and endpoint restrictions.
+`AllowedGateways` 是由服务端拥有、明确且不可变的映射，列出精确获准的 HTTPS URL。缺少策略会禁用后端。对任何其他 URL 的请求都会在凭据交付或原生程序启动前被拒绝。该策略不授权重定向目的地，也不能替代控制器的端点/路由策略；部署时必须审查原生重定向行为和端点限制。
 
-Service shutdown cancels active sessions, closes admission and joins all accepted connection handlers before reporting completion. The join is bounded to 20 seconds. Timeout or quarantined cleanup returns `CleanupError`, not successful shutdown. Service-manager policy must treat this as uncertain cleanup and retain the containment/recovery boundary rather than silently restarting a fresh unrestricted session.
+服务关闭时会取消活动会话、关闭准入，并等待所有已接受的连接处理器结束后才报告完成。等待时间限制为 20 秒。超时或清理隔离状态会返回 `CleanupError`，而不是报告关闭成功。服务管理器策略必须将此视为清理结果不确定，并保留约束/恢复边界，而不能静默重启一个新的、不受限制的会话。
 
-## Native inherited session channel (experimental, not activated)
+## 原生继承会话通道（实验性，尚未激活）
 
-`UniVPNExecLauncher.NativeSessionChannel` opts into the pinned native channel
-patch. The launcher creates an anonymous pipe inherited as descriptor 3 and a
-fresh random 128-bit session ID. It passes these as broker-owned arguments;
-client option validation does not allow either argument. Native channel mode
-bypasses all script hooks, marks the descriptor close-on-exec, exclusively creates
-the TUN, obtains its kernel interface index, and sets the broker-derived alias
-`meridian-<session ID>`. A configuration record is emitted only after native
-TUN registration and authenticated live control/data state. None of these
-properties is inferred from logs, cookies, environment variables or hook output.
+`UniVPNExecLauncher.NativeSessionChannel` 用于主动启用固定的原生通道补丁。
+启动器创建继承为描述符 3 的匿名管道，以及全新随机的 128 位会话 ID。
+它将这些作为代理服务拥有的参数传入；客户端选项校验不允许这两个参数。
+原生通道模式绕过所有脚本钩子，将描述符标记为执行时关闭，
+独占创建 TUN，获取其内核接口索引，并设置由代理服务派生的别名
+`meridian-<session ID>`。只有在原生 TUN 注册完成且经过认证的
+控制/数据通道均处于活动状态后，才发出配置记录。
+这些属性均不会从日志、Cookie、环境变量或钩子输出推断。
 
-`UniVPNNativeSessionSource` accepts only the launcher-created process object and
-its private channel. Each JSON line is bounded to 32768 bytes. Unknown fields,
-duplicate keys, incorrect session IDs or aliases, invalid addresses, repeated
-configuration, and records after a terminal event are errors that stop the native
-process. The record is input to the existing allowlist and kernel/resolver
-readback controller, not a readiness acknowledgment. Native channel EOF or a
-`closed` record is never cleanup proof. Cleanup requires the isolation provider's
-whole-tree empty proof, completed channel drainage, and independent kernel,
-route and resolver absence queries.
+`UniVPNNativeSessionSource` 仅接受由启动器创建的进程对象及其私有通道。
+每行 JSON 限制为 32768 字节。未知字段、重复键、不正确的会话 ID 或别名、
+无效地址、重复配置，以及终态事件之后出现的记录，
+都属于会停止原生进程的错误。
+该记录是现有允许列表和内核/解析器回读控制器的输入，而不是就绪确认。
+原生通道 EOF 或 `closed` 记录绝不是清理证明。
+清理需要隔离提供方给出的整个进程树为空的证明、通道排空完成，
+以及独立的内核、路由和解析器不存在查询。
 
-Graceful failure before any successful TUN acquisition can emit a sole
-`no-network` terminal attestation. The source still requires EOF, containment and
-independent kernel alias-absence readback. Abrupt death before a complete
-configuration, partial acquisition, malformed records, or missing proof remains
-quarantined. Reconnection or changing pushed configuration in a running session
-is intentionally rejected; it requires a new broker session.
+在成功获取任何 TUN 之前发生正常失败时，可以只发出一条
+`no-network` 终态证明。配置源仍要求 EOF、进程约束，
+以及独立的内核别名不存在回读验证。
+在完整配置前突然终止、部分获取、格式错误的记录或缺少证明，
+都会使系统持续处于隔离状态。
+刻意拒绝在运行中的会话内重连或更改下发配置；这些操作需要新的代理服务会话。
 
-The native emitter's TUN/netlink calls are tested with syscall wrappers, not
-executed against the host. Go tests use anonymous in-memory streams and injected
-kernel/isolation results. These tests do not prove deployment isolation. An
-ordinary filesystem lock cannot prevent competing CAP_NET_ADMIN writers in the
-host namespace. Likewise a cgroup membership check alone does not stop a
-privileged native process from migrating out. A concrete isolation/lease provider
-must enforce those guarantees before it can be supplied. A private namespace
-would also need an explicit user-traffic forwarding and namespace-correct DNS
-design: host `resolvectl` interface indices cannot be reused for a private
-namespace. No service or GUI activation is provided by this channel work.
+原生发送端的 TUN/netlink 调用通过系统调用包装器测试，
+而不针对主机执行。Go 测试使用匿名内存流和注入的内核/隔离结果。
+这些测试不能证明部署隔离有效。普通文件系统锁无法阻止主机命名空间中
+其他拥有 CAP_NET_ADMIN 的竞争写入方。
+同样，仅检查 cgroup 成员关系，不能阻止特权原生进程迁出。
+具体的隔离/租约提供方必须先强制实现这些保证，才能供此处使用。
+私有命名空间还需要明确的用户流量转发设计，以及与命名空间正确匹配的 DNS 设计：
+主机 `resolvectl` 接口索引不能复用于私有命名空间。
+本次通道工作没有提供服务或 GUI 激活功能。

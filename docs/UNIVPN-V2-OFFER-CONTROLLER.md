@@ -1,55 +1,49 @@
-# UniVPN v2 offer controller (experimental, fail closed)
+# UniVPN v2 配置提议控制器（实验性，遇错即拒绝）
 
-The v2 native packet mode reports authenticated metadata over its private pipe,
-not a TUN interface. `UniVPNNativeOfferSource` accepts only the matching launched
-process, exact 32-character session nonce, bounded strict v2 records, one offer,
-and a terminal `relay-closed` record. Duplicate/unknown fields, v1 records,
-partial lines and missing terminal records are rejected. The terminal record is
-not host-network cleanup evidence.
+v2 原生数据包模式通过其私有管道报告经过认证的元数据，而不是 TUN 接口。
+`UniVPNNativeOfferSource` 仅接受匹配的已启动进程、精确的 32 字符会话随机数、
+大小受限且严格符合格式的 v2 记录、一个配置提议，以及终态 `relay-closed` 记录。
+重复/未知字段、v1 记录、不完整行和缺少终态记录的情况都会被拒绝。
+终态记录不是主机网络清理证据。
 
-`NewUniVPNOfferController` requires a trusted offer source, an exclusive host
-lease provider, actual kernel/resolver operations, administrator network
-allowlists and a separate immutable packet policy. No provider is created by
-this constructor, and no production exclusive host lease is supplied. A missing
-provider prevents construction; the shipped GUI does not enable this path.
+`NewUniVPNOfferController` 要求受信任的配置提议源、独占主机租约提供方、
+真实的内核/解析器操作、管理员网络允许列表，以及独立且不可变的数据包策略。
+此构造函数不会创建任何提供方，也没有提供可用于生产环境的独占主机租约。
+缺少提供方会阻止构造；随附的 GUI 不会启用此路径。
 
-Before acquisition, addresses, routes, DNS and endpoint must pass the exact
-network allowlists. Assigned IPv4, remote routes and resolvers must also exactly
-match administrator packet policy. Session ownership never comes from gateway
-metadata. A trusted provider must acquire a fresh broker-owned TUN under verified
-whole-process-tree containment, enforce exclusive ownership against concurrent
-network writers, and provide the actual kernel identity and broker-only packet
-endpoint. Partial acquisition must be recoverable or explicitly uncertain.
+获取资源前，地址、路由、DNS 和端点必须通过精确的网络允许列表检查。
+分配的 IPv4、远端路由和解析器也必须与管理员数据包策略完全匹配。
+会话所有权绝不来自网关元数据。受信任的提供方必须在经过验证的整个进程树约束下，
+获取全新且归代理服务所有的 TUN，针对并发网络写入方强制实施独占所有权，
+并提供真实内核标识和仅供代理服务使用的数据包端点。
+部分获取的资源必须可恢复，或明确标记为不确定。
 
-The existing network controller installs only approved state and checks kernel,
-route and resolver readbacks. The relay starts with independent session lifetime,
-not the temporary readiness timeout. Readiness requires both pumps to have
-entered packet reads, no observed relay failure, and a final process-bound live
-offer check. Entering a read is not a successful packet exchange or a VPN probe.
-A relay failure stops the native process. Terminal or corrupt native records
-also stop that process. The broker still checks native exit before reporting ready.
+现有网络控制器只安装获准状态，并检查内核、路由和解析器的回读结果。
+中继使用独立的会话生命周期启动，而不是沿用临时就绪超时。
+进入就绪状态要求两个泵都已进入数据包读取、未观察到中继失败，
+并通过最后一次绑定到进程的有效配置提议检查。
+进入读取并不代表已成功交换数据包，也不代表完成了 VPN 探测。
+中继失败会停止原生进程。终态或损坏的原生记录也会停止该进程。
+代理服务在报告就绪前，仍会检查原生进程是否已退出。
 
-Cleanup cancels and joins the relay, proves native containment/channel closure,
-uses ownership-checked network rollback/readback, then releases the exclusive
-lease. Lease release must independently refuse replacement/uncertain resources
-and close its packet endpoint even when setup never started the relay. Uncertain
-source acquisition, relay closure, rollback, proof or release quarantines the
-controller/backend. Host cleanup is never inferred from `relay-closed`.
+清理流程会取消并等待中继结束，证明原生进程约束有效且通道已关闭，
+执行经过所有权检查的网络回滚/回读，然后释放独占租约。
+租约释放必须独立拒绝已被替换/状态不确定的资源；即使设置过程从未启动中继，
+也必须关闭其数据包端点。配置源资源获取、中继关闭、回滚、证明或释放中的
+任何不确定性，都会使控制器/后端进入隔离状态。
+绝不根据 `relay-closed` 推断主机已完成清理。
 
-## Still required for deployment
+## 部署仍需满足的条件
 
-- A reviewed concrete whole-tree containment and launch rollback provider.
-- A reviewed concrete exclusive host lease provider implementing identity,
-  broker-only TUN ownership, partial acquisition rollback, concurrency exclusion
-  and absence proofs. Interface names, aliases and matching indexes alone do not
-  establish this guarantee.
-- Trusted provisioning of the two preconnected gateway TCP sockets and unnamed
-  seqpacket endpoints, pinned executable identity and administrator policies.
-- An authorized host integration environment and actual gateway interoperability,
-  packet transfer, disconnect and rollback verification.
+- 经过审查、具体实现整个进程树约束和启动回滚的提供方。
+- 经过审查的具体独占主机租约提供方，实现身份核验、仅归代理服务所有的 TUN、
+  部分获取回滚、并发排除和不存在证明。
+  单凭接口名称、别名和匹配的索引，无法建立这一保证。
+- 以受信任方式提供两个预连接网关 TCP 套接字和未命名的 seqpacket 端点，
+  以及固定的可执行程序标识和管理员策略。
+- 经授权的主机集成环境，以及实际网关互操作、数据包传输、断开连接和回滚验证。
 
-The new parser/source/controller tests use memory packet endpoints and injected
-kernel operations only. They create no host TUN, routes, DNS changes, network
-connections or Unix listeners. Focused race checks cover concurrent single-owner
-packet claims, terminal/corrupt channels, rejected policies before acquisition,
-startup cancellation, partial setup, final liveness and sticky uncertainty.
+新增的解析器/配置源/控制器测试仅使用内存数据包端点和注入的内核操作。
+它们不会创建主机 TUN、路由、DNS 更改、网络连接或 Unix 监听器。
+专项竞态检查覆盖并发的单一所有者数据包占用、终态/损坏通道、
+获取资源前被拒绝的策略、启动取消、部分设置、最终存活状态和持续保留的不确定状态。

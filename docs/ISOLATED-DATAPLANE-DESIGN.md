@@ -1,162 +1,151 @@
-# UniVPN isolated dataplane: implementable boundary and remaining gate
+# UniVPN 隔离数据平面：可实现的边界与剩余启用条件
 
-Status: design plus independently testable descriptor intake, not a deployment.
-Nothing here grants a namespace lease, starts a privileged helper, configures a
-host, or makes the native backend ready. Current default stays disabled.
+状态：设计及可独立测试的描述符接收功能，尚未部署。
+此处任何内容都不会授予命名空间租约、启动特权辅助程序、配置主机，
+或使原生后端进入就绪状态。当前默认仍保持禁用。
 
-## Why wrapping the current executable in `ip netns exec` is insufficient
+## 为什么仅用 `ip netns exec` 包装当前可执行程序并不足够
 
-The native executable currently acquires its TUN with administrative privilege.
-Putting that TUN and its routes in a new network namespace does not carry the
-host's application traffic. A host systemd-resolved link index does not address a
-private-namespace interface. Mounting another resolv.conf only affects processes
-using that mount view; it does not configure host DNS. A cgroup plus a process
-exit is not a containment proof if the process can migrate itself or descendants.
-A lock file cannot exclude other host CAP_NET_ADMIN writers.
+原生可执行程序目前通过管理员权限获取 TUN。
+将该 TUN 及其路由放入新的网络命名空间，并不会让主机的应用流量进入其中。
+主机 systemd-resolved 的链路索引不能指向私有命名空间中的接口。
+挂载另一份 resolv.conf 只影响使用该挂载视图的进程，不会配置主机 DNS。
+如果进程能够迁移自身或其子孙进程，单凭 cgroup 和进程退出并不能证明约束有效。
+锁文件无法排除主机上其他拥有 CAP_NET_ADMIN 的写入方。
 
-Linux namespaces isolate network devices, stacks, route tables and firewall
-state; namespace identity therefore belongs in every network resource handle,
-not only a launcher option. [Linux network namespace documentation](https://man7.org/linux/man-pages/man7/network_namespaces.7.html)
+Linux 命名空间会隔离网络设备、协议栈、路由表和防火墙状态；
+因此，每个网络资源句柄都应包含命名空间标识，而不能只将其作为启动器选项。
+[Linux 网络命名空间文档](https://man7.org/linux/man-pages/man7/network_namespaces.7.html)
 
-## Preferred split: broker owns host networking, native owns TLS and packets
+## 首选职责划分：代理服务负责主机网络，原生程序负责 TLS 和数据包
 
-1. A trusted broker creates a fresh, nonpersistent, single-queue host TUN and
-   retains its FD. It records the host namespace FD identity, ifindex, random
-   session alias and exact approved configuration. The worker cannot create,
-   rename, configure or replace interfaces.
-2. Before publishing tunnel routes, the broker resolves and approves one IPv4
-   endpoint and TCP port, creates separate connected control and data sockets,
-   and verifies their actual peer. No gateway-provided redirect broadens policy.
-   The native executable retains the original hostname for TLS SNI and certificate
-   verification, and checks the data peer certificate against the control peer.
-3. A trusted bootstrap creates an empty network namespace and a dedicated cgroup
-   before native execution, passes only selected descriptors, drops all worker
-   capabilities and supplementary groups, sets a dedicated unprivileged identity,
-   no-new-privileges and a reviewed seccomp policy, and exposes no writable cgroup
-   filesystem, namespace handles, host proc tree or broker control channel.
-   It must also deny access to host filesystem Unix sockets, not merely AF_INET.
-   The worker must not be able to create nested namespaces to regain capabilities.
-   Inherited host TCP sockets remain its only transport. The retained TUN FD
-   carries host packets without a veth, forwarding sysctl or NAT installation.
-4. Native descriptor adoption must reject partial pairs, duplicates, reserved
-   descriptors, proxies, reconnect/fallback connect attempts and redirected
-   destinations. A disconnected channel ends the session; a new authenticated
-   broker transaction is needed for another endpoint. TUN-FD adoption must skip
-   native TUN creation/netlink configuration, not merely ignore permission errors.
-5. The broker applies only approved split routes and per-host-TUN DNS route-only
-   domains, then verifies actual state. No default-route or IPv6 compatibility is
-   claimed. Host resolver configuration uses the host TUN identity, not a private
-   worker interface index. The worker's resolver is unnecessary in FD mode.
+1. 受信任的代理服务创建全新、非持久化、单队列的主机 TUN，
+   并保留其 FD。它记录主机命名空间 FD 标识、ifindex、随机会话别名
+   和明确批准的配置。工作进程不能创建、重命名、配置或替换接口。
+2. 在发布隧道路由之前，代理服务解析并批准一个 IPv4 端点和 TCP 端口，
+   创建各自独立、已连接的控制套接字和数据套接字，并验证其实际对端。
+   网关提供的重定向不能扩大策略范围。原生可执行程序保留原始主机名，
+   用于 TLS SNI 和证书验证，并将数据对端证书与控制对端证书进行核对。
+3. 受信任的引导程序在原生程序执行前创建空网络命名空间和专用 cgroup，
+   仅传递选定的描述符，移除工作进程的全部能力和附加组，设置专用的非特权身份、
+   no-new-privileges 和经审查的 seccomp 策略，并且不暴露可写的 cgroup
+   文件系统、命名空间句柄、主机 proc 树或代理服务控制通道。
+   它还必须禁止访问主机文件系统中的 Unix 套接字，而不只是限制 AF_INET。
+   工作进程不得通过创建嵌套命名空间重新获得能力。
+   继承的主机 TCP 套接字仍是其唯一传输通道。保留的 TUN FD 可承载主机数据包，
+   无需 veth、转发 sysctl 或安装 NAT。
+4. 原生程序接收描述符时，必须拒绝不完整的描述符对、重复项、保留描述符、
+   代理、重连/回退连接尝试和重定向目的地。通道断开即结束会话；
+   若要连接另一个端点，需要新的、经过认证的代理服务事务。
+   接收 TUN-FD 时必须跳过原生 TUN 创建/netlink 配置，而不能只是忽略权限错误。
+5. 代理服务仅应用获准的分流路由和每个主机 TUN 的 DNS 仅路由域，
+   随后验证实际状态。不宣称兼容默认路由或 IPv6。
+   主机解析器配置使用主机 TUN 标识，而不是私有工作进程的接口索引。
+   在 FD 模式下，工作进程不需要解析器。
 
-This is a proposed architecture, not proof that the current native build supports
-all required descriptor roles. The current `internal/fdtransport` code implements
-only the preconnected TCP intake. Its `Prepare` duplicates first with
-F_DUPFD_CLOEXEC, then checks socket type/protocol, connected IPv4 peer/port and
-separate underlying socket identities. `Files` returns control then data for a
-future trusted launcher's ExtraFiles. It neither connects nor spawns. The caller
-must own the original FDs exclusively and close or stop using all aliases before
-releasing the worker; duplicates share the same underlying socket state.
+这是拟议架构，并不证明当前原生构建支持所有必需的描述符角色。
+当前 `internal/fdtransport` 代码仅实现预连接 TCP 的接收。
+其 `Prepare` 首先使用 F_DUPFD_CLOEXEC 复制描述符，然后检查套接字类型/协议、
+已连接的 IPv4 对端/端口，以及底层套接字标识是否彼此独立。
+`Files` 依次返回控制和数据文件，供未来受信任启动器的 ExtraFiles 使用。
+它既不建立连接，也不启动进程。调用方必须独占原始 FD，
+并在放行工作进程前关闭或停止使用所有别名；复制的描述符共享同一底层套接字状态。
 
-Compatibility constraint: opening both TCP connections before control authentication
-changes connection timing. A server may reject or time out an idle data connection.
-The existing native path opens data TLS after login. Loopback tests and actual
-gateway acceptance must distinguish TCP connection timing from TLS/session timing.
-If deferred data connection is required, introduce a narrow authenticated broker
-connector protocol tied to the same approved endpoint, not arbitrary reconnect
-rights or an unvalidated FD-transfer channel.
+兼容性约束：在控制通道认证前打开两个 TCP 连接，会改变连接时序。
+服务器可能拒绝空闲的数据连接，或使其超时。
+现有原生路径在登录后才打开数据 TLS。环回测试和真实网关验收必须
+区分 TCP 连接时序与 TLS/会话时序。
+如果需要延迟建立数据连接，应引入绑定到同一获准端点、经过认证且范围受限的
+代理服务连接协议，而不是授予任意重连权限或使用未经验证的 FD 传递通道。
 
-The proposed descriptor layout is stdin=password, stdout/stderr=discard,
-3=session pipe, 4=TUN, 5=control TCP, 6=data TCP. Native transport flags are
-`--meridian-control-fd=5 --meridian-data-fd=6`. They must be supplied by the trusted
-launcher, never accepted from desktop IPC. The TUN role remains a separate change.
+拟议的描述符布局为 stdin=密码、stdout/stderr=丢弃、
+3=会话管道、4=TUN、5=控制 TCP、6=数据 TCP。原生传输参数为
+`--meridian-control-fd=5 --meridian-data-fd=6`。这些参数必须由受信任的启动器提供，
+绝不能从桌面 IPC 接受。TUN 角色仍需作为独立改动实现。
 
-WireGuard documents the upstream userspace precedent: keeping a socket FD opened
-in one namespace while switching namespaces. Its kernel interface's birthplace
-behavior must not be assumed to apply automatically to this native client.
-[WireGuard namespace integration](https://www.wireguard.com/netns/)
+WireGuard 文档介绍了上游用户空间的先例：切换命名空间时，保留在另一个
+命名空间中打开的套接字 FD。不能假定其内核接口的创建位置行为
+会自动适用于此原生客户端。
+[WireGuard 命名空间集成](https://www.wireguard.com/netns/)
 
-The kernel TUN API is FD-based; nonpersistent device lifetime follows its open
-references. Retaining a broker FD allows cleanup ordering after worker exit.
-[Linux TUN documentation](https://docs.kernel.org/networking/tuntap.html)
+内核 TUN API 基于 FD；非持久化设备的生命周期取决于仍打开的引用。
+代理服务保留 FD，可控制工作进程退出后的清理顺序。
+[Linux TUN 文档](https://docs.kernel.org/networking/tuntap.html)
 
-## The lease issue cannot be hidden
+## 不能掩盖租约问题
 
-This architecture contains the native worker but does **not** meet the existing
-UniVPNNetworkLease contract that excludes every competing CAP_NET_ADMIN writer
-in the host namespace. A normal desktop host has NetworkManager, systemd-networkd
-or other privileged services. Neither a random alias, an FD, nor a cgroup revokes
-those services' host-network authority. NetworkManager's ownership of a profile
-also is not an exclusion against all other privileged writers.
+这一架构约束了原生工作进程，但**不满足**现有的 UniVPNNetworkLease 契约：
+该契约要求排除主机命名空间中所有其他拥有 CAP_NET_ADMIN 的竞争写入方。
+普通桌面主机上有 NetworkManager、systemd-networkd 或其他特权服务。
+无论随机别名、FD 还是 cgroup，都不会撤销这些服务对主机网络的操作权限。
+NetworkManager 对配置档案的所有权，也不能排除所有其他特权写入方。
 
-Two honest integration choices require separate review:
+有两种不夸大保证的集成选择，都需要单独审查：
 
-- Use an established host network manager's transaction model and explicitly
-  define trusted host managers as part of the trusted computing base. Replace the
-  current blanket exclusive-lease assumption with object-specific ownership,
-  identity-safe operations and conservative conflict handling. Do not implement
-  AssertHeld as unconditional success or relax current interfaces silently.
-- Keep all tunnel configuration and consuming applications in a dedicated network
-  namespace controlled by the broker. This provides isolated application access,
-  not transparent whole-host VPN access. Host-wide forwarding/DNS remains a new
-  policy surface and cannot be claimed as completed by this option.
+- 使用成熟主机网络管理器的事务模型，并明确将受信任的主机管理器
+  纳入可信计算基。以特定对象的所有权、身份安全的操作和保守的冲突处理，
+  替换当前笼统的独占租约假设。不要将 AssertHeld 实现为无条件成功，
+  也不要静默放宽当前接口要求。
+- 将所有隧道配置和使用隧道的应用放在由代理服务控制的专用网络命名空间中。
+  这提供的是隔离应用访问，而不是透明的全主机 VPN 访问。
+  主机范围的转发/DNS 仍属于新的策略范围，不能声称此选项已完成这些工作。
 
-Passing a host TUN FD also grants packet injection into the host stack. Dropping
-capabilities and isolating network syscalls does not constrain packets written to
-that FD. Approved split routes only constrain routing configuration, not the
-source/destination of inbound TUN packets. Containment of a compromised native
-worker or gateway therefore needs separately reviewed broker-owned ingress and
-egress filtering/anti-spoof policy, or an explicit trust assumption for worker
-packet payloads. This design does not claim packet confinement without that gate.
+传递主机 TUN FD 也会授予向主机协议栈注入数据包的能力。
+移除能力和隔离网络系统调用，并不能约束写入该 FD 的数据包。
+获准的分流路由仅约束路由配置，不约束入站 TUN 数据包的源地址/目的地址。
+因此，要约束遭入侵的原生工作进程或网关，仍需要单独审查、由代理服务负责的
+入口和出口过滤/反欺骗策略，或者明确声明信任工作进程数据包载荷的假设。
+未满足这一条件前，本设计不宣称实现了数据包约束。
 
-Neither defeats a malicious host root. The security model must say so. This
-checkpoint selects neither policy downgrade nor permissive adapter.
+两种选择都无法抵御恶意主机 root。安全模型必须明确说明这一点。
+此检查点既不选择降低策略要求，也不采用宽松适配器。
 
-## Bootstrap and termination implementation obligations
+## 引导和终止的实现要求
 
-The bootstrap must use a verified native helper or a supported service-manager
-transaction. Go's threaded runtime must not casually setns the broker process.
-Atomic clone-into-cgroup or an equivalent held-before-exec manager lifecycle is
-required; moving an already-running hostile child has a fork/escape window.
-An fd-bound cgroup handle and namespace handle must survive PID reuse. Worker
-code must not run before namespace/cgroup/capability restrictions are installed.
-Passing a root executable to the existing Prepare hook is not sufficient.
+引导程序必须使用经过验证的原生辅助程序，或受支持的服务管理器事务。
+不能在 Go 多线程运行时中随意对代理服务进程执行 setns。
+必须以原子方式将进程 clone 到 cgroup，或采用等效的、在执行前保持进程受控的
+管理器生命周期；迁移已经运行的恶意子进程会产生派生/逃逸窗口。
+绑定到 fd 的 cgroup 句柄和命名空间句柄必须能抵御 PID 复用。
+安装命名空间/cgroup/能力限制前，不得运行工作进程代码。
+仅向现有 Prepare 钩子传入 root 可执行程序并不足够。
 
-The broker journals writes before attempting them. Cleanup closes worker input,
-stops the entire cgroup (not merely the leader/PGID), verifies cgroup.events
-populated=0 from the held group, drains or closes the session pipe, reverts owned
-DNS, removes exact owned routes and releases the host TUN only when its identity
-matches. Readback must prove resolver/link/route absence before reuse. Any
-uncertain write, PID/namespace mismatch or cleanup failure quarantines the session.
-Crash recovery must retain enough private journal identity for reconciliation;
-without it, report unknown state instead of deleting matching names globally.
+代理服务在尝试写入前记录日志。清理时关闭工作进程输入，
+停止整个 cgroup（而不只是主进程/PGID），从持有的组验证 cgroup.events
+populated=0，排空或关闭会话管道，撤销自身拥有的 DNS 配置，
+删除精确匹配且归自身所有的路由，并仅在标识匹配时释放主机 TUN。
+复用前，回读必须证明解析器/链路/路由状态已不存在。
+任何结果不确定的写入、PID/命名空间不匹配或清理失败，都会使会话进入隔离状态。
+崩溃恢复必须保留足够的私有日志标识用于核对；如果没有这些信息，
+应报告状态未知，而不是全局删除名称匹配的对象。
 
-cgroup v2 provides hierarchical populated state and cgroup.kill, but access and
-migration restrictions are separate requirements. The source of observation must
-be bound to the held cgroup, not a user-supplied pathname.
-[Kernel cgroup v2 documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html)
+cgroup v2 提供分层的 populated 状态和 cgroup.kill，
+但访问和迁移限制是另外的要求。观测来源必须绑定到持有的 cgroup，
+而不是用户提供的路径名。
+[内核 cgroup v2 文档](https://docs.kernel.org/admin-guide/cgroup-v2.html)
 
-systemd offers relevant isolation directives, but a unit template alone does not
-prove effective namespace identity, FD handoff or descendant cleanup on the
-installed version. [systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)
+systemd 提供相关的隔离指令，但仅有单元模板不能证明在已安装版本上
+命名空间标识、FD 交接或子孙进程清理确实有效。
+[systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)
 
-Per-link DNS APIs take link indices and support per-link domains, default-route
-policy and revert. All operations and readbacks must use the matching resolver
-and network context. [systemd-resolved API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.resolve1.html)
+按链路配置 DNS 的 API 接受链路索引，并支持各链路的域、默认路由策略和还原。
+所有操作和回读都必须使用匹配的解析器与网络上下文。
+[systemd-resolved API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.resolve1.html)
 
-## Acceptance evidence required before enabling
+## 启用前必需的验收证据
 
-- Host-capable disposable VM tests of bootstrap ordering, capabilities, namespace
-  identity, attempts to migrate cgroups or enter host namespaces, descendant fork
-  and leader exit; no fake adapters accepted as real isolation evidence.
-- Broker TUN-FD adoption with no worker administrative privilege or new outbound
-  sockets, control/data TLS peer verification, cancellation and crash cases.
-- Real host application packets and route-only DNS reach only approved prefixes;
-  stale resolver records, changing link indices and route conflicts fail closed.
-- Disconnect, broker/worker crash and failed intermediate operations leave no
-  owned routes/DNS; ambiguous unrelated objects are never removed.
-- Real authorized gateway interoperability. Loopback fixtures prove transport
-  mechanics, not enterprise compatibility or host routing/DNS recovery.
+- 在具备主机级能力、可弃用的虚拟机上，测试引导顺序、能力、命名空间标识、
+  迁移 cgroup 或进入主机命名空间的尝试、子孙进程派生和主进程退出；
+  不得将模拟适配器作为真实隔离证据。
+- 在工作进程没有管理员权限、不能新建出站套接字的条件下，验证代理服务
+  TUN-FD 的接收、控制/数据 TLS 对端验证，以及取消和崩溃情况。
+- 真实主机应用数据包和仅路由 DNS 只能到达获准前缀；
+  过期解析器记录、变化的链路索引和路由冲突必须触发安全拒绝。
+- 断开连接、代理服务/工作进程崩溃和中间操作失败后，不得遗留自身拥有的路由/DNS；
+  绝不删除归属不明的无关对象。
+- 经过授权的真实网关互操作验证。环回测试夹具只能证明传输机制，
+  不能证明企业兼容性或主机路由/DNS 恢复能力。
 
-No host TUN, namespace, route, DNS, cgroup, capability or seccomp change was applied
-for this design. The package tests use fake inspection plus ordinary pipe FDs;
-real connected-TCP adoption is a separate native-loopback test responsibility.
+本设计没有更改主机 TUN、命名空间、路由、DNS、cgroup、能力或 seccomp。
+包测试使用模拟检查和普通管道 FD；真实已连接 TCP 的接收，
+由单独的原生环回测试负责验证。

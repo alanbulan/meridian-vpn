@@ -45,7 +45,7 @@ JSON 有稳定的 `schema_version: 1`、`read_only: true`、`backend.prerequisit
 
 ### 交互式认证配置
 
-Meridian 配置字段 `interactive_auth` 是布尔值，省略或 `false` 使用原有非交互认证路径；`true` 要求可选 `meridian-auth-helper`，用于桌面程序中的结构化 MFA/OTP、认证选项等交互流程。它不等同于支持所有企业 SSO、Host Checker 或终端合规要求。CLI 会保留并展示此开关，但前台 connect 明确拒绝交互式 MFA 配置，不采集 OTP、不冒充支持该流程。`validate` 仅校验本地配置，是否装有可用 helper 请看 `diagnostics` 的可选检查。修改和连接请在原生桌面界面完成。
+Meridian 配置字段 `interactive_auth` 是布尔值，省略或 `false` 使用原有非交互认证路径；`true` 要求可选 `meridian-auth-helper`，用于结构化 MFA/OTP、认证选项等交互流程。Linux amd64/arm64 前台 CLI 可在同时指定 `--interactive-auth` 时使用控制终端完成这些表单。它不等同于支持所有企业 SSO、Host Checker 或终端合规要求。`validate` 仅校验本地配置，是否装有可用 helper 请看 `diagnostics` 的可选检查。
 
 ## 导入预览与导出
 
@@ -88,8 +88,23 @@ secret-manager-command | ./build/meridianctl --config ./profiles.json connect \
 
 连接保持前台运行，仅输出 Connecting/Connected/Disconnecting 等状态，不打印账号、网关、IP 或原始后端错误。Connected 只表示核心后端的隧道/接口验证通过，不代表企业内网资源或 DNS 策略已验收。
 
-**断开：** 对这个前台命令按 Ctrl+C，或向这个进程发送 SIGTERM。Unix 终端挂断（SIGHUP）与输出管道断开也进入自身会话清理流程。程序等待自身会话的清理确认才退出，不终止 GUI、其他进程或其他 VPN。没有跨进程 `disconnect` 命令，也没有 PID 文件、后台守护或重连功能。不要使用 SIGKILL/强制关闭代替正常断开；强制杀死、系统崩溃及断电不能保证清理。
+**断开：** 对这个前台命令按 Ctrl+C，或向这个进程发送 SIGTERM。Unix 终端挂断（SIGHUP）、Ctrl+\（SIGQUIT）、Ctrl+Z/后台终端访问相关信号与输出管道断开也进入自身会话清理流程，不会把拥有 VPN 的进程挂起。程序等待自身会话的清理确认才退出，不终止 GUI、其他进程或其他 VPN。没有跨进程 `disconnect` 命令，也没有 PID 文件、后台守护或重连功能。不要使用 SIGKILL/强制关闭代替正常断开；强制杀死、系统崩溃及断电不能保证清理。
 
-正常取消并确认清理返回 0；认证失败、意外连接丢失、输出失败或无法确认清理返回 1；缺少授权参数等用法错误返回 2。清理无法确认时，明确提示检查系统 VPN 服务后再连接。终端 MFA、外部浏览器 SSO 和非 Linux VPN 后端不在此命令支持范围。
+正常取消并确认清理返回 0；认证失败、意外连接丢失、输出失败或无法确认清理返回 1；缺少授权参数等用法错误返回 2。清理无法确认时，明确提示检查系统 VPN 服务后再连接。外部浏览器 SSO 和非 Linux VPN 后端不在此命令支持范围。
 
-本实现的测试使用假后端和私有文件/管道，不连接真实网关，不修改测试宿主的路由、DNS 或接口。实际企业隧道仍需要单独授权的验收环境。
+本实现的测试使用假后端、私有文件/管道、PTY 及可选 localhost TLS 合成认证夹具，不连接真实企业网关，不修改测试宿主的路由、DNS 或接口。实际企业隧道仍需要单独授权的验收环境。
+
+### 前台 MFA
+
+```sh
+secret-manager-command | ./build/meridianctl --config ./profiles.json connect \
+  --profile 1 --authorize-network --credentials-stdin --interactive-auth
+```
+
+配置必须已启用 `interactive_auth`，协议为 AnyConnect，且可信 `meridian-auth-helper` 可用。这个参数只允许本次交互，不修改配置或扩大网关授权。初始密码/私钥口令仍经非终端 JSON stdin 提供；没有初始秘密时可由可信输入源提供 `{}`。后续文本、密码/OTP、选择均从该进程的前台 `/dev/tty` 读取，全部关闭回显，不从 stdin 再读，不接受 argv/env 中的回答。无控制终端、后台运行、终端配置失败或并发提示时安全拒绝。
+
+网关字段与选项标签仅在控制终端显示，去掉控制字符和隐藏格式符、引号包裹并截到 96 字符；忽略自由格式标题/说明。请选择本地编号，不输入服务器字段 ID。最多 8 轮、每轮 16 字段、每字段 32 选项，单回答最多 4096 字节；超长、非法选择或不支持表单直接失败，不截断后提交。NetworkManager 总认证时限为 90 秒；每个终端提示也有 90 秒上限，并受较短的父时限约束。
+
+Enter 提交当前字段，Backspace 删除，Ctrl+U 清空，Ctrl+D 取消认证，Ctrl+C 取消并退出。提示结束或错误时恢复原终端设置、丢弃未消费输入并清除已拥有的回答；恢复失败不提交回答，退出时提示重置终端。stdout/stderr 仍只有固定状态与固定错误，绝不复制网关提示或回答。无回显不能防止外部终端录制/键盘监控，也不承诺 Go/runtime 内存物理擦除。强制 SIGKILL、进程崩溃或断电不能保证终端或网络恢复。
+
+仅支持结构化 text/password/select 表单。网页 SSO、脚本、Host Checker、推送轮询及没有字段的确认流程仍拒绝；没有把认证夹具成功当作真实隧道或企业 MFA 兼容验收。

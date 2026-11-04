@@ -16,7 +16,7 @@
 |TCP缓冲区自定义|现有NM插件没有对应的已验证直接设置路径，需协议/系统服务适配而非无效控件|
 |网关修改密码/自动升级/专有配置INI|仅新增安全只读INI结构预览，尚无私有字段映射/导入；其他能力需要对应网关/API/格式版本及合法验证，不能以JSON导入或应用升级冒充|
 |完整系统错误报告、抓包、core dump|当前仅脱敏白名单依赖报告和结构化日志。更广收集可能含账号/网络拓扑/秘密，需要范围选择与二次审阅|
-|Linux CLI连接/断开|已实现Linux AnyConnect/L2TP前台connect、非终端stdin有界凭据输入、显式本次网络授权、Ctrl+C/SIGTERM及输出失败时自身会话清理；有假后端/私有管道回归测试。终端MFA、跨进程disconnect、后台服务及真实网关/路由DNS恢复仍未实现或未验收，不是原手册CLI协议全等替代|
+|Linux CLI连接/断开|已实现Linux AnyConnect/L2TP前台connect、非终端stdin有界凭据输入、显式本次网络授权、Ctrl+C/SIGTERM及输出失败时自身会话清理；新增Linux amd64/arm64显式终端MFA，复用现有helper，提供无回显有界输入、控制终端提示净化、取消/信号恢复与mock/PTY/localhost认证测试入口；真实CI结果需按具体提交验证。跨进程disconnect、后台服务及真实网关/路由DNS恢复仍未实现或未验收，不是原手册CLI协议全等替代|
 |macOS/Windows实际VPN后端|已在原生runner通过单测、vet、GUI/CLI构建及CLI help/version启动（fa52b2a，详见VALIDATION.md）；这不等于VPN后端或GUI人工验收。平台权限、安全服务/NetworkExtension、签名与真实隧道仍需独立实现验收|
 
 完整来源页码与每个字段的模型、消费方和测试见 `REFERENCE-COVERAGE.md` 及 `reference/UNIVPN-FEATURE-AUDIT.md`。

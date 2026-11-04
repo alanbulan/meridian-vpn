@@ -2,7 +2,7 @@ name: Native build and tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/cli-terminal-mfa]
   pull_request:
   workflow_dispatch:
 
@@ -53,6 +53,11 @@ jobs:
           go env GOOS GOARCH
           go mod download
           go mod verify
+      - name: Record CLI source formatting
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p reports
+          gofmt -d cmd/meridianctl/auth*.go cmd/meridianctl/app.go cmd/meridianctl/connect.go cmd/meridianctl/signals_unix.go > reports/cli-format.patch
       - name: Unit tests (not live VPN acceptance)
         run: |
           mkdir -p reports

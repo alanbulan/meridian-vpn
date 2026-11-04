@@ -119,11 +119,12 @@ func clearCredentials(c core.Credentials) {
 	clear(c.KeyPassword)
 }
 
-func (a application) connect(ctx context.Context, path string, args []string, out, errOut io.Writer) int {
+func (a application) connect(ctx context.Context, path string, args []string, out, errOut io.Writer) (code int) {
 	f := newFlags("connect")
 	index := f.Int("profile", 0, "1-based profile index")
 	authorized := f.Bool("authorize-network", false, "Authorize authentication and route/DNS changes for this session")
 	stdin := f.Bool("credentials-stdin", false, "Read credential JSON from non-terminal stdin")
+	interactive := f.Bool("interactive-auth", false, "Allow hidden MFA prompts on the controlling terminal")
 	if !parseFlags(f, args) || *index < 1 || !*authorized || !*stdin {
 		return usageError(errOut)
 	}
@@ -135,14 +136,32 @@ func (a application) connect(ctx context.Context, path string, args []string, ou
 		return failure(errOut, "Cannot load the selected profile; validate the configuration and profile index.")
 	}
 	p := cfg.Profiles[*index-1]
-	if p.InteractiveAuth {
-		return failure(errOut, "Terminal MFA is not supported; use the desktop authentication workflow.")
+	if p.InteractiveAuth && !*interactive {
+		return failure(errOut, "Interactive profiles require --interactive-auth and a foreground controlling terminal.")
+	}
+	if *interactive && !p.InteractiveAuth {
+		return usageError(errOut)
 	}
 	if p.Protocol != "anyconnect" && p.Protocol != "l2tp" {
 		return failure(errOut, "This foreground backend supports only AnyConnect and L2TP/IPsec profiles.")
 	}
 	if ctx.Err() != nil {
 		return 0
+	}
+	var terminal authTerminal
+	if p.InteractiveAuth {
+		if a.authTerminal == nil {
+			return failure(errOut, "Interactive authentication requires a supported Linux controlling terminal.")
+		}
+		terminal, err = a.authTerminal()
+		if err != nil {
+			return failure(errOut, "Cannot open a safe foreground controlling terminal. No authentication was started.")
+		}
+		defer func() {
+			if err := terminal.Close(); err != nil {
+				code = failure(errOut, "Terminal restoration could not be confirmed. Reset the terminal before continuing.")
+			}
+		}()
 	}
 	credentials, err := a.credentials(ctx)
 	defer clearCredentials(credentials)
@@ -155,6 +174,13 @@ func (a application) connect(ctx context.Context, path string, args []string, ou
 	adapter := a.vpnAdapter()
 	if ctx.Err() != nil {
 		return 0
+	}
+	if terminal != nil {
+		prompter, ok := adapter.(interface{ SetAuthPrompt(core.AuthPrompt) })
+		if !ok {
+			return failure(errOut, "The selected backend does not support interactive authentication.")
+		}
+		prompter.SetAuthPrompt(terminal.Prompt)
 	}
 	e := core.NewEngine(adapter)
 	if err := e.ConnectWithCredentials(p, credentials, true); err != nil {

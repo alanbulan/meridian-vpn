@@ -87,3 +87,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/publish-build-only.py --artifacts build/release-inputs --version "$RELEASE_VERSION" --source "$SOURCE_SHA"
+
+# Retry once after Apple Silicon runner allocation was cancelled before any steps.

@@ -33,6 +33,8 @@ func (a *App) SetSystemLanguages(tags []string) {
 }
 
 var zh = map[string]string{
+	"Review the connection and authorize network changes before connecting": "连接前请检查连接配置并授权网络更改",
+	"The previous session gateway is unavailable; choose a connection and sign in again": "上次会话的网关已不可用，请选择连接并重新登录",
 	"Experimental UniVPN: direct TLS password authentication only":                                    "实验性 UniVPN：仅支持直连 TLS 密码认证",
 	"A reviewed native engine and trusted continuous-session broker must be explicitly configured":    "必须另行明确配置经审核的原生引擎及可信的持续会话代理",
 	"Authentication domain (blank = gateway host)":                                                    "认证域（留空使用网关主机名）",

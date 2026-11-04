@@ -46,6 +46,16 @@ session can still produce its own one-time reminder. Profile changes also
 invalidate pending reminder evidence. This identity is not persisted and does
 not grant retry permission.
 
+The GUI records the exact gateway selected for each admitted attempt separately
+from credentials. The loss reminder opens a blank authentication form for that
+same gateway, including an explicitly selected backup, and displays its full
+configured address. It never silently switches recovery back to the primary
+address. If the recorded attempt/profile no longer matches or the gateway has
+been removed, recovery stops with a notice; the user can still choose the normal
+manual connection action. Submission rechecks the configured target and fresh
+network/proxy consent before calling the engine. This target metadata is only
+in memory and is neither a saved password nor permission to retry.
+
 These codes are diagnostic groundwork, **not retry permission**. There is no
 retryability flag, timer, backoff, automatic reconnect, retained credential, or
 new network operation. Future reconnect work still needs explicit authorization,

@@ -26,16 +26,72 @@ func (a *App) selectSessionGateway(gateway string) {
 	if p == nil {
 		return
 	}
-	allowed := gateway == p.Gateway
-	for _, other := range p.AdditionalGateways {
-		allowed = allowed || gateway == other
-	}
-	if !allowed {
+	if !gatewayAllowed(p, gateway) {
 		return
 	}
 	a.clearCredentials()
 	a.GatewayChoice = gateway
 	a.ConnectPanel = true
+}
+
+func gatewayAllowed(p *core.Profile, gateway string) bool {
+	if p == nil || gateway == "" {
+		return false
+	}
+	if gateway == p.Gateway {
+		return true
+	}
+	for _, other := range p.AdditionalGateways {
+		if gateway == other {
+			return true
+		}
+	}
+	return false
+}
+
+// Every GUI attempt records the exact admitted target after fresh consent.
+// Validating the target again prevents a stale form from selecting an endpoint
+// removed from the profile while the form was open.
+func (a *App) submitConnection() {
+	defer a.clearCredentials()
+	p := a.selected()
+	if !a.canConnect(p) || !a.Authorized || !gatewayAllowed(p, a.GatewayChoice) || (p.ProxyURL != "" && !a.ProxyConsent) {
+		a.Notice = "Review the connection and authorize network changes before connecting"
+		return
+	}
+	sessionProfile := *p
+	sessionProfile.AllowProxySystemAuth = a.ProxyConsent
+	sessionProfile.Gateway = a.GatewayChoice
+	sessionProfile.AdditionalGateways = nil
+	credentials := core.Credentials{Password: []byte(a.Password), KeyPassword: []byte(a.KeyPassword), IPsecPSK: []byte(a.IPsecPSK)}
+	err := a.Engine.ConnectWithCredentials(sessionProfile, credentials, a.Authorized)
+	clear(credentials.Password)
+	clear(credentials.KeyPassword)
+	clear(credentials.IPsecPSK)
+	if err != nil {
+		a.Notice = err.Error()
+		return
+	}
+	a.sessionTarget = sessionTarget{attemptID: a.Engine.Snapshot().AttemptID, profileID: p.ID, gateway: sessionProfile.Gateway}
+	a.Notice = ""
+}
+
+// Recovery stays on the lost session's explicitly chosen gateway. It opens a
+// blank form, never retries or transfers authorization. If that target is no
+// longer configured, the ordinary manual connection flow remains available.
+func (a *App) openRecoveryForm() {
+	target := a.sessionTarget
+	snapshot := a.Engine.Snapshot()
+	p := a.selected()
+	if !a.canConnect(p) || !a.Config.Settings.ReauthOnLoss || a.SwitchPending || !a.reauthVisible || snapshot.State != core.Failed || (snapshot.Failure != core.FailureConnectionLost && snapshot.Failure != core.FailureTransport) || target.attemptID != snapshot.AttemptID || target.attemptID != a.reauthAttemptID || p == nil || target.profileID != p.ID || !gatewayAllowed(p, target.gateway) {
+		a.clearReauthentication()
+		a.clearCredentials()
+		a.Notice = "The previous session gateway is unavailable; choose a connection and sign in again"
+		return
+	}
+	a.openConnectForm()
+	a.selectSessionGateway(target.gateway)
+	a.Notice = ""
 }
 
 // Switching never carries credentials or proxy consent to another connection.

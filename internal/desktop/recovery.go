@@ -68,7 +68,7 @@ func (a *App) reauthenticationNotice(c *ui.Context) {
 		a.label(c, "Connection lost; cleanup completed. Sign in again?")
 		ui.Row(c).Gap(8).Children(func() {
 			if ui.Button(c.Key("retry-fresh-auth"), a.tr("Sign in again")).Disabled(!a.canConnect(a.selected())).Clicked() {
-				a.openConnectForm()
+				a.openRecoveryForm()
 			}
 			if ui.Button(c.Key("dismiss-reauth"), a.tr("Dismiss")).Clicked() {
 				a.clearReauthentication()

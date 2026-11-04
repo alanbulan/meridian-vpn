@@ -1,0 +1,51 @@
+name: Windows 安装包构建与预览验收
+on:
+  push:
+    branches: [candidate/windows-product-20261104]
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+      - name: 测试原生代码，明确不等于 Windows VPN 验收
+        shell: pwsh
+        run: |
+          go mod download
+          if ($LASTEXITCODE) { throw 'Module download failed' }
+          go test -count=1 ./...
+          if ($LASTEXITCODE) { throw 'Unit tests failed' }
+          go vet ./...
+          if ($LASTEXITCODE) { throw 'Static checks failed' }
+      - name: 使用官方运行器的已签名编译器构建 Setup.exe
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -OutputDirectory build/windows-installer
+      - name: 验证当前用户安装、窗口启动和卸载
+        shell: pwsh
+        run: ./scripts/test-windows-installer.ps1 -ArtifactDirectory build/windows-installer
+      - name: 仅保存实验预览安装包，不发布
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: meridian-windows-setup-experimental
+          path: build/windows-installer/
+          if-no-files-found: error
+          retention-days: 14
+      - name: 保存隔离安装日志
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: meridian-windows-setup-validation
+          path: ${{ runner.temp }}/meridian-installer-logs/
+          if-no-files-found: ignore
+          retention-days: 14

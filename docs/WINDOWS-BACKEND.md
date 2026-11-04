@@ -1,6 +1,13 @@
 # Windows RAS adapter: implemented boundary and remaining work
 
-## Status
+## 当前状态
+
+默认入口仍不启用 Windows VPN 后端。显式实验模式 `--enable-windows-borrowed`
+已接入桌面和引擎，仅使用已有的系统 VPN 条目，并要求每次单独授权。
+Windows 注入式测试和 SDK ABI 检查已通过；真实网关仍未验收，不能据此称为完整可用产品。
+详细范围见下方“Explicit experimental Windows application mode”和“Windows 候选 CI 与安装入口”。
+
+## 历史基础控制器范围（不代表后续 borrowed 模式状态）
 
 `internal/windowsvpn` is a portable, injected RAS lifecycle controller, **not a
 working Windows VPN backend**. It is not wired into the desktop/engine. There is
@@ -571,8 +578,8 @@ handle-to-interface conversion, exclusive ownership or route/DNS validation.
 Integration tests use fake native procedures through the entire connect,
 check, deletion cleanup and reconnect flow. They also cover adapter drift and
 shared-handle quarantine. Windows-only tests connect our own ABI stubs through
-the real callback router; they never resolve or call RAS. Real Windows execution,
-SDK checks and approved enterprise-gateway acceptance remain required. The
+the real callback router; they never resolve or call RAS. Windows-runner injected tests and SDK x64/x86 checks have passed (see the CI evidence below).
+Approved enterprise-gateway acceptance remains required. The
 native inventory and explicit application wiring are described below.
 
 ### Native IPv4 adapter inventory and explicit system binding
@@ -595,7 +602,7 @@ it resolves RAS and IP Helper procedures from the Windows system directory,
 fixes the callback router/trampoline, and joins the reviewed call boundaries.
 Construction loads DLLs (potentially starting the RAS service), but does not dial
 or enumerate. The limited-mode facade now invokes it after per-use consent;
-no test invokes it. SDK execution and approved live-gateway acceptance remain
+no test invokes it. SDK compile checks have passed; approved live-gateway acceptance remains
 outstanding.
 No real-system behavior has been validated by the injected tests or cross-builds.
 
@@ -630,5 +637,19 @@ deadline does not prove native cancellation or permit freeing inputs.
 Injected lifecycle tests and UI widget tests cover consent gates/resets, editor
 copy isolation, repeated connect/cleanup, shared-reference quarantine, and
 backend recheck preserving explicit mode. They are not native Windows acceptance,
-installer validation or evidence of real gateway interoperability. Publication
-remains subject to the previously outstanding repository authorization gate.
+installer validation or evidence of real gateway interoperability. Public release
+remains blocked on coordinated real-gateway acceptance; candidate CI is authorized.
+
+
+### Windows 候选 CI 与安装入口
+
+[候选 CI 41811076325](https://github.com/alanbulan/meridian-vpn/actions/runs/41811076325)
+的 Windows 作业在提交 `c7e2f831d12eecae42f425575759d39edb475d47` 上通过：
+Windows 注入式 Go 测试以及 x64/x86 Windows SDK ABI 编译检查均成功。
+这些检查不调用真实 RAS 连接，不证明企业网关、凭据缓存、路由、DNS 或恢复行为已验收。
+
+安装包保留默认普通入口，另外提供明确标注实验模式的开始菜单入口，参数只有
+`--enable-windows-borrowed`，并提供限制说明入口。选择该入口不会替用户授予连接同意。
+安装流水线检查快捷方式目标和参数，并分别启动两种空配置窗口；它不测试真实连接，
+也不等于通过真实用户账户完成了权限、凭据或完整连接同意流程验收。
+正式发布前仍须完成协调后的真实网关验收，当前安装包只作为 CI 实验产物。

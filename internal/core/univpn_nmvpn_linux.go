@@ -485,7 +485,6 @@ func (b *UniVPNNMBroker) ProveAbsent(ctx context.Context, binding nmvpn.Binding)
 	return nil
 }
 
-
 // Done observes this generation's lifetime without taking a second process Wait
 // or revealing a replaceable PID. It closes on cancellation/exit/local teardown,
 // not proof of cleanup. A successfully started broker always returns a channel.

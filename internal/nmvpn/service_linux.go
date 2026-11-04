@@ -57,15 +57,15 @@ type ServicePolicy interface {
 // stores and remain owned/open by the caller until Run returns. No bus discovery,
 // journal path lookup, executable selection or policy loading occurs here.
 type ServiceConfig struct {
-	Bus *PinnedBus
-	Plan PluginPlan
-	Network map[string]map[string]dbus.Variant
-	Allowlist Policy
-	ActivationJournal ActivationJournal
+	Bus                *PinnedBus
+	Plan               PluginPlan
+	Network            map[string]map[string]dbus.Variant
+	Allowlist          Policy
+	ActivationJournal  ActivationJournal
 	PublicationJournal Journal
-	Boot BootIdentity
-	Factory ServiceFactory
-	GlobalPolicy ServicePolicy
+	Boot               BootIdentity
+	Factory            ServiceFactory
+	GlobalPolicy       ServicePolicy
 }
 
 // ServiceResult deliberately has no Ready field. Published is only local signal
@@ -73,9 +73,9 @@ type ServiceConfig struct {
 // ReconciliationRequired remains true after any manager transaction: activation
 // intent is retained even after verified shutdown, never automatically cleared.
 type ServiceResult struct {
-	Published bool
-	LocalStopped bool
-	NetworkAbsent bool
+	Published              bool
+	LocalStopped           bool
+	NetworkAbsent          bool
 	ReconciliationRequired bool
 }
 
@@ -83,9 +83,9 @@ type ServiceResult struct {
 // It is single-use and retains its backend after failure. It is not an installed
 // system service or a production HostAuthority. Copying it confers no authority.
 type Service struct {
-	self *Service
+	self    *Service
 	claimed atomic.Bool
-	config ServiceConfig
+	config  ServiceConfig
 	backend ServiceBackend
 }
 
@@ -261,7 +261,9 @@ func (s *Service) Run(ctx context.Context) (result ServiceResult, resultErr erro
 	}
 	select {
 	case <-ctx.Done():
-		if serviceGenerationEnded(policyDone) { return result, errService }
+		if serviceGenerationEnded(policyDone) {
+			return result, errService
+		}
 		return result, nil
 	case <-activation.Context().Done():
 		return result, errService
@@ -272,8 +274,8 @@ func (s *Service) Run(ctx context.Context) (result ServiceResult, resultErr erro
 
 type serviceBroker struct {
 	ServiceBackend
-	policy ServicePolicy
-	done <-chan struct{}
+	policy     ServicePolicy
+	done       <-chan struct{}
 	policyDone <-chan struct{}
 }
 
@@ -307,7 +309,9 @@ func serviceStartupDeadline(delay time.Duration, cancel context.CancelFunc) func
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			if !timer.Stop() { <-done }
+			if !timer.Stop() {
+				<-done
+			}
 		})
 	}
 }
@@ -318,18 +322,32 @@ func validServiceAllowlist(p Policy) bool {
 	}
 	addresses, endpoints, routes := map[netip.Prefix]bool{}, map[netip.Addr]bool{}, map[netip.Prefix]bool{}
 	for _, address := range p.Addresses {
-		if !address.IsValid() || address.Bits() < 1 || !validIP(address.Addr()) || addresses[address] { return false }
+		if !address.IsValid() || address.Bits() < 1 || !validIP(address.Addr()) || addresses[address] {
+			return false
+		}
 		addresses[address] = true
 	}
 	for _, endpoint := range p.Endpoints {
-		if !validIP(endpoint) || endpoints[endpoint] { return false }
+		if !validIP(endpoint) || endpoints[endpoint] {
+			return false
+		}
 		endpoints[endpoint] = true
-		for _, address := range p.Addresses { if address.Contains(endpoint) { return false } }
+		for _, address := range p.Addresses {
+			if address.Contains(endpoint) {
+				return false
+			}
+		}
 	}
 	for _, route := range p.Routes {
-		if !route.IsValid() || !route.Addr().Is4() || route.Bits() < 1 || route != route.Masked() || routes[route] { return false }
+		if !route.IsValid() || !route.Addr().Is4() || route.Bits() < 1 || route != route.Masked() || routes[route] {
+			return false
+		}
 		routes[route] = true
-		for _, endpoint := range p.Endpoints { if route.Contains(endpoint) { return false } }
+		for _, endpoint := range p.Endpoints {
+			if route.Contains(endpoint) {
+				return false
+			}
+		}
 	}
 	return true
 }

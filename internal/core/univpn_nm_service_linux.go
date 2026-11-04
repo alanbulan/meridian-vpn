@@ -27,10 +27,10 @@ type UniVPNNMServiceHosts interface {
 // Constructor snapshots mutable launch policy; providers must remain trusted and
 // independently enforce their existing ownership/containment contracts.
 type UniVPNNMServiceNative struct {
-	Launcher *UniVPNExecLauncher
+	Launcher   *UniVPNExecLauncher
 	Executable string
-	Arguments []string
-	Hosts UniVPNNMServiceHosts
+	Arguments  []string
+	Hosts      UniVPNNMServiceHosts
 }
 
 // NewUniVPNNMService is the concrete service-composition entry. It wires the
@@ -64,12 +64,12 @@ func cloneUniVPNNMPolicy(p nmvpn.Policy) nmvpn.Policy {
 }
 
 type uniVPNNMServiceFactory struct {
-	claimed atomic.Bool
-	launcher *UniVPNExecLauncher
+	claimed    atomic.Bool
+	launcher   *UniVPNExecLauncher
 	executable string
-	args []string
-	hosts UniVPNNMServiceHosts
-	policy nmvpn.Policy
+	args       []string
+	hosts      UniVPNNMServiceHosts
+	policy     nmvpn.Policy
 }
 
 func (f *uniVPNNMServiceFactory) Preflight(ctx context.Context) error {
@@ -103,8 +103,8 @@ func (f *uniVPNNMServiceFactory) Start(ctx context.Context, receipt *nmvpn.Activ
 }
 
 type uniVPNNMServiceAuthority struct {
-	hosts UniVPNNMServiceHosts
-	receipt *nmvpn.ActivationReceipt
+	hosts      UniVPNNMServiceHosts
+	receipt    *nmvpn.ActivationReceipt
 	activation *nmvpn.Activation
 }
 

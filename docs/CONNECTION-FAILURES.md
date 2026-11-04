@@ -37,6 +37,15 @@ cleanup, with fresh credentials and network authorization required. Changing the
 selected session gateway clears password, PSK, key passphrase/PIN, network
 authorization and proxy consent before the new target can be connected.
 
+Reminder evidence is bound to `Snapshot.AttemptID`, a process-local counter that
+changes only when the engine admits a new connection attempt. The terminal
+snapshot retains its attempt identity. If polling misses an intervening retry,
+a prior session's connected observation, delayed reminder or visible reminder
+is discarded instead of being attached to the new failure. A later established
+session can still produce its own one-time reminder. Profile changes also
+invalidate pending reminder evidence. This identity is not persisted and does
+not grant retry permission.
+
 These codes are diagnostic groundwork, **not retry permission**. There is no
 retryability flag, timer, backoff, automatic reconnect, retained credential, or
 new network operation. Future reconnect work still needs explicit authorization,

@@ -26,6 +26,7 @@ type App struct {
 	observedConnected      bool
 	reauthAt               time.Time
 	reauthProfileID        string
+	reauthAttemptID        uint64
 	reauthVisible          bool
 	AuthCapability         core.Capability
 	Store                  core.Store

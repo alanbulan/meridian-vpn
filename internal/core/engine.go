@@ -29,6 +29,9 @@ type LogEntry struct {
 	Message string
 }
 type Snapshot struct {
+	// AttemptID identifies an admitted connection attempt, including its terminal
+	// state. It is process-local and contains no profile or credential data.
+	AttemptID            uint64
 	State                string
 	Failure              FailureKind
 	Message              string
@@ -118,7 +121,7 @@ func (e *Engine) add(level, msg string) {
 }
 func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
-	snapshot := Snapshot{State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
+	snapshot := Snapshot{AttemptID: e.generation, State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
 	session := e.session
 	e.mu.Unlock()
 	if snapshot.State == Connected {

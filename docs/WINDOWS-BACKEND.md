@@ -186,7 +186,14 @@ real secrets in chat. No real dialing or system changes were performed here.
 `InspectSystemEntry` now reads the exact selected phonebook and entry with
 `RasGetEntryPropertiesW`. It requires an explicit local fixed-drive `.pbk` path
 and a separately supplied intended gateway. It rejects observed reparse points
-in every path component; a concurrent filesystem replacement remains a race. It never chooses a default entry,
+in every path component; a concurrent filesystem replacement remains a race.
+Before native calls, every path component rejects U+0000–U+001F characters and
+Win32 device aliases, including extension-bearing and superscript-digit names
+such as `NUL.pbk` and `COM¹`. Spaces before a device-name extension and the
+console aliases `CONIN$`/`CONOUT$` are conservatively rejected as well. These
+lexical restrictions follow Microsoft's [file naming rules](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file)
+and do not establish atomic file identity or eliminate path-replacement races.
+It never chooses a default entry,
 reads credentials, edits/deletes a profile, or calls `RasDial`. A name/path match
 is not ownership: `EntryEvidence` cannot be used by the owned-entry controller.
 

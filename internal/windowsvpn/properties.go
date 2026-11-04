@@ -79,7 +79,7 @@ func validSelection(entry PhonebookEntry) bool {
 		return false
 	}
 	for _, part := range strings.Split(p[3:], `\`) {
-		if part == "" || part == "." || part == ".." || strings.HasSuffix(part, ".") || strings.HasSuffix(part, " ") { return false }
+		if !validPhonebookComponent(part) { return false }
 	}
 	return strings.HasSuffix(strings.ToLower(p), ".pbk")
 }

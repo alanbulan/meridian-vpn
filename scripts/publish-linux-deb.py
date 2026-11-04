@@ -19,6 +19,8 @@ ARTIFACT = 13304193108
 ZIP_SHA = '1a62e088e038f1b405d4846568e8e11aeac05c05b2a5fb2f878730bbb46cff53'
 DEB_SHA = 'b14115079aafd3a74ceb33896713509726d2f140b7708e34e5b5618846872b8a'
 DEB = 'meridian_0.1.0~alpha.1-1_amd64.deb'
+DOWNLOAD = 'meridian_0.1.0.alpha.1-1_amd64.deb'
+EXISTING_INSTALLER_ASSET = 708672657
 
 
 def tag_is_original():
@@ -52,8 +54,14 @@ def main():
         files = {DEB: z.read(DEB), 'SHA256SUMS-deb': z.read('SHA256SUMS-deb'), 'INSTALL-LINUX.zh-CN.md': z.read('安装说明.md')}
     require(hashlib.sha256(files[DEB]).hexdigest() == DEB_SHA, 'Installer checksum mismatch')
     require(files['SHA256SUMS-deb'].decode() == DEB_SHA + '  ' + DEB + '\n', 'Installer checksum file mismatch')
+    installer_size = len(files[DEB])
+    # GitHub normalized the upload name. Reconcile only the exact already
+    # uploaded asset; never upload or replace the installer again.
+    files = {'SHA256SUMS-deb': (DEB_SHA + '  ' + DOWNLOAD + '\n').encode(),
+             'INSTALL-LINUX.zh-CN.md': files['INSTALL-LINUX.zh-CN.md'].replace(DEB.encode(), DOWNLOAD.encode())}
     before = request(f'/releases/{RELEASE}')
     require(before['tag_name'] == api['TAG'] and before['target_commitish'] == api['SOURCE'] and before['prerelease'] and not before['draft'], 'Unexpected release identity')
+    require(any(a['id'] == EXISTING_INSTALLER_ASSET and a['name'] == DOWNLOAD and a['digest'] == 'sha256:' + DEB_SHA and a['size'] == installer_size for a in before['assets']), 'Expected partially uploaded installer changed; stop')
     originals = {a['id']: (a['name'], a['digest'], a['size']) for a in before['assets']}
     require(any(a['name'] == api['PACKAGE'] and a['digest'] == 'sha256:' + api['PACKAGE_SHA'] for a in before['assets']), 'Original archive changed')
     require(not set(files).intersection(a['name'] for a in before['assets']), 'Installer assets already exist; inspect partial state, never replace')
@@ -74,7 +82,7 @@ def main():
     require(all(any(a['id'] == key and (a['name'], a['digest'], a['size']) == value for a in current['assets']) for key, value in (originals | additions).items()), 'Original or added assets changed')
     tag_is_original()
     body = before['body'].replace(old_sentence, '原始 tar.gz 是便携压缩包；现已新增可通过系统软件安装器安装的 .deb 包，仍未完成生产环境验收。', 1)
-    body += f'''\n## 新增 Linux 安装包\n\n下载 `{DEB}`，适用于已通过隔离安装验收的 Debian 13 / Ubuntu 24.04 amd64。双击后使用系统软件安装器安装；若桌面没有本地包安装器，可运行 `sudo apt install ./{DEB}`。详细步骤见下载文件 `INSTALL-LINUX.zh-CN.md`。\n\nSHA-256：`{DEB_SHA}`，另附 `SHA256SUMS-deb`。\n\n安装后可从应用菜单打开 Meridian。包含启动器、图标、GUI、CLI 和认证辅助程序。没有安装脚本、开机自启或网络配置操作；包管理器安装声明的运行库，VPN 插件仍需管理员确认安装。卸载保留个人配置。\n\n[安装验收记录](https://github.com/alanbulan/meridian-vpn/actions/runs/{RUN})：两个全新发行版容器中均通过依赖安装、完整文件校验、非 root 版本/辅助程序检查、Xvfb 可见窗口启动、卸载和个人文件保留检查。这是隔离的 X11 启动测试，不代表真实桌面完整交互、Wayland 或真实 VPN 网关验收。\n\n安装封装源码：`{BUILD_SHA}`；二进制仍为原标签源码 `{api['SOURCE']}`，已有下载文件和版本标签保持不变。\n'''
+    body += f'''\n## 新增 Linux 安装包\n\n下载 `{DOWNLOAD}`，适用于已通过隔离安装验收的 Debian 13 / Ubuntu 24.04 amd64。双击后使用系统软件安装器安装；若桌面没有本地包安装器，可运行 `sudo apt install ./{DOWNLOAD}`。GitHub 将下载文件名中的 `~` 规范化为 `.`，不会改变包内版本或文件内容；安装命令以此处实际下载名为准。详细步骤见下载文件 `INSTALL-LINUX.zh-CN.md`。\n\nSHA-256：`{DEB_SHA}`，另附 `SHA256SUMS-deb`。\n\n安装后可从应用菜单打开 Meridian。包含启动器、图标、GUI、CLI 和认证辅助程序。没有安装脚本、开机自启或网络配置操作；包管理器安装声明的运行库，VPN 插件仍需管理员确认安装。卸载保留个人配置。\n\n[安装验收记录](https://github.com/alanbulan/meridian-vpn/actions/runs/{RUN})：两个全新发行版容器中均通过依赖安装、完整文件校验、非 root 版本/辅助程序检查、Xvfb 可见窗口启动、卸载和个人文件保留检查。这是隔离的 X11 启动测试，不代表真实桌面完整交互、Wayland 或真实 VPN 网关验收。\n\n安装封装源码：`{BUILD_SHA}`；二进制仍为原标签源码 `{api['SOURCE']}`，已有下载文件和版本标签保持不变。\n'''
     after = request(f'/releases/{RELEASE}', 'PATCH', {'body': body})
     after = request(f'/releases/{RELEASE}')
     require(after['body'] == body and after['prerelease'] and not after['draft'] and after['tag_name'] == api['TAG'] and after['target_commitish'] == api['SOURCE'], 'Release description/identity verification failed')

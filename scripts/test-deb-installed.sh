@@ -5,6 +5,7 @@ set -eu
 [ -f /.dockerenv ]
 [ "$(id -u)" = 0 ]
 export DEBIAN_FRONTEND=noninteractive
+export LANG=C.UTF-8 LC_ALL=C.UTF-8
 # Prevent dependency packages starting services in this disposable environment.
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
@@ -29,7 +30,7 @@ runuser -u meridian-test -- meridianctl version | grep -Fx 'Meridian CLI 0.1.0-a
 runuser -u meridian-test -- /usr/lib/meridian/meridian-auth-helper --protocol-version | grep -Fx 'meridian-auth-helper/1'
 # No profile or gateway is configured. Verify a real visible X11 window, then
 # close the unconnected application; never click Connect or invoke networking.
-runuser -u meridian-test -- dbus-run-session -- xvfb-run -a sh -eu -c '
+runuser -u meridian-test -- dbus-run-session -- xvfb-run -a sh -eu <<'GUI'
   openbox > /tmp/meridian-wm.log 2>&1 &
   sleep 1
   meridian > /tmp/meridian-gui.log 2>&1 &
@@ -37,7 +38,10 @@ runuser -u meridian-test -- dbus-run-session -- xvfb-run -a sh -eu -c '
   trap "kill -TERM $pid 2>/dev/null || true" EXIT
   for n in $(seq 1 30); do
     kill -0 "$pid"
-    if xdotool search --onlyvisible --name "Meridian" >/dev/null 2>&1; then
+    window=$(xdotool search --onlyvisible --all --pid "$pid" --class "^Meridian$" 2>/dev/null | head -n 1 || true)
+    if [ -n "$window" ] && xdotool getwindowgeometry --shell "$window" | awk -F= '/^WIDTH=/{w=$2} /^HEIGHT=/{h=$2} END{exit !(w>=800 && h>=500)}'; then
+      xdotool getwindowname "$window"
+      xdotool getwindowgeometry --shell "$window"
       kill -TERM "$pid"
       wait "$pid" || true
       exit 0
@@ -50,7 +54,7 @@ runuser -u meridian-test -- dbus-run-session -- xvfb-run -a sh -eu -c '
   cat /tmp/meridian-wm.log
   cat /tmp/meridian-gui.log
   exit 1
-'
+GUI
 mkdir -p /home/meridian-test/.config/meridian
 printf 'preserve user data\n' > /home/meridian-test/.config/meridian/install-test-sentinel
 apt-get purge -y meridian

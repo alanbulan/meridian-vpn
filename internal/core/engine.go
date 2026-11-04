@@ -29,6 +29,9 @@ type LogEntry struct {
 	Message string
 }
 type Snapshot struct {
+	// AttemptID identifies an admitted connection attempt, including its terminal
+	// state. It is process-local and contains no profile or credential data.
+	AttemptID            uint64
 	State                string
 	Failure              FailureKind
 	Message              string
@@ -118,7 +121,7 @@ func (e *Engine) add(level, msg string) {
 }
 func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
-	snapshot := Snapshot{State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
+	snapshot := Snapshot{AttemptID: e.generation, State: e.state, Failure: e.failure, Message: e.message, Logs: append([]LogEntry(nil), e.logs...), ConnectedAt: e.connectedAt}
 	session := e.session
 	e.mu.Unlock()
 	if snapshot.State == Connected {
@@ -224,7 +227,8 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 		if ctx.Err() != nil {
 			e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
 		} else {
-			e.completeLocked(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.", classifyFailure(err, FailureStart))
+			failure := classifyFailure(err, FailureStart)
+			e.completeLocked(Failed, failureMessage(failure, "Backend could not start. Check prerequisites, authentication and gateway configuration."), failure)
 		}
 		e.mu.Unlock()
 		return
@@ -232,7 +236,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	e.mu.Lock()
 	e.session = session
 	e.mu.Unlock()
-	stop := func(failureMessage string, failure FailureKind) {
+	stop := func(message string, failure FailureKind) {
 		e.beginCleanup()
 		// Stop may complete while cancellation races with a queued terminal
 		// notification. Observe both channels after cleanup so select ordering
@@ -245,8 +249,8 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 			// Serialize the cancellation check with Disconnect so a user request
 			// racing with cleanup cannot be overwritten by a failure result.
 			e.mu.Lock()
-			if ctx.Err() == nil && failureMessage != "" {
-				e.completeLocked(Failed, failureMessage, failure)
+			if ctx.Err() == nil && message != "" {
+				e.completeLocked(Failed, failureMessage(failure, message), failure)
 			} else {
 				e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
 			}

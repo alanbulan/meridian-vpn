@@ -2,7 +2,7 @@ name: Native build and tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, safe-recovery-boundaries]
   pull_request:
   workflow_dispatch:
 

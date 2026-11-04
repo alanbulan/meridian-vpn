@@ -41,10 +41,13 @@ func (e *ConnectionError) Kind() FailureKind {
 	return e.kind
 }
 
-// Is preserves cleanup quarantine through wrapping and joined errors.
+// Is preserves exact classifications through wrapping and joined errors.
 func (e *ConnectionError) Is(target error) bool {
-	_, cleanup := target.(*CleanupError)
-	return cleanup && e.Kind() == FailureCleanup
+	if _, cleanup := target.(*CleanupError); cleanup {
+		return e.Kind() == FailureCleanup
+	}
+	other, ok := target.(*ConnectionError)
+	return ok && e.Kind() == other.Kind()
 }
 
 func (e *ConnectionError) Error() string {
@@ -72,18 +75,39 @@ func (e *ConnectionError) Error() string {
 	}
 }
 
-// classifyFailure ignores raw strings and preserves cleanup as the highest
-// priority even when errors.Join contains another typed classification.
+// classifyFailure ignores raw strings. A joined transport failure must not
+// hide an authentication, trust or other non-transport failure just because
+// it appears first. These are diagnostic categories, never retry permission.
 func classifyFailure(err error, fallback FailureKind) FailureKind {
 	var cleanup *CleanupError
 	if errors.As(err, &cleanup) || errors.Is(err, &CleanupError{}) {
 		return FailureCleanup
+	}
+	for _, kind := range []FailureKind{
+		FailureTrust, FailureAuthentication, FailureConfiguration,
+		FailureBackendUnavailable, FailureUnknown, FailureStart,
+		FailureReadiness, FailureConnectionLost, FailureTransport,
+	} {
+		if errors.Is(err, NewConnectionError(kind)) {
+			return kind
+		}
 	}
 	var failure *ConnectionError
 	if errors.As(err, &failure) {
 		return failure.Kind()
 	}
 	return NewConnectionError(fallback).Kind()
+}
+
+// Non-transport failures should not invite another sign-in as a remedy. These
+// fixed messages reveal neither the backend output nor the server's response.
+func failureMessage(kind FailureKind, fallback string) string {
+	switch kind {
+	case FailureAuthentication, FailureTrust, FailureConfiguration, FailureBackendUnavailable, FailureUnknown, FailureStart, FailureReadiness:
+		return NewConnectionError(kind).Error()
+	default:
+		return fallback
+	}
 }
 
 // pendingCleanupFailure is called only after Stop has returned, when the engine

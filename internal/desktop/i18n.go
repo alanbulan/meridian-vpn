@@ -33,6 +33,8 @@ func (a *App) SetSystemLanguages(tags []string) {
 }
 
 var zh = map[string]string{
+	"Review the connection and authorize network changes before connecting": "连接前请检查连接配置并授权网络更改",
+	"The previous session gateway is unavailable; choose a connection and sign in again": "上次会话的网关已不可用，请选择连接并重新登录",
 	"Experimental UniVPN: direct TLS password authentication only":                                    "实验性 UniVPN：仅支持直连 TLS 密码认证",
 	"A reviewed native engine and trusted continuous-session broker must be explicitly configured":    "必须另行明确配置经审核的原生引擎及可信的持续会话代理",
 	"Authentication domain (blank = gateway host)":                                                    "认证域（留空使用网关主机名）",
@@ -83,6 +85,17 @@ var zh = map[string]string{
 	"Startup settings are unavailable":                                      "当前无法管理登录启动项",
 	"Existing startup entry cannot be safely managed":                       "已有启动文件不属于本应用或权限不安全，未修改",
 	"Startup entry change could not be confirmed; check the current status": "启动项操作未能确认完成，请检查当前状态",
+
+	"Required VPN backend capability is unavailable": "所需VPN后端当前不可用",
+	"VPN backend could not start": "VPN后端无法启动",
+	"VPN tunnel readiness was not verified": "未能确认VPN隧道已就绪",
+	"VPN tunnel connection was lost": "VPN隧道连接已中断",
+	"VPN authentication failed": "VPN认证失败",
+	"VPN peer trust could not be verified": "无法验证VPN对端的信任",
+	"VPN configuration was rejected": "VPN配置被拒绝",
+	"VPN transport failed": "VPN传输失败",
+	"VPN connection failed": "VPN连接失败",
+	"VPN cleanup could not be confirmed; inspect the system VPN service before reconnecting or quitting": "无法确认VPN已清理。请先检查系统VPN服务，再重新连接或退出。",
 
 	"Offer fresh authentication after connection loss":   "断线后提醒重新认证",
 	"Connection lost; cleanup completed. Sign in again?": "连接中断，清理已确认。是否重新认证？",

@@ -230,3 +230,50 @@ func TestEngineCancellationCannotHideQueuedCleanupFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestJoinedFailuresNeverHideNonTransportEvidence(t *testing.T) {
+	for _, kind := range []FailureKind{FailureTrust, FailureAuthentication, FailureConfiguration, FailureBackendUnavailable, FailureUnknown, FailureStart, FailureReadiness, FailureConnectionLost} {
+		for _, reverse := range []bool{false, true} {
+			a, b := error(NewConnectionError(FailureTransport)), error(NewConnectionError(kind))
+			if reverse {
+				a, b = b, a
+			}
+			err := fmt.Errorf("secret-wrapper: %w", errors.Join(a, fmt.Errorf("secret-inner: %w", b)))
+			if got := classifyFailure(err, FailureStart); got != kind {
+				t.Fatalf("kind %v reverse %v: got %v", kind, reverse, got)
+			}
+			if got := classifyFailure(errors.Join(err, &CleanupError{}), FailureStart); got != FailureCleanup {
+				t.Fatal("non-transport evidence hid cleanup uncertainty")
+			}
+		}
+	}
+	for _, kinds := range [][]FailureKind{{FailureAuthentication, FailureTrust}, {FailureTrust, FailureAuthentication}} {
+		if got := classifyFailure(errors.Join(NewConnectionError(kinds[0]), NewConnectionError(kinds[1])), FailureStart); got != FailureTrust {
+			t.Fatal("trust failure depended on join order")
+		}
+	}
+}
+
+func TestNonTransportLossDoesNotInviteRepeatedAuthentication(t *testing.T) {
+	for _, kind := range []FailureKind{FailureTrust, FailureAuthentication, FailureConfiguration, FailureBackendUnavailable, FailureUnknown, FailureStart, FailureReadiness} {
+		t.Run(fmt.Sprint(kind), func(t *testing.T) {
+			s := newLifecycleSession()
+			e := NewEngine(sessionAdapter{s})
+			if err := e.Connect(profile(), "synthetic-secret", true); err != nil {
+				t.Fatal(err)
+			}
+			s.ready <- nil
+			await(t, e, Connected)
+			s.done <- fmt.Errorf("secret-wrapper: %w", errors.Join(NewConnectionError(FailureTransport), NewConnectionError(kind)))
+			await(t, e, Failed)
+			snapshot := e.Snapshot()
+			if snapshot.Failure != kind || snapshot.Message != NewConnectionError(kind).Error() {
+				t.Fatalf("unexpected classified message: %+v", snapshot)
+			}
+			encoded, err := json.Marshal(snapshot)
+			if err != nil || strings.Contains(string(encoded), "secret") || strings.Contains(snapshot.Message, "Sign in again") {
+				t.Fatal("unsafe or secret-bearing recovery message")
+			}
+		})
+	}
+}

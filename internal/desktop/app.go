@@ -17,6 +17,14 @@ type adapterCheck struct {
 	auth    core.Capability
 }
 
+// sessionTarget retains only the explicitly selected endpoint, never credentials.
+// It is process-local and bound to the engine attempt that accepted the form.
+type sessionTarget struct {
+	attemptID uint64
+	profileID string
+	gateway   string
+}
+
 type App struct {
 	Startup                *autostart.Manager
 	StartupStatus          autostart.Status
@@ -26,7 +34,9 @@ type App struct {
 	observedConnected      bool
 	reauthAt               time.Time
 	reauthProfileID        string
+	reauthAttemptID        uint64
 	reauthVisible          bool
+	sessionTarget          sessionTarget
 	AuthCapability         core.Capability
 	Store                  core.Store
 	Config                 core.Config
@@ -802,9 +812,12 @@ func (a *App) connectForm(c *ui.Context) {
 		ui.Text(c, a.tr("Session authentication")).FontSize(16).Bold()
 		if selected := a.selected(); selected != nil {
 			choices := append([]string{selected.Gateway}, selected.AdditionalGateways...)
+			a.label(c, "Gateway for this session")
+			ui.Text(c, a.GatewayChoice).FillWidth()
 			if len(choices) > 1 {
-				a.label(c, "Gateway for this session")
-				ui.Select(c.Key("session-gateway"), &a.GatewayChoice, choices).FillWidth()
+				gateway := a.GatewayChoice
+				ui.Select(c.Key("session-gateway"), &gateway, choices).FillWidth()
+				a.selectSessionGateway(gateway)
 			}
 			if selected.Protocol == "l2tp" {
 				a.label(c, "IPsec pre-shared key (this session only)")
@@ -825,23 +838,7 @@ func (a *App) connectForm(c *ui.Context) {
 		}
 		ui.Row(c).Gap(10).Children(func() {
 			if ui.PrimaryButton(c.Key("confirm-connect"), a.tr("Connect")).Disabled(!a.Authorized || !a.canConnect(a.selected()) || needsProxyConsent && !a.ProxyConsent).Clicked() {
-				if p := a.selected(); p != nil {
-					sessionProfile := *p
-					sessionProfile.AllowProxySystemAuth = a.ProxyConsent
-					if a.GatewayChoice != "" {
-						sessionProfile.Gateway = a.GatewayChoice
-						sessionProfile.AdditionalGateways = nil
-					}
-					credentials := core.Credentials{Password: []byte(a.Password), KeyPassword: []byte(a.KeyPassword), IPsecPSK: []byte(a.IPsecPSK)}
-					err := a.Engine.ConnectWithCredentials(sessionProfile, credentials, a.Authorized)
-					clear(credentials.Password)
-					clear(credentials.KeyPassword)
-					clear(credentials.IPsecPSK)
-					if err != nil {
-						a.Notice = err.Error()
-					}
-				}
-				a.clearCredentials()
+				a.submitConnection()
 			}
 			if ui.Button(c.Key("cancel-connect"), a.tr("Cancel")).Clicked() {
 				a.clearCredentials()

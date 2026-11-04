@@ -30,7 +30,8 @@ type UniVPNTransportProvider interface {
 // It is called after failed Prepare, command-integrity rejection, canceled launch,
 // or failed Start. It must honor ctx, and prove no worker/resource remains.
 // Prepare may configure SysProcAttr but MUST NOT start a worker, mutate the command
-// transport/credential fields, close its files, or retain command access after return.
+// transport/credential fields, change the launcher's reserved PidFD output slot,
+// close its files, or retain command access after return.
 type UniVPNLaunchRollback interface {
 	RollbackLaunch(context.Context, *exec.Cmd) error
 }
@@ -117,6 +118,10 @@ func startUniVPNContained(ctx context.Context, cmd *exec.Cmd, isolation UniVPNPr
 	stdin, stdout, stderr := cmd.Stdin, cmd.Stdout, cmd.Stderr
 	cancelPointer := reflect.ValueOf(cmd.Cancel).Pointer()
 	waitDelay := cmd.WaitDelay
+	var pidFD *int
+	if cmd.SysProcAttr != nil {
+		pidFD = cmd.SysProcAttr.PidFD
+	}
 	defer func() {
 		if err == nil {
 			return
@@ -139,6 +144,9 @@ func startUniVPNContained(ctx context.Context, cmd *exec.Cmd, isolation UniVPNPr
 	}
 	if cmd.Path != path || cmd.Dir != dir || !reflect.DeepEqual(cmd.Args, args) || !reflect.DeepEqual(cmd.Env, env) || !reflect.DeepEqual(cmd.ExtraFiles, files) || !reflect.DeepEqual(cmd.Stdin, stdin) || !reflect.DeepEqual(cmd.Stdout, stdout) || !reflect.DeepEqual(cmd.Stderr, stderr) || reflect.ValueOf(cmd.Cancel).Pointer() != cancelPointer || cmd.WaitDelay != waitDelay || cmd.Err != nil || cmd.Process != nil || cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid || cmd.SysProcAttr.Pgid != 0 {
 		return errors.New("isolation changed protected launch fields")
+	}
+	if cmd.SysProcAttr.PidFD != pidFD || (pidFD != nil && *pidFD != -1) {
+		return errors.New("isolation changed reserved pidfd capture")
 	}
 	if err = ctx.Err(); err != nil {
 		return err

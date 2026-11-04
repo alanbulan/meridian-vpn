@@ -249,12 +249,21 @@ func (l UniVPNExecLauncher) Launch(ctx context.Context, path string, args []stri
 	}
 	cmd.Cancel = func() error { return p.Stop() }
 	cmd.WaitDelay = 3 * time.Second
-	if err = startUniVPNContained(ctx, cmd, l.Isolation, cmd.Start); err != nil {
-		return nil, err
+	startErr := startUniVPNProcessWithPidfd(ctx, p, cmd.Start, uniVPNRealPidfdKernel{})
+	if startErr != nil && cmd.Process == nil {
+		return nil, startErr
+	}
+	// A conservative partial-start provider result must retain the child's sole
+	// Wait owner, even on error. Concrete Group.Start currently returns cmd.Start
+	// directly; it has no additional post-success error path.
+	if startErr != nil {
+		p.launchCleanupErr = startErr
 	}
 	// Retain the original process identity before any caller can begin Wait.
 	// Failure only disables optional observations; it must not lose this child.
-	p.observation = pinUniVPNOriginalProcess(p)
+	if startErr == nil {
+		p.observation = pinUniVPNOriginalProcess(p)
+	}
 	if sessionRead != nil {
 		reader := sessionRead
 		p.sessionReader = reader
@@ -269,7 +278,7 @@ func (l UniVPNExecLauncher) Launch(ctx context.Context, path string, args []stri
 			}
 		}()
 	}
-	return p, nil
+	return p, startErr
 }
 
 type uniVPNExecProcess struct {
@@ -288,12 +297,15 @@ type uniVPNExecProcess struct {
 	packetMu         sync.Mutex
 	sessionID        string
 	observation      *uniVPNProcessObservation
+	namespaces       *uniVPNPidfdObservation
 }
 
 func (p *uniVPNExecProcess) Wait() error {
 	err := errors.Join(p.cmd.Wait(), p.launchCleanupErr)
 	close(p.exited)
 	err = errors.Join(err, p.observation.close())
+	namespaceCloseErr := p.namespaces.close()
+	err = errors.Join(err, namespaceCloseErr)
 	p.packetMu.Lock()
 	packet := p.packet
 	p.packet = nil
@@ -302,7 +314,7 @@ func (p *uniVPNExecProcess) Wait() error {
 	err = errors.Join(err, packetCloseErr)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	p.containmentErr = errors.Join(packetCloseErr, p.isolation.WaitEmpty(ctx, p.cmd))
+	p.containmentErr = errors.Join(packetCloseErr, namespaceCloseErr, p.isolation.WaitEmpty(ctx, p.cmd))
 	if p.session != nil {
 		// Bound pipe drainage even if a failed isolation provider left writers alive.
 		select {

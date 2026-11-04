@@ -29,6 +29,7 @@ type UniVPNNativeProcess interface {
 
 // Launch must not retain password, invoke a shell, or accept arbitrary scripts.
 // A production implementation must pin/verify the executable and privileged hook.
+// Any nonnil process transfers its sole Wait ownership, including on error.
 type UniVPNNativeLauncher interface {
 	Launch(context.Context, string, []string, []byte) (UniVPNNativeProcess, error)
 }
@@ -106,6 +107,22 @@ func (b *UniVPNBrokerBackend) Start(ctx context.Context, executable string, args
 	if err != nil {
 		cancel()
 		var cleanup *CleanupError
+		if !nilInterface(p) {
+			// Never discard a partial launch or offer it to readiness. Keep the
+			// backend quarantined while the retained child has its sole Wait and
+			// independent Stop owner. No timeout can release it for a new launch.
+			b.mu.Lock()
+			b.quarantined = true
+			b.mu.Unlock()
+			go func() { _ = p.Stop() }()
+			go func() {
+				_ = p.Wait()
+				cleanupCtx, done := context.WithTimeout(context.Background(), 2*time.Second)
+				defer done()
+				_ = b.Network.Cleanup(cleanupCtx, p)
+			}()
+			err = errors.Join(err, &CleanupError{})
+		}
 		if errors.As(err, &cleanup) {
 			b.mu.Lock()
 			b.quarantined = true

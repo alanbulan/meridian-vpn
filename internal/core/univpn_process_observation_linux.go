@@ -498,7 +498,7 @@ func uniVPNObservedImage(st syscall.Stat_t) UniVPNObservedExecutable {
 	return UniVPNObservedExecutable{
 		UniVPNObservedInode: UniVPNObservedInode{Device: uint64(st.Dev), Inode: st.Ino},
 		UID:                 st.Uid, GID: st.Gid, Mode: st.Mode, Size: st.Size,
-		ModifiedSec: st.Mtim.Sec, ModifiedNS: st.Mtim.Nsec,
-		ChangedSec: st.Ctim.Sec, ChangedNS: st.Ctim.Nsec,
+		ModifiedSec: int64(st.Mtim.Sec), ModifiedNS: int64(st.Mtim.Nsec),
+		ChangedSec: int64(st.Ctim.Sec), ChangedNS: int64(st.Ctim.Nsec),
 	}
 }

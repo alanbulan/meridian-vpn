@@ -107,3 +107,46 @@ acceptance is implied by these tests.
 The documentation explicitly warns that dispatcher jobs can run after a later
 event makes them obsolete. Empty directories alone must never become an
 already-running/queued-job absence certificate.
+
+## Why unit state cannot authorize dispatcher absence
+
+Upstream dispatcher code keeps its current request, waiting requests and pending
+count private. Its public `Ping` method reports identity and uptime, not a queue
+census. Graceful shutdown can release the D-Bus name before finishing pending
+requests. NetworkManager's caller-side cancellation removes its callback rather
+than cancelling execution. These are separate lifetimes, not one public drain
+transaction.
+
+The upstream unit explicitly uses `KillMode=process` so script-created daemons
+can survive dispatcher exit. Consequently an inactive unit, zero MainPID,
+missing bus owner or successful stop cannot establish that descendants are gone.
+The bus activation file also contains both direct `Exec` and a systemd service
+alias; the actual bus activation configuration matters. Disabling or masking a
+systemd unit is not an inventory of outstanding NM/bus requests or earlier work.
+
+A production provider requires a separately justified deployment contract:
+
+1. Pin the supported NM build, dispatcher/search paths, unit/drop-ins/aliases,
+   actual D-Bus activation configuration and trusted initial-host provenance.
+2. Establish and retain an administrator-controlled exclusion epoch covering
+   every dispatcher execution/activation path before the protected operation.
+3. Establish prior-instance and descendant absence with trusted containment
+   history, not a service-state snapshot. Cgroup-v2 `populated=0` covers only
+   currently contained processes; it cannot account for escaped/delegated work.
+4. Independently inspect and reconcile persistent network/DNS effects from
+   earlier scripts, then revoke on any loss of the deployment contract.
+
+A clean-boot no-execution deployment could satisfy a narrower contract, but does
+not prove that no NM/bus activation requests are pending. No such provisioning
+or exclusion mechanism is implemented or assumed here. No observer stops,
+masks, kills or alters a service. Until this boundary is justified, it cannot
+implement `ServicePolicy` or confer Ready.
+
+Source review (upstream behavior, not deployed-build attestation):
+
+- [Dispatcher request state and lifecycle](https://github.com/NetworkManager/NetworkManager/blob/main/src/nm-dispatcher/nm-dispatcher.c)
+- [NetworkManager dispatcher caller cancellation](https://github.com/NetworkManager/NetworkManager/blob/main/src/core/nm-dispatcher.c)
+- [Dispatcher service KillMode](https://github.com/NetworkManager/NetworkManager/blob/main/data/NetworkManager-dispatcher.service.in)
+- [D-Bus activation metadata](https://github.com/NetworkManager/NetworkManager/blob/main/src/nm-dispatcher/org.freedesktop.nm_dispatcher.service.in)
+- [systemd kill semantics](https://www.freedesktop.org/software/systemd/man/latest/systemd.kill.html)
+- [Cgroup-v2 process membership](https://docs.kernel.org/admin-guide/cgroup-v2.html)

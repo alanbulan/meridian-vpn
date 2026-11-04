@@ -15,8 +15,15 @@ func (a *App) clearReauthentication() {
 
 // This is a bounded reminder, NOT an automatic credential replay/reconnect.
 func (a *App) pollReauthentication(now time.Time) {
-	state := a.Engine.Snapshot().State
+	snapshot := a.Engine.Snapshot()
+	state := snapshot.State
 	if a.ShuttingDown || !a.Config.Settings.ReauthOnLoss || state == core.CleanupFailed || a.SwitchPending {
+		a.clearReauthentication()
+		return
+	}
+	// Known authentication/trust/configuration failures need investigation, not
+	// another sign-in nudge. The normal explicit Connect action remains available.
+	if state == core.Failed && snapshot.Failure != core.FailureConnectionLost && snapshot.Failure != core.FailureTransport {
 		a.clearReauthentication()
 		return
 	}

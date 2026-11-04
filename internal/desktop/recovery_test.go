@@ -76,3 +76,54 @@ func TestRecoveryPreferencePersists(t *testing.T) {
 		t.Fatal("never-connected app prompted")
 	}
 }
+
+func TestRecoveryReminderRespectsFailureClassification(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		kind   core.FailureKind
+		remind bool
+	}{
+		{"connection-lost", core.FailureConnectionLost, true},
+		{"transport", core.FailureTransport, true},
+		{"authentication", core.FailureAuthentication, false},
+		{"trust", core.FailureTrust, false},
+		{"configuration", core.FailureConfiguration, false},
+		{"unknown", core.FailureUnknown, false},
+		{"backend", core.FailureBackendUnavailable, false},
+		{"start", core.FailureStart, false},
+		{"readiness", core.FailureReadiness, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &switchSession{ready: make(chan error, 1), done: make(chan error, 1)}
+			a := NewWithAdapter(filepath.Join(t.TempDir(), "profiles.json"), switchAdapter{s})
+			p := core.Profile{ID: "a", Name: "Office", Gateway: "https://example.com", Protocol: "anyconnect"}
+			a.Config.Profiles = []core.Profile{p}
+			a.Config.SelectedID = p.ID
+			a.Config.Settings.ReauthOnLoss = true
+			if err := a.Engine.Connect(p, "synthetic", true); err != nil {
+				t.Fatal(err)
+			}
+			s.ready <- nil
+			awaitState(t, a, core.Connected)
+			now := time.Now()
+			a.pollReauthentication(now)
+			s.done <- errors.Join(core.NewConnectionError(core.FailureTransport), core.NewConnectionError(tc.kind))
+			awaitState(t, a, core.Failed)
+			a.pollReauthentication(now)
+			a.pollReauthentication(now.Add(6 * time.Second))
+			if a.reauthVisible != tc.remind {
+				t.Fatal("recovery reminder ignored classified failure")
+			}
+			if !a.canConnect(&p) {
+				t.Fatal("classification removed the explicit manual connection action")
+			}
+			if a.ConnectPanel || a.Authorized || a.ProxyConsent || a.Password != "" || a.KeyPassword != "" || a.IPsecPSK != "" {
+				t.Fatal("recovery reminder acquired credentials or authorized a new connection")
+			}
+			a.openConnectForm()
+			if !a.ConnectPanel || a.Authorized || a.Password != "" {
+				t.Fatal("manual connection did not require fresh authentication and authorization")
+			}
+		})
+	}
+}

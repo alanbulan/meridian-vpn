@@ -98,6 +98,15 @@ func TestL2TPFailuresCleanUp(t *testing.T) {
 			if err == nil {
 				t.Fatal("accepted failure")
 			}
+			want := FailureStart
+			if mode == "readiness" || mode == "address" {
+				want = FailureReadiness
+			} else if mode == "cleanup" {
+				want = FailureCleanup
+			}
+			if classifyFailure(err, FailureUnknown) != want {
+				t.Fatal("incorrect L2TP failure classification", err)
+			}
 			var ce *CleanupError
 			if (mode == "cleanup") != errors.As(err, &ce) {
 				t.Fatal("incorrect cleanup status", err)

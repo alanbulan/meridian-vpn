@@ -224,7 +224,8 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 		if ctx.Err() != nil {
 			e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
 		} else {
-			e.completeLocked(Failed, "Backend could not start. Check prerequisites, authentication and gateway configuration.", classifyFailure(err, FailureStart))
+			failure := classifyFailure(err, FailureStart)
+			e.completeLocked(Failed, failureMessage(failure, "Backend could not start. Check prerequisites, authentication and gateway configuration."), failure)
 		}
 		e.mu.Unlock()
 		return
@@ -232,7 +233,7 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 	e.mu.Lock()
 	e.session = session
 	e.mu.Unlock()
-	stop := func(failureMessage string, failure FailureKind) {
+	stop := func(message string, failure FailureKind) {
 		e.beginCleanup()
 		// Stop may complete while cancellation races with a queued terminal
 		// notification. Observe both channels after cleanup so select ordering
@@ -245,8 +246,8 @@ func (e *Engine) run(ctx context.Context, generation uint64, finished chan struc
 			// Serialize the cancellation check with Disconnect so a user request
 			// racing with cleanup cannot be overwritten by a failure result.
 			e.mu.Lock()
-			if ctx.Err() == nil && failureMessage != "" {
-				e.completeLocked(Failed, failureMessage, failure)
+			if ctx.Err() == nil && message != "" {
+				e.completeLocked(Failed, failureMessage(failure, message), failure)
 			} else {
 				e.completeLocked(Disconnected, "No VPN tunnel is active", FailureNone)
 			}

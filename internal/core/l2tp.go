@@ -112,10 +112,10 @@ func l2tpData(p Profile, unit int) string {
 }
 func (n *NetworkManager) startL2TP(ctx context.Context, p Profile, c Credentials) (Session, error) {
 	if !n.l2tpAvailable {
-		return nil, errors.New("NetworkManager-l2tp plugin is unavailable")
+		return nil, NewConnectionError(FailureBackendUnavailable)
 	}
 	if p.Username == "" {
-		return nil, errors.New("L2TP requires a username")
+		return nil, NewConnectionError(FailureConfiguration)
 	}
 	id := NewID()
 	uuid := id[:8] + "-" + id[8:12] + "-4" + id[13:16] + "-a" + id[17:20] + "-" + id[20:]
@@ -125,7 +125,7 @@ func (n *NetworkManager) startL2TP(ctx context.Context, p Profile, c Credentials
 	unit := 1000 + int(raw)%60000
 	iface := "ppp" + strconv.Itoa(unit)
 	if !n.interfaceGone(iface) {
-		return nil, errors.New("PPP interface is already in use; retry")
+		return nil, NewConnectionError(FailureStart)
 	}
 	op, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
@@ -139,7 +139,7 @@ func (n *NetworkManager) startL2TP(ctx context.Context, p Profile, c Credentials
 	}
 	args := []string{"--wait", "15", "connection", "add", "save", "no", "type", "vpn", "con-name", "Meridian-" + id[:8], "connection.uuid", uuid, "connection.autoconnect", "no", "vpn.service-type", "org.freedesktop.NetworkManager.l2tp", "vpn.data", l2tpData(p, unit)}
 	if _, err := n.runner.Run(op, n.nm, args, nil); err != nil {
-		return fail(errors.New("NetworkManager could not create temporary L2TP profile"))
+		return fail(NewConnectionError(FailureStart))
 	}
 	var input bytes.Buffer
 	input.WriteString("vpn.secrets.password:")
@@ -151,10 +151,10 @@ func (n *NetworkManager) startL2TP(ctx context.Context, p Profile, c Credentials
 	_, err := n.runner.Run(op, n.nm, []string{"--wait", "60", "connection", "up", "uuid", uuid, "passwd-file", "/proc/self/fd/0"}, input.Bytes())
 	clear(input.Bytes())
 	if err != nil {
-		return fail(errors.New("L2TP/IPsec activation failed"))
+		return fail(NewConnectionError(FailureStart))
 	}
 	if !s.verified(op) {
-		return fail(errors.New("NetworkManager did not verify the L2TP tunnel"))
+		return fail(NewConnectionError(FailureReadiness))
 	}
 	if ctx.Err() != nil {
 		return fail(ctx.Err())

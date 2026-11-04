@@ -804,7 +804,9 @@ func (a *App) connectForm(c *ui.Context) {
 			choices := append([]string{selected.Gateway}, selected.AdditionalGateways...)
 			if len(choices) > 1 {
 				a.label(c, "Gateway for this session")
-				ui.Select(c.Key("session-gateway"), &a.GatewayChoice, choices).FillWidth()
+				gateway := a.GatewayChoice
+				ui.Select(c.Key("session-gateway"), &gateway, choices).FillWidth()
+				a.selectSessionGateway(gateway)
 			}
 			if selected.Protocol == "l2tp" {
 				a.label(c, "IPsec pre-shared key (this session only)")

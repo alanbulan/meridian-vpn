@@ -16,6 +16,28 @@ func (a *App) openConnectForm() {
 	a.Page = "Overview"
 }
 
+// Credentials and consent belong to the exact gateway shown when entered.
+// Changing the dropdown cannot carry them to another gateway in the profile.
+func (a *App) selectSessionGateway(gateway string) {
+	if gateway == a.GatewayChoice {
+		return
+	}
+	p := a.selected()
+	if p == nil {
+		return
+	}
+	allowed := gateway == p.Gateway
+	for _, other := range p.AdditionalGateways {
+		allowed = allowed || gateway == other
+	}
+	if !allowed {
+		return
+	}
+	a.clearCredentials()
+	a.GatewayChoice = gateway
+	a.ConnectPanel = true
+}
+
 // Switching never carries credentials or proxy consent to another connection.
 // The next authentication form opens only after the old tunnel's cleanup succeeds.
 func (a *App) beginSwitch(id string) {

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import hashlib
 from pathlib import Path
 import plistlib
@@ -30,7 +31,9 @@ class MacOSPackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);bins=root/"bin";bins.mkdir();stage=root/"stage";stage.mkdir()
             for name in m.BINARIES:(bins/name).write_bytes(self.binary())
-            app=m.stage_bundle(bins,stage,"arm64")
+            with mock.patch.object(Path,"chmod",autospec=True,side_effect=Path.chmod) as chmod:
+                app=m.stage_bundle(bins,stage,"arm64")
+            chmod.assert_has_calls([mock.call(app/"Contents"/p,0o755) for p in m.BINARIES.values()],any_order=True)
             info=plistlib.loads((app/"Contents/Info.plist").read_bytes())
             self.assertEqual(info["CFBundleName"],"Meridian Preview")
             self.assertEqual(info["CFBundleExecutable"],"meridian")
@@ -39,7 +42,10 @@ class MacOSPackageTests(unittest.TestCase):
             self.assertTrue((app/"Contents/Resources/Notices/MYGO-LICENSE.txt").is_file())
             self.assertTrue((app/"Contents/Resources/Notices/LUCIDE-LICENSE").is_file())
             self.assertEqual(len(list((app/"Contents/Resources/Notices/GoDependencies").rglob("*"))), len(list((m.ROOT/"docs/third-party").rglob("*"))))
-            self.assertTrue(all((app/"Contents"/p).stat().st_mode & 0o111 for p in m.BINARIES.values()))
+            # Windows chmod cannot represent POSIX executable bits. Keep the
+            # actual permission assertion on POSIX; all hosts verify chmod calls.
+            if os.name != "nt":
+                self.assertTrue(all((app/"Contents"/p).stat().st_mode & 0o111 for p in m.BINARIES.values()))
     def test_non_darwin_never_runs_tools(self):
         with mock.patch.object(m.platform,"system",return_value="Linux"),mock.patch.object(m,"invoke") as invoke:
             with self.assertRaises(ValueError):m.package(Path("x"),Path("y"),"arm64","a"*40,Path("z"))
@@ -67,8 +73,9 @@ class MacOSPackageTests(unittest.TestCase):
         with mock.patch.object(m,"invoke") as invoke:
             m.sign_bundle(Path("Preview.app"))
             calls=[c.args[0] for c in invoke.call_args_list]
-            self.assertTrue(all("/Helpers/" in c[-1] for c in calls[:3]))
-            self.assertTrue(calls[3][-1].endswith("/MacOS/meridian"))
+            self.assertEqual(len(calls),6)
+            self.assertEqual({Path(c[-1]) for c in calls[:3]}, {Path("Preview.app")/"Contents"/"Helpers"/name for name in ("meridianctl","meridian-macos-inspect","meridian-macos-service")})
+            self.assertEqual(Path(calls[3][-1]),Path("Preview.app")/"Contents"/"MacOS"/"meridian")
             self.assertEqual(calls[4][-1],"Preview.app")
             self.assertEqual(calls[5][1:4],["--verify","--deep","--strict"])
     def test_missing_input_does_not_create_bundle(self):

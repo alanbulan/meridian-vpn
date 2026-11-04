@@ -1,0 +1,89 @@
+name: 仅构建并发布未验证的开发预览版
+on:
+  push:
+    branches: [release/build-only-20261104]
+    paths: [.github/workflows/build-only-release.yml]
+permissions:
+  contents: read
+concurrency:
+  group: meridian-build-only-release
+  cancel-in-progress: false
+env:
+  SOURCE_SHA: REPLACE_WITH_40_HEX_INTEGRATED_SHA
+  RELEASE_VERSION: 0.1.0-alpha.2
+  GOTOOLCHAIN: local
+  GOWORK: 'off'
+  GOENV: 'off'
+  CGO_ENABLED: '0'
+jobs:
+  build:
+    if: github.repository == 'alanbulan/meridian-vpn'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            runner: ubuntu-24.04
+            container: debian:trixie-slim
+          - target: windows-amd64
+            runner: windows-2022
+            container: ''
+          - target: darwin-arm64
+            runner: macos-15
+            container: ''
+          - target: darwin-amd64
+            runner: macos-15-intel
+            container: ''
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container || null }}
+    timeout-minutes: 30
+    steps:
+      - name: 准备 Linux 编译与封装工具，不安装或启动 Meridian
+        if: matrix.target == 'linux-amd64'
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git python3 build-essential pkg-config libopenconnect-dev dpkg xz-utils
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 仅编译与创建安装包，不运行测试、程序或安装器
+        shell: bash
+        env:
+          GIT_CONFIG_COUNT: '1'
+          GIT_CONFIG_KEY_0: safe.directory
+          GIT_CONFIG_VALUE_0: ${{ github.workspace }}
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then PYTHON=python; else PYTHON=python3; fi
+          "$PYTHON" scripts/build-only-package.py --target '${{ matrix.target }}' --version "$RELEASE_VERSION" --source "$SOURCE_SHA" --output build/build-only
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: build-only-${{ matrix.target }}
+          path: build/build-only/
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: build-only-*
+          path: build/release-inputs
+          merge-multiple: false
+      - name: 发布新的预发布版；不覆盖既有标签和资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish-build-only.py --artifacts build/release-inputs --version "$RELEASE_VERSION" --source "$SOURCE_SHA"

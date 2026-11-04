@@ -48,7 +48,7 @@ jobs:
           mkdir -p build/reports
           python3 integration/macos-preflight/run.py abi --reports build/reports/macos-readonly-abi
       - name: 独立读取内核路由与系统解析器（不修改网络、不发送 DNS 查询）
-        run: MERIDIAN_MACOS_POLICY_READBACK=1 go test -count=1 -timeout=20s -run '^TestMacOSReadOnlyPolicyReaders$' ./internal/macosvpn
+        run: MERIDIAN_MACOS_POLICY_READBACK=1 go test -count=1 -timeout=20s -run '^TestMacOSReadOnly(PolicyReaders|DestinationLookup)$' ./internal/macosvpn
       - name: 构建应用和只读诊断工具
         run: |
           mkdir -p build/macos-binaries

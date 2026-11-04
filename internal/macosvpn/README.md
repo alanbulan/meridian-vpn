@@ -238,3 +238,19 @@ VPN connectivity. Activation stays unintegrated and disabled.
 `ReadNetworkPolicySnapshot` 两次读取并比较稳定的规范化摘要；不是原子快照，也不排除两次之间发生再恢复的修改。`CompareNetworkRestoration` 只证明所表示路由与解析器字段相等，`CompleteCleanupVerified` 始终为 false；未表示的路由指标、每应用策略、防火墙、接口残留及变更归属尚无完整证明。绝不通过覆盖整个旧配置来“恢复”他人的并发变更。
 
 原生读回专用测试必须显式设置 `MERIDIAN_MACOS_POLICY_READBACK=1`，仅在候选 CI 中读取当前 runner 路由和解析器，不启动/停止服务。默认单测使用注入数据。同步 Apple 调用仍不能硬中断；core Stop 超时返回清理失败并保留执行者，清理重试也有等待上限，绝不并发重入尚未返回的清理调用。
+
+## 指定目的地址的内核选路验证
+
+`LookupDestinationRoute` 不从路由表自行猜测最佳路径，而是通过固定 `/sbin/route -n get -inet/-inet6 数值地址` 取得内核 RTM_GET 的最佳匹配，核对完整输出及实际接口索引。拒绝主机名、作用域地址、多播、未指定地址和任意命令选项；不接受 `-ifscope`，避免强制期望接口掩盖正常选路旁路。子进程输出上限16 KiB、等待期限3秒、管道收尾1秒；警告输出、缺字段、未知格式、地址不匹配均失败关闭。同步接口索引读取仍不具备硬性墙钟中断保证。
+
+`VerifyDestinationRoutes` 最多核验16个明确目的地址，将 IPv4/IPv6 内核结果与已有 PPP 代际中的接口名和索引绑定，拒绝 down/reject/blackhole/condemned/local/broadcast/multicast 结果。持有原生会话的调用方仍必须在前后重新核实代际。结果只证明这些目的地址的无接口提示内核查询匹配，`CompletePolicyVerified` 始终为 false；不能推广到整个 CIDR、指定源地址/接口的流、每应用 NECP 策略或真实包传输。
+
+Apple 的 [route 源码](https://github.com/apple-oss-distributions/network_cmds/blob/main/route.tproj/route.c) 将 get 映射为 RTM_GET，[XNU rtsock.c](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/rtsock.c) 的该分支执行 rt_lookup 并报告结果，非路由增删。`-n` 禁止符号名称解析。CI 仅查询 IPv4/IPv6 回环地址，不发送 IP 包、DNS 请求，不启动或停止 VPN。
+
+### 生产保证仍缺少的边界
+
+Apple 的 [VPN 路由说明](https://developer.apple.com/documentation/networkextension/routing-your-vpn-network-traffic) 明确普通默认路由可受更具体路由及应用接口选择影响。Network Extension 的策略强制机制属于另一种受控配置，不能凭现有 L2TP 服务读取结果宣称相同保证。
+
+[Network 连接解析报告](https://developer.apple.com/documentation/network/nwconnection/establishmentreport/resolution) 只覆盖对应连接，可能使用缓存，其目标端点不等于 DNS 服务器身份；[加密 DNS](https://developer.apple.com/videos/play/wwdc2020/10047/) 可按应用/连接配置。系统解析器快照不足以证明全部查询去向。指定 DNS 服务器被绕过与加密 DNS 的传输绕过隧道是不同问题，不能混为同一保证。
+
+[SCNetworkConnection 官方头文件](https://github.com/apple-oss-distributions/configd/blob/main/SystemConfiguration.fproj/SCNetworkConnection.h) 明确 Start/Stop 是共享兴趣仲裁，`linger=false` 不是独占租约，Stop(false) 成功不保证其他应用已释放兴趣。当前阶段不承诺全局独占或完整整机恢复。需进一步约定有限的产品保证、独立策略强制方案及获授权的真实网络验收，不能仅凭读回给生产 Ready 放行。

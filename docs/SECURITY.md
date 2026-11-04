@@ -1,32 +1,32 @@
-# Security boundary
+# 安全边界
 
-## Implemented
-- GUI remains unprivileged. NetworkManager and distro-managed OpenConnect or L2TP/IPsec services own privileged networking; no custom elevated shell/script interface is exposed.
-- Fixed command structures use `exec.CommandContext`, not a shell. User profiles cannot set executable/script paths or arbitrary options.
-- AnyConnect HTTPS gateways reject embedded credentials, query strings, fragments, control characters, invalid ports and overlong values. TLS verification stays enabled.
-- Password travels to unprivileged OpenConnect via stdin. Its authenticated cookie/certificate/gateway tuple travels to nmcli via `/proc/self/fd/0`, not argv or a secret file. Authentication output is parsed as a strict data format, never evaluated as shell code.
-- NetworkManager profiles are uniquely UUID-scoped, in-memory (`save no`) and non-autoconnecting. Cleanup addresses that generated UUID only.
-- Command output is bounded. Raw stderr/errors are not shown or persisted. Go strings and runtime copies cannot guarantee cryptographic zeroization of all process memory; sensitive byte buffers are cleared where practical.
-- `Connected` requires NetworkManager activation and the expected interface being up with an address. It is not inferred from subprocess launch.
-- Graceful disconnect/quit waits for cleanup. Cleanup uncertainty remains explicit; reconnect is blocked rather than claiming the system is safe.
+## 已实现的措施
+- GUI 始终以非特权身份运行。需要特权的网络操作由 NetworkManager 以及发行版管理的 OpenConnect 或 L2TP/IPsec 服务负责；不提供自定义的提权 shell 或脚本接口。
+- 固定结构的命令使用 `exec.CommandContext` 执行，不经过 shell。用户配置不能设置可执行文件或脚本路径，也不能传入任意选项。
+- AnyConnect HTTPS 网关拒绝内嵌凭据、查询字符串、片段、控制字符、无效端口和过长的值。TLS 验证始终开启。
+- 密码通过 stdin 传给非特权 OpenConnect 进程。认证所得的 Cookie、证书和网关三元组通过 `/proc/self/fd/0` 传给 nmcli，不进入 argv，也不写入秘密文件。认证输出按严格的数据格式解析，绝不作为 shell 代码执行。
+- NetworkManager 配置使用唯一 UUID 限定作用域，仅保存在内存中（`save no`），且不自动连接。清理仅针对本次生成的 UUID。
+- 命令输出有大小限制。不显示或持久化原始 stderr 和错误信息。Go 字符串及运行时产生的副本无法保证对全部进程内存进行密码学意义上的彻底擦除；在可行的情况下会清空敏感字节缓冲区。
+- 只有 NetworkManager 已激活连接，且预期接口已启用并获得地址，状态才会变为 `Connected`。不会仅凭子进程启动就认定连接成功。
+- 正常断开或退出会等待清理完成。清理结果不确定时会明确显示，并阻止重新连接，不会宣称系统已处于安全状态。
 
-## Advanced fields and imports
-- Custom CA is a bounded regular PEM trust-root file, not a client private key. Linux no-follow/nonblocking opens reject symlink/FIFO races. No privileged backend receives the user-selected CA path; the authenticated gateway fingerprint crosses the boundary.
-- Proxy URLs reject embedded credentials and unsupported schemes. Any proxy requires fresh explicit consent for possible system integrated authentication; the runtime-only flag is excluded from JSON and strict import rejects injected consent. Authentication uses `--proxy-auth=none`; the NM tunnel may use its normal integrated-auth behavior only after the explicit per-attempt authorization.
-- When no explicit proxy is configured, authentication passes `--no-proxy`. GUI-created subprocess environments drop inherited `*_proxy` variables (including embedded credentials) and enforce the C locale. This does not modify or inspect the separate administrator-managed NetworkManager service environment; deployment must ensure that trusted service has the intended proxy policy.
-- Auth group, MTU and transport options use validated typed fields, never shell interpolation. Certificate checks cannot be disabled.
-- Meridian JSON import is versioned, size-bounded, duplicate-safe and atomic. A separate bounded, read-only INI structural preview reports counts only; it never imports vendor settings, exposes values, interprets hooks or executes paths. Export omits in-memory credentials/consent and cannot overwrite the active configuration.
-- Metrics are read only from the verified app-generated interface and cached every two seconds; failures return unavailable rather than invented traffic.
+## 高级字段与导入
+- 自定义 CA 必须是大小受限的普通 PEM 信任根文件，不能是客户端私钥。Linux 使用不跟随符号链接、非阻塞的打开方式，防止符号链接和 FIFO 竞态。用户选择的 CA 路径不会传给特权后端；跨越权限边界的是已认证网关的指纹。
+- 代理 URL 拒绝内嵌凭据及不支持的协议方案。使用任何代理都必须重新获得明确授权，以允许可能发生的系统集成认证；仅在运行时使用的授权标志不会写入 JSON，严格导入也会拒绝注入的授权。认证使用 `--proxy-auth=none`；只有用户对本次尝试明确授权后，NM 隧道才可使用其正常的集成认证行为。
+- 未显式配置代理时，认证会传入 `--no-proxy`。GUI 创建的子进程环境会移除继承的 `*_proxy` 变量（包括其中内嵌的凭据），并强制使用 C 区域设置。这不会修改或检查由管理员单独管理的 NetworkManager 服务环境；部署时必须确保该受信任服务采用预期的代理策略。
+- 认证组、MTU 和传输选项使用经过校验的类型化字段，绝不通过 shell 插值传入。证书检查不能关闭。
+- Meridian JSON 导入带有版本标识和大小限制，可安全处理重复键，并以原子方式完成。另有独立、大小受限的只读 INI 结构预览，仅报告数量；它不会导入厂商设置、暴露字段值、解释钩子或执行路径。导出不包含内存中的凭据和授权，也不能覆盖当前使用的配置。
+- 指标仅从经过验证、由应用生成的接口读取，每两秒缓存一次；读取失败时返回不可用，不会虚构流量数据。
 
-## Limits / deployment checklist
-- A real OpenConnect client passed a controlled local TLS authentication fixture, but no actual enterprise gateway was available for interoperability verification. This is not universal enterprise SSLVPN or verified LeagSoft UniVPN support.
-- Linux AnyConnect and L2TP/IPsec have concrete NetworkManager adapters. L2TP requires IPsec, typed PPP/IPsec options and a bare hostname/IP gateway. Both still require live deployment validation; other protocols are not implied by profile storage.
-- MFA/SSO and posture-check negotiation may fail; interactive prompts are not bypassed or automatically accepted.
-- No automatic root elevation, certificate bypass, arbitrary imported hooks, kill switch or DNS/route leak audit.
-- System NetworkManager policy, plugin version, TUN permissions and OS authorization must be validated by the deployer. OS package installations and network changes are separate user-authorized actions.
-- Forced process termination may leave a system-managed connection alive. Inspect and disconnect the app-named NetworkManager connection after an abnormal exit. A future supervised service needs a crash/lease policy.
-- POSIX mode 0600 is not a Windows ACL guarantee. Windows/macOS backends, code signing/notarization and installers are not delivered as production-ready.
-- The native UI never presents mocked process fixtures as real connectivity.
+## 限制与部署检查清单
+- 真实 OpenConnect 客户端已通过受控的本地 TLS 认证测试夹具，但未获得实际企业网关用于互操作验证。这不代表支持所有企业 SSLVPN，也不代表已验证对 LeagSoft UniVPN 的支持。
+- Linux AnyConnect 和 L2TP/IPsec 均有具体的 NetworkManager 适配器。L2TP 强制要求 IPsec、类型化的 PPP/IPsec 选项，以及仅包含主机名或 IP 地址的网关。两者仍需在实际部署中验证；能够保存某种协议的配置，不代表该协议已有连接支持。
+- MFA/SSO 和终端合规检查的协商可能失败；不会绕过交互提示，也不会自动接受提示。
+- 不提供自动 root 提权、证书验证绕过、任意导入钩子、断网保护开关或 DNS/路由泄漏审计。
+- 部署者必须验证系统 NetworkManager 策略、插件版本、TUN 权限和操作系统授权。安装系统软件包及修改网络属于需要用户单独授权的操作。
+- 强制终止进程可能留下仍在运行的系统托管连接。异常退出后，应检查并断开以应用命名的 NetworkManager 连接。未来若引入受监督服务，还需制定崩溃和租约策略。
+- POSIX 模式 0600 不能保证 Windows ACL 的权限行为。Windows/macOS 后端、代码签名/公证和安装程序尚未达到可交付生产使用的状态。
+- 原生界面绝不会将模拟进程测试夹具呈现为真实连接。
 
 ## 客户端证书与交互认证
 

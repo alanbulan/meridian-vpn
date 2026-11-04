@@ -1,102 +1,87 @@
-# Client certificate formats
+# 客户端证书格式
 
-Meridian profiles support three explicit identity formats. These are OpenConnect
-client authentication inputs, not a claim of compatibility with any commercial
-gateway. No server-certificate verification bypass is added.
+Meridian 配置支持三种明确的身份格式。这些格式用作 OpenConnect 的客户端认证输入，
+并不表示已兼容任何商业网关。本功能不会加入绕过服务器证书验证的方式。
 
 | `certificate_format` | `client_certificate` | `client_key` |
 | --- | --- | --- |
-| absent / `pem` | Absolute PEM certificate path | Absolute PEM private-key path |
-| `pkcs12` | Absolute DER PKCS#12/PFX bundle path | Must be empty |
-| `pkcs11` | PKCS#11 certificate object URI | Optional PKCS#11 private-key URI |
+| 未设置 / `pem` | PEM 证书的绝对路径 | PEM 私钥的绝对路径 |
+| `pkcs12` | DER 格式 PKCS#12/PFX 容器的绝对路径 | 必须为空 |
+| `pkcs11` | PKCS#11 证书对象 URI | 可选的 PKCS#11 私钥 URI |
 
-The GUI exposes the format and identity references. Only references persist.
-Bundle passwords and token PINs are per-attempt `Credentials.KeyPassword` bytes,
-never profile properties, process arguments, environment variables or files.
-Clearing managed buffers is best-effort: Go/runtime/UI string copies cannot be
-promised to be erased from memory.
+GUI 提供格式及身份引用的设置入口。持久化保存的只有引用。
+容器密码和令牌 PIN 仅以本次认证所用的 `Credentials.KeyPassword` 字节数据存在，
+绝不作为配置属性、进程参数、环境变量或文件保存。
+对托管缓冲区的清空只能尽力而为：无法保证 Go、运行时和 UI 产生的字符串副本都从内存中擦除。
 
-## Files and secrets
+## 文件与秘密信息
 
-PEM keys and PKCS#12 bundles must be owner-only regular files, at most 4 MiB.
-Linux opens reject symbolic links and hold the validated file descriptors open
-through authentication. PEM public certificates must not be group/world writable.
-The command backend receives identity files through inherited descriptors and a
-private config pipe; the interactive helper receives references and secrets in
-its bounded private protocol. Neither path passes identity material to nmcli.
+PEM 私钥和 PKCS#12 容器必须是仅文件所有者可访问的普通文件，大小不超过 4 MiB。
+Linux 打开文件时拒绝符号链接，并在整个认证期间保持已校验的文件描述符处于打开状态。
+PEM 公共证书不得允许同组用户或其他用户写入。
+命令后端通过继承的文件描述符和私有配置管道接收身份文件；
+交互式辅助程序通过其大小受限的私有协议接收引用和秘密信息。
+这两条路径都不会将身份材料传给 nmcli。
 
-PKCS#12 local validation checks only the ASN.1 PFX version/content envelope, not
-its cryptographic validity. A structurally valid password-integrity MAC is required;
-MAC-less containers are rejected. It accepts version-3 data-content PFX, not signed-data
-PFX. OpenConnect's TLS backend performs MAC verification, decryption, chain
-loading, certificate checks and private-key matching. A successful profile save
-therefore does not establish that a bundle password or identity is valid.
+PKCS#12 的本地校验只检查 ASN.1 PFX 的版本和内容封装，不验证其密码学有效性。
+必须包含结构有效、用于基于密码的完整性校验的 MAC；不带 MAC 的容器会被拒绝。
+仅接受第 3 版、内容类型为 data 的 PFX，不接受 signed-data 类型的 PFX。
+MAC 验证、解密、证书链加载、证书检查和私钥匹配由 OpenConnect 的 TLS 后端执行。
+因此，配置保存成功不能证明容器密码或身份有效。
 
-## Tokens
+## 令牌
 
-PKCS#11 requires the user's existing correctly configured provider and an
-OpenConnect TLS build with token support. Meridian does not install providers,
-load a user-selected module, enumerate tokens, change PINs, or alter system
-keyrings. The URI must select an `id` or `object`. Optional type selectors must
-match `cert` for the certificate and `private` for the private key. RFC 7512 `type`
-and the older OpenConnect documentation's `object-type` are accepted, but not both.
-Non-URI-safe bytes must be percent-encoded.
+PKCS#11 需要用户已有且配置正确的提供程序，以及支持令牌的 OpenConnect TLS 构建版本。
+Meridian 不会安装提供程序、加载用户选择的模块、枚举令牌、修改 PIN 或改动系统密钥环。
+URI 必须选择一个 `id` 或 `object`。可选的类型选择器中，证书必须对应 `cert`，私钥必须对应 `private`。
+接受 RFC 7512 的 `type` 和较早 OpenConnect 文档中的 `object-type`，但不能同时使用两者。
+不适合直接用于 URI 的字节必须采用百分号编码。
 
-Only known non-secret identity attributes are allowed. URI queries/fragments,
-`pin-value`, `pin-source`, module selectors, duplicate/unknown attributes and
-control characters in text selectors are rejected before persistence or launch.
-Binary object IDs are supported. For example:
+只允许已知且不含秘密信息的身份属性。在保存或启动前，会拒绝 URI 查询和片段、
+`pin-value`、`pin-source`、模块选择器、重复或未知属性，以及文本选择器中的控制字符。
+支持二进制对象 ID。例如：
 
 ```
 pkcs11:token=Synthetic%20Token;id=%01;type=cert
 ```
 
-Use interactive authentication for provider-generated PIN challenges when the
-provider does not consume `key-password`. Provider support for supplied PINs is
-TLS-backend dependent. The helper's existing bounded password-form callback can
-surface challenges, but real hardware/provider interoperability has not been
-verified by this recovery. No production token has been accessed in testing.
+如果提供程序不使用 `key-password`，应通过交互式认证处理提供程序发出的 PIN 验证请求。
+是否支持传入的 PIN 取决于 TLS 后端。辅助程序现有的、有界密码表单回调可以显示这类请求，
+但本次恢复工作尚未验证真实硬件与提供程序的互操作性。测试中未访问任何生产环境令牌。
 
-## Verification scope
+## 验证范围
 
-`go test ./internal/core` includes simulated descriptor transport, anti-injection
-and URI persistence checks. If OpenSSL is available, a fresh synthetic encrypted
-PFX is generated locally to validate the envelope. This does not exercise a
-remote gateway or a hardware token. The envelope-only fixture deliberately is
-not a real identity and is used only for transport tests.
+`go test ./internal/core` 包含模拟的文件描述符传递、防注入及 URI 持久化检查。
+如果 OpenSSL 可用，会在本地生成全新的合成加密 PFX，用于验证封装。
+这不会访问远程网关或硬件令牌。仅验证封装的测试夹具刻意不包含真实身份，仅用于传递测试。
 
-`TestRealOpenConnectPKCS12` is opt-in via `MERIDIAN_OPENCONNECT_TEST_BINARY`, following
-the existing fixture harness. It uses fresh synthetic credentials and loopback
-TLS with `--authenticate`, validates a returned authentication tuple and rejects
-wrong/missing passwords. It never requests a tunnel, nmcli, host routes or DNS.
-If the explicit real binary is unavailable, this test is skipped, not passed.
+`TestRealOpenConnectPKCS12` 沿用现有测试夹具框架，通过 `MERIDIAN_OPENCONNECT_TEST_BINARY` 显式启用。
+它使用全新的合成凭据和本机回环 TLS，配合 `--authenticate`，校验返回的认证三元组，
+并拒绝错误或缺失的密码。它绝不会请求创建隧道、调用 nmcli 或设置主机路由和 DNS。
+如果明确指定的真实可执行文件不可用，该测试会被跳过，而不是被标记为通过。
 
-### Recovery verification result (2026-11-03)
+### 恢复验证结果（2026-11-03）
 
-The full authentication-only script passed all ten named real OpenConnect tests
-against the retained OpenConnect 9.21 + UniVPN-patched, OpenSSL-backed executable.
-The wrapper used was `recovery/native-univpn-linux-amd64/openconnect`; it loads
-its isolated sibling libraries, without installing system software.
+完整的仅认证脚本已使用保留的 OpenConnect 9.21 可执行文件，通过全部十个具名真实 OpenConnect 测试。
+该可执行文件应用了 UniVPN 补丁，并使用 OpenSSL 后端。
+使用的包装脚本是 `recovery/native-univpn-linux-amd64/openconnect`；
+它加载相邻位置的隔离库，不安装系统软件。
 
-PKCS#12 completed real loopback mTLS using freshly generated synthetic credentials
-and a private descriptor-delivered bundle/passphrase. Missing and wrong bundle
-passwords were rejected. PEM, encrypted PEM, encrypted PKCS#8, server/client trust
-rejection and cancellation tests also passed. The fixture asserts zero tunnel
-CONNECT requests. No production gateway or hardware PKCS#11 test was performed.
+PKCS#12 使用新生成的合成凭据，以及通过私有文件描述符传递的容器和口令，完成了真实的本机回环 mTLS。
+缺失或错误的容器密码均被拒绝。PEM、加密 PEM、加密 PKCS#8、服务器/客户端信任拒绝及取消测试也全部通过。
+测试夹具断言隧道 CONNECT 请求数为零。未测试生产网关或硬件 PKCS#11。
 
-The invocation was `sh integration/authfixture/run-auth-only.sh` with
-`MERIDIAN_OPENCONNECT_TEST_BINARY` set to the absolute wrapper path. Captured
-output is retained as `recovery/meridian-auth-only-validation.log` in the recovery
-workspace. This demonstrates the tested OpenSSL fork build only, not all TLS
-backend/provider combinations.
+调用命令为 `sh integration/authfixture/run-auth-only.sh`，
+其中 `MERIDIAN_OPENCONNECT_TEST_BINARY` 设置为包装脚本的绝对路径。
+捕获的输出保存在恢复工作区的 `recovery/meridian-auth-only-validation.log`。
+这些结果只证明已测试的 OpenSSL 分支构建版本的表现，不涵盖所有 TLS 后端与提供程序组合。
 
-## Primary references
+## 一手参考资料
 
 - https://www.infradead.org/openconnect/connecting.html
 - https://www.infradead.org/openconnect/pkcs11.html
 - https://www.infradead.org/openconnect/manual.html
 
-The existing helper uses `openconnect_set_client_cert` and
-`openconnect_set_key_password`; format selection does not require a new helper
-wire protocol. Bundle keys use the same file as the certificate by omitting a
-separate key reference, as OpenConnect specifies.
+现有辅助程序使用 `openconnect_set_client_cert` 和 `openconnect_set_key_password`；
+选择格式不需要引入新的辅助程序通信协议。
+按照 OpenConnect 的规定，容器中的私钥与证书使用同一个文件，因此省略单独的私钥引用。

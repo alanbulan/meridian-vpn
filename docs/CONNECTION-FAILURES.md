@@ -1,32 +1,26 @@
-# Connection failure classification
+# 连接失败分类
 
-`core.Snapshot.Failure` is a bounded `FailureKind` value, separate from lifecycle
-state and user-facing text. Zero (`FailureNone`) means no failure is recorded.
-Unannotated failures are classified only by the engine's trusted lifecycle
-phase: backend start, readiness, or connection lost. Raw error strings are never
-parsed to guess authentication, certificate, or transport outcomes.
+`core.Snapshot.Failure` 是取值范围受限的 `FailureKind` 值，独立于生命周期
+状态和面向用户的文本。零值（`FailureNone`）表示没有记录失败。
+未标注的失败仅根据引擎可信的生命周期阶段分类：后端启动、就绪检查或连接丢失。
+绝不通过解析原始错误字符串来猜测认证、证书或传输结果。
 
-Trusted adapters may return `NewConnectionError` with authentication, trust,
-configuration, or transport classifications. This type stores only a validated
-numeric enum, has fixed messages, and does not retain or unwrap a raw cause.
-Unknown/invalid codes normalize to `FailureUnknown`. Existing adapters do not
-suddenly gain protocol-specific classification; they remain phase-classified
-until they can provide structured evidence. Error wrappers may themselves contain
-secrets, so the engine exposes only the classification, never wrapper text.
-Unavailable capability messages are likewise replaced with a static message at
-the engine boundary.
+受信任的适配器可以返回 `NewConnectionError`，标注认证、信任、配置或传输分类。
+该类型仅存储经过验证的数字枚举，使用固定消息，不保留或展开原始错误原因。
+未知/无效代码会统一为 `FailureUnknown`。现有适配器不会因此自动获得
+特定协议的分类能力；在能够提供结构化证据之前，它们仍按阶段分类。
+错误包装本身可能包含秘密，因此引擎只暴露分类，绝不暴露包装文本。
+能力不可用的消息同样会在引擎边界处替换为静态消息。
 
-Cleanup uncertainty takes precedence over every other failure, including joined
-errors and cancellation, and leaves `CleanupFailed` quarantined. Successful
-user-requested cancellation records no failure. Each newly authorized attempt
-clears the previous classification; preflight validation/admission rejections do
-not overwrite an active attempt's result.
+清理结果不确定的优先级高于其他所有失败，包括合并错误和取消操作，
+并会将 `CleanupFailed` 保持在隔离状态。用户请求的取消操作成功时，不记录失败。
+每次新授权的尝试都会清除先前分类；预检校验/准入拒绝
+不会覆盖正在进行的尝试的结果。
 
-These codes are diagnostic groundwork, **not retry permission**. There is no
-retryability flag, timer, backoff, automatic reconnect, retained credential, or
-new network operation. Future reconnect work still needs explicit authorization,
-fresh authentication, verified cleanup and protocol-aware safety decisions.
+这些代码是诊断基础，**不是重试权限**。这里没有可重试标志、定时器、退避、
+自动重连、保留的凭据或新的网络操作。未来的重连工作仍需要明确授权、
+重新认证、经过验证的清理，以及针对具体协议的安全决策。
 
-Tests use in-memory adapters and sessions for phase classification, typed and
-wrapped errors, cleanup priority, cancellation, reset and secret redaction. They
-do not activate a real VPN or modify system networking.
+测试使用内存中的适配器和会话，覆盖阶段分类、带类型及包装后的错误、
+清理优先级、取消、重置和秘密脱敏。这些测试不会激活真实 VPN，
+也不会修改系统网络。

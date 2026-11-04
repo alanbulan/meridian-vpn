@@ -1,34 +1,34 @@
-# Architecture and trust boundaries
+# 架构与信任边界
 
-Meridian uses MyGo v0.7.4 native `ui` drawing: no DOM, HTML, JavaScript, Electron, Tauri, Wails or webview. `CGO_ENABLED=0` builds the application. Linux requires GTK3 and font libraries; MyGo loads these with purego at runtime. GPU rendering is optional; `MYGO_GPU=0` selects MyGo's documented CPU renderer.
+Meridian 使用 MyGo v0.7.4 原生 `ui` 绘制，不使用 DOM、HTML、JavaScript、Electron、Tauri、Wails 或 webview。应用通过 `CGO_ENABLED=0` 构建。Linux 需要 GTK3 和字体库，MyGo 在运行时通过 purego 加载这些库。GPU 渲染是可选项；`MYGO_GPU=0` 会选择 MyGo 文档中说明的 CPU 渲染器。
 
-## Layers
+## 分层
 
-- `cmd/meridian`: process lifetime, native window, tray and configuration location.
-- `internal/desktop`: presentation and editing state, immediate-mode native components, no host network configuration.
-- `internal/core`: profiles, strict validation, atomic local persistence, adapter contracts, synchronized connection state machine, structured bounded activity history.
-- Platform adapters: external trusted system networking service owns privilege, route and DNS cleanup. No GUI privilege escalation and no arbitrary shell commands.
+- `cmd/meridian`：进程生命周期、原生窗口、托盘和配置位置。
+- `internal/desktop`：展示与编辑状态、即时模式原生组件，不负责主机网络配置。
+- `internal/core`：配置档案、严格校验、原子化本地持久化、适配器契约、同步连接状态机，以及有界的结构化活动历史。
+- 平台适配器：由外部受信任的系统网络服务负责特权操作、路由和 DNS 清理。GUI 不提升权限，也不执行任意 shell 命令。
 
-## State machine
+## 状态机
 
-Disconnected → Connecting → Connected only after a trusted adapter verifies the actual tunnel, never after process spawn or by matching arbitrary stdout. Cancellation requests Disconnecting; cleanup must finish before reporting Disconnected. Start/readiness failures report Failed and expose no raw subprocess errors. Every start requires explicit authorization. Duplicate starts are rejected. Credentials are not members of persistent configuration and are never logged.
+Disconnected → Connecting → Connected：只有受信任的适配器验证实际隧道后，才能进入 Connected 状态，绝不能仅凭进程已启动或匹配任意标准输出就判定连接成功。取消操作会请求进入 Disconnecting 状态；必须完成清理后才能报告 Disconnected。启动或就绪检查失败时报告 Failed，且不暴露原始子进程错误。每次启动都需要明确授权。重复启动会被拒绝。凭据不属于持久化配置，也绝不写入日志。
 
-## Persistence
+## 持久化
 
-Profiles contain ID, display name/description, HTTPS gateway plus at most15 additional gateways, protocol/account, authentication group, server CA/client certificate/private-key file references, interactive-auth mode, explicit proxy URL, MTU and TCP-only policy. They never contain certificate/key contents, passwords, cookies, one-time codes, key passphrases or proxy system-auth consent. TLS verification cannot be disabled. The JSON schema rejects unknown fields, including accidental secret fields. Configuration is size-limited, versioned and checked for duplicate IDs. Save uses a mode-0600 temporary file, sync and same-directory atomic rename. A corrupt configuration is not silently replaced. POSIX file modes do not substitute for Windows ACL hardening; deployment must secure the per-user directory.
+配置档案包含 ID、显示名称/描述、HTTPS 网关及最多 15 个额外网关、协议/账户、认证组、服务器 CA/客户端证书/私钥的文件引用、交互式认证模式、显式代理 URL、MTU 和仅 TCP 策略。配置档案绝不包含证书/密钥内容、密码、Cookie、一次性验证码、密钥口令或代理系统认证授权。TLS 验证无法关闭。JSON 架构会拒绝未知字段，包括意外写入的秘密字段。配置具有大小限制和版本信息，并会检查重复 ID。保存时使用权限模式为 0600 的临时文件、同步操作和同目录原子重命名。损坏的配置不会被静默替换。POSIX 文件权限模式不能替代 Windows ACL 加固；部署时必须保护每个用户的专用目录。
 
-## Compatibility is not a promise
+## 不承诺普遍兼容
 
-OpenConnect has specific protocol implementations, not universal enterprise SSLVPN compatibility. Proprietary posture checks, authentication and gateway versions can differ. Unknown LeagSoft UniVPN gateways must not be assumed supported. Protocol selection is not proof of a successful gateway interoperability test. macOS and Windows require a separately validated platform backend and packaging/signing integration. This build must never label unavailable prerequisites or a local fixture as a real VPN connection.
+OpenConnect 实现了特定协议，并不代表它兼容所有企业 SSLVPN。专有的终端安全状态检查、认证方式和网关版本可能存在差异。不得假定支持未经验证的 LeagSoft UniVPN 网关。选择某个协议并不能证明该网关已通过互操作测试。macOS 和 Windows 需要经过单独验证的平台后端，以及打包/签名集成。此构建绝不能将前置条件不可用的情况或本地测试夹具标记为真实 VPN 连接。
 
-## Tests
+## 测试
 
-Core tests use controlled adapters and do not change networking. Native UI tests use MyGo's actual headless UI/test engine, not a browser. Real desktop QA runs the compiled native binary through the cloud Linux desktop; screenshots are captured from that window, separate from test rendering.
+核心测试使用受控适配器，不会更改网络。原生 UI 测试使用 MyGo 实际的无头 UI/测试引擎，而不是浏览器。真实桌面质量验证会在云端 Linux 桌面中运行编译后的原生二进制程序；截图取自该窗口，与测试渲染分开。
 
-## Interactive authentication
+## 交互式认证
 
-The MyGo GUI and CLI build with CGO_ENABLED=0. Optional `meridian-auth-helper` is a separate unprivileged C executable dynamically linked to official libopenconnect. It obtains authentication only, never creates a tunnel. Typed length-prefixed private pipes carry bounded challenge/answer frames, session IDs and round IDs. A helper failure, untrusted TLS, cancellation or malformed/stale frame fails closed. Native UI fields render server labels as inert plain text. Initial credentials and form answers are memory-only; byte buffers are cleared where owned. Go strings and platform input components are garbage-collected, so perfect in-memory forensic erasure is not claimed.
+MyGo GUI 和 CLI 使用 CGO_ENABLED=0 构建。可选的 `meridian-auth-helper` 是独立、无特权的 C 可执行程序，动态链接官方 libopenconnect。它仅用于获取认证结果，绝不创建隧道。带类型和长度前缀的私有管道传输大小受限的挑战/应答帧、会话 ID 和轮次 ID。辅助程序失败、TLS 不受信任、取消操作或格式错误/过期的帧都会触发安全关闭。原生 UI 字段将服务器标签渲染为不具备执行能力的纯文本。初始凭据和表单应答只保存在内存中；对自身持有的字节缓冲区会执行清零。Go 字符串和平台输入组件由垃圾回收机制管理，因此不宣称能够实现取证意义上的彻底内存擦除。
 
-## Switching and diagnostics
+## 切换与诊断
 
-Quick switch requests disconnect of the current session, waits for confirmed cleanup, then opens a fresh authentication form for the new profile. It cannot transfer secrets or consent across gateways. Additional gateways are explicit choices, never automatic credential replay. Diagnostics uses only bounded read-only probes with allowlisted output; no network authentication or route/DNS modifications occur. CLI imports create a separate merged file rather than race the GUI's active store.
+快速切换会请求断开当前会话，等待清理得到确认，再为新的配置档案打开全新的认证表单。它不能在网关之间转移秘密或授权。额外网关必须由用户明确选择，绝不会自动重放凭据。诊断仅使用有界的只读探测，并将输出限制在允许列表内；不会进行网络认证，也不会修改路由/DNS。CLI 导入会创建单独的合并文件，而不会与 GUI 当前使用的存储发生竞争。

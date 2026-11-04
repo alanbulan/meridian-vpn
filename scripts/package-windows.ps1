@@ -13,9 +13,15 @@ if (!(Test-Path $iscc)) { throw 'Official runner Inno Setup compiler missing; no
 $compiler = Get-Item $iscc
 $signature = Get-AuthenticodeSignature $iscc
 Write-Output "Compiler metadata: FileVersion=$($compiler.VersionInfo.FileVersion); ProductVersion=$($compiler.VersionInfo.ProductVersion); Signature=$($signature.Status); SHA256=$((Get-FileHash $iscc -Algorithm SHA256).Hash)"
-if ($compiler.VersionInfo.FileVersion -notmatch '^6\.7\.1(?:\D|$)') { throw "Unexpected compiler file version: $($compiler.VersionInfo.FileVersion)" }
 if ($signature.Status -ne 'Valid') { throw "Installer compiler signature is not valid: $($signature.Status)" }
 if ($signature.SignerCertificate.Subject -notmatch 'Jordan Russell|JRSoftware|jrsoftware') { throw 'Unexpected installer compiler signer' }
+# Inno's signed ISCC launcher leaves both PE version-resource fields unset.
+# Pin the exact signed official-runner bytes, then verify its own version banner.
+$compilerHash=(Get-FileHash $iscc -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($compilerHash -ne 'eb6f4410c8db367a5f74127e8025ad2ccacc0afabbe783959d237df3050f97fb') { throw 'Installer compiler hash changed' }
+$compilerBanner=(& $iscc /? 2>&1 | Out-String)
+Write-Output $compilerBanner
+if ($compilerBanner -notmatch '\b6\.7\.1\b') { throw 'Installer compiler version banner mismatch' }
 $out = [System.IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path $out) { throw 'Output directory already exists' }
 $stage = Join-Path $root 'build/windows-installer-stage'
@@ -46,7 +52,7 @@ $writer.Write([byte]$width);$writer.Write([byte]$height);$writer.Write([byte]0);
 $writer.Write([uint16]1);$writer.Write([uint16]32);$writer.Write([uint32]$png.Length);$writer.Write([uint32]22);$writer.Write($png)
 [IO.File]::WriteAllBytes("$stage/meridian.ico",$stream.ToArray());$writer.Dispose();$stream.Dispose()
 $files=@(Get-ChildItem $stage -File -Recurse | Sort-Object FullName | ForEach-Object { @{name=[IO.Path]::GetRelativePath($stage,$_.FullName).Replace('\','/');bytes=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()} })
-$manifest=@{version='0.1.0-alpha.1';source_commit=$env:GITHUB_SHA;target='windows-amd64';distribution='unsigned-experimental-preview';vpn_backend_usable=$false;go=(& go version);installer_compiler_version=$compiler.VersionInfo.FileVersion;installer_compiler_sha256=(Get-FileHash $iscc -Algorithm SHA256).Hash.ToLowerInvariant();installer_compiler_signer=$signature.SignerCertificate.Subject;files=$files;limits='Installer and UI validation only; Windows VPN backend incomplete, no live VPN acceptance, no bundled MFA helper, no license selected.'}
+$manifest=@{version='0.1.0-alpha.1';source_commit=$env:GITHUB_SHA;target='windows-amd64';distribution='unsigned-experimental-preview';vpn_backend_usable=$false;go=(& go version);installer_compiler_version='6.7.1';installer_compiler_resource_version=$compiler.VersionInfo.FileVersion;installer_compiler_sha256=(Get-FileHash $iscc -Algorithm SHA256).Hash.ToLowerInvariant();installer_compiler_signer=$signature.SignerCertificate.Subject;files=$files;limits='Installer and UI validation only; Windows VPN backend incomplete, no live VPN acceptance, no bundled MFA helper, no license selected.'}
 $manifest | ConvertTo-Json -Depth 8 | Set-Content "$stage/build-manifest.json" -Encoding utf8
 & $iscc "/DStageDir=$stage" "/DOutputDir=$out" packaging/windows/meridian.iss
 if ($LASTEXITCODE) { throw 'Installer compilation failed' }

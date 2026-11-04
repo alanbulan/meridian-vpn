@@ -110,7 +110,7 @@ jobs:
           expected |= {'TestNMVPNWireRetainedCorrelationUsesOnlyOriginalSuccessfulReceipt', 'TestNMVPNWireRetainedCorrelationDoesNotPoisonForeignTransaction'}
           expected |= {'TestNMVPNWireIPv4ObservationBoundProjection', 'TestNMVPNWireIPv4ObservationRejectsProjection', 'TestNMVPNWireIPv4ObservationRejectsUnboundAndStaleInputs', 'TestNMVPNWireIPv4ObservationRejectsDrift', 'TestNMVPNWireIPv4ObservationCancellationJoinsRead'}
           expected |= {'TestNMVPNWireServiceActualCompositionLifecycle', 'TestNMVPNWireServiceFailureBeforeAndDuringPublication', 'TestNMVPNWireServicePreflightAndRestartBarriers', 'TestNMVPNWireServicePolicyRevokedBetweenSignals', 'TestNMVPNWireServiceMissingConnectIsBounded'}
-          expected |= {'TestNMVPNWireResolvedPinnedReadback', 'TestNMVPNWireResolvedRejectsUnsupportedAndSilentDrift', 'TestNMVPNWireResolvedOwnerLossIsSticky', 'TestNMVPNWireResolvedCancellationClosesAndJoins'}
+          expected |= {'TestNMVPNWireResolvedFixtureIdentitySynchronization', 'TestNMVPNWireResolvedPinnedReadback', 'TestNMVPNWireResolvedRejectsUnsupportedAndSilentDrift', 'TestNMVPNWireResolvedOwnerLossIsSticky', 'TestNMVPNWireResolvedCancellationClosesAndJoins'}
           passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
           assert expected <= passed, 'a required wire case did not pass'
           assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'

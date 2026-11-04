@@ -97,6 +97,15 @@ type resolvedWireService struct {
 	block, entered, handlerDone        chan struct{}
 }
 
+// Socket traffic does not synchronize Go memory. Publish fixture identities
+// under the same mutex used by exported handlers, even during initial setup.
+func (s *resolvedWireService) setIdentity(owner, caller string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.owner, s.caller = owner, caller
+}
+
+// The caller holds s.mu.
 func (s *resolvedWireService) verify(m dbus.Message) {
 	if m.Headers[dbus.FieldSender].Value() != s.caller || m.Headers[dbus.FieldDestination].Value() != s.owner || m.Flags&dbus.FlagNoAutoStart == 0 {
 		s.bad = true
@@ -212,17 +221,18 @@ func newResolvedWireFixture(t *testing.T) (*PinnedResolvedObserver, *resolvedWir
 	if reply, err := service.conn.RequestName(resolvedName, dbus.NameFlagDoNotQueue); err != nil || reply != dbus.RequestNameReplyPrimaryOwner {
 		t.Fatal("private resolved name unavailable", err)
 	}
-	service.owner = service.conn.Names()[0]
+	owner := service.conn.Names()[0]
+	service.setIdentity(owner, "")
 	var id string
 	if err := service.conn.BusObject().Call(resolvedBusName+".GetId", 0).Store(&id); err != nil {
 		t.Fatal(err)
 	}
 	ctx := nmContext(t)
-	observer, err := OpenPinnedResolvedObserver(ctx, nmRawConn(t, socket), BusPin{BusID: id, Owner: service.owner, BusUID: uint32(os.Getuid()), OwnerUID: uint32(os.Getuid())})
+	observer, err := OpenPinnedResolvedObserver(ctx, nmRawConn(t, socket), BusPin{BusID: id, Owner: owner, BusUID: uint32(os.Getuid()), OwnerUID: uint32(os.Getuid())})
 	if err != nil {
 		t.Fatal(err)
 	}
-	service.caller = observer.conn.Names()[0]
+	service.setIdentity(owner, observer.conn.Names()[0])
 	t.Cleanup(func() {
 		if err := observer.Close(); err != nil {
 			t.Error(err)
@@ -254,13 +264,43 @@ func TestNMVPNWireResolvedPinnedReadback(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err := observation.Snapshot()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err != nil || out.Owner != s.owner || len(out.Links) != 2 || out.Links[0].Name != "lo" || out.Manager.DNS[0].Port != 853 || out.Links[1].DNS[0].Address.String() != "10.0.0.53" {
 		t.Fatal("wire readback lost policy", err)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.bad || s.lists != 2 || s.getLinks != 4 || s.gets != 90 || s.introspects != 12 {
 		t.Fatalf("read-only wire envelope/count mismatch: %+v", s)
+	}
+}
+
+// This regression is deliberately socket-free: it can run under -race in the
+// restricted executor while exercising the same setup and exported handler.
+func TestNMVPNWireResolvedFixtureIdentitySynchronization(t *testing.T) {
+	s := &resolvedWireService{}
+	const owner, caller = ":1.42", ":1.43"
+	s.setIdentity(owner, caller)
+	message := dbus.Message{Flags: dbus.FlagNoAutoStart, Headers: map[dbus.HeaderField]dbus.Variant{
+		dbus.FieldSender: dbus.MakeVariant(caller), dbus.FieldDestination: dbus.MakeVariant(owner),
+	}}
+	var workers sync.WaitGroup
+	workers.Go(func() {
+		for range 1000 {
+			s.setIdentity(owner, caller)
+		}
+	})
+	workers.Go(func() {
+		for range 1000 {
+			if _, err := s.ListDelegates(message); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	workers.Wait()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.bad || s.lists != 1000 {
+		t.Fatal("fixture identity publication was inconsistent")
 	}
 }
 

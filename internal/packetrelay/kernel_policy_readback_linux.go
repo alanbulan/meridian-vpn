@@ -43,7 +43,35 @@ func ObserveKernelPolicy(ctx context.Context, expected KernelNamespaceIdentity) 
 	return observeKernelPolicyWith(ctx, expected, realKernelLinkOps())
 }
 
-func observeKernelPolicyWith(ctx context.Context, expected KernelNamespaceIdentity, ops kernelLinkOps) (out KernelPolicyObservation, resultErr error) {
+type kernelDumpSpec struct {
+	kind   uint16
+	family byte
+}
+
+func observeKernelPolicyWith(ctx context.Context, expected KernelNamespaceIdentity, ops kernelLinkOps) (KernelPolicyObservation, error) {
+	var specs []kernelDumpSpec
+	for _, family := range []byte{unix.AF_INET, unix.AF_INET6} {
+		for _, kind := range []uint16{unix.RTM_GETADDR, unix.RTM_GETROUTE, unix.RTM_GETRULE} {
+			specs = append(specs, kernelDumpSpec{kind, family})
+		}
+	}
+	return observeKernelRecordsWith(ctx, expected, ops, specs)
+}
+
+// Shared bounded transport accepts only these read-only request shapes.
+func observeKernelRecordsWith(ctx context.Context, expected KernelNamespaceIdentity, ops kernelLinkOps, specs []kernelDumpSpec) (out KernelPolicyObservation, resultErr error) {
+	if len(specs) == 0 || len(specs) > 6 {
+		return out, errTUNKernelObservation
+	}
+	for _, spec := range specs {
+		if spec.kind == unix.RTM_GETLINK {
+			if spec.family != unix.AF_UNSPEC {
+				return out, errTUNKernelObservation
+			}
+		} else if (spec.kind != unix.RTM_GETADDR && spec.kind != unix.RTM_GETROUTE && spec.kind != unix.RTM_GETRULE) || (spec.family != unix.AF_INET && spec.family != unix.AF_INET6) {
+			return out, errTUNKernelObservation
+		}
+	}
 	var closers []func() error
 	defer func() {
 		for i := len(closers) - 1; i >= 0; i-- {
@@ -118,55 +146,54 @@ func observeKernelPolicyWith(ctx context.Context, expected KernelNamespaceIdenti
 	buf := make([]byte, 65536)
 	total := 0
 	seq := uint32(0)
-	for _, family := range []byte{unix.AF_INET, unix.AF_INET6} {
-		for _, kind := range []uint16{unix.RTM_GETADDR, unix.RTM_GETROUTE, unix.RTM_GETRULE} {
-			seq++
-			request := kernelPolicyRequest(kind, family, seq, port)
-			for {
-				if err = check(); err != nil {
-					return out, err
-				}
-				err = ops.send(fd, request)
-				if err == nil {
-					break
-				}
-				if !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EINTR) {
-					return out, err
-				}
-				if err = wait(unix.POLLOUT); err != nil {
-					return out, err
-				}
+	for _, spec := range specs {
+		kind, family := spec.kind, spec.family
+		seq++
+		request := kernelPolicyRequest(kind, family, seq, port)
+		for {
+			if err = check(); err != nil {
+				return out, err
 			}
-			for {
-				if err = check(); err != nil {
+			err = ops.send(fd, request)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, unix.EAGAIN) && !errors.Is(err, unix.EINTR) {
+				return out, err
+			}
+			if err = wait(unix.POLLOUT); err != nil {
+				return out, err
+			}
+		}
+		for {
+			if err = check(); err != nil {
+				return out, err
+			}
+			n, flags, from, e := ops.recv(fd, buf)
+			if errors.Is(e, unix.EAGAIN) || errors.Is(e, unix.EINTR) {
+				if err = wait(unix.POLLIN); err != nil {
 					return out, err
 				}
-				n, flags, from, e := ops.recv(fd, buf)
-				if errors.Is(e, unix.EAGAIN) || errors.Is(e, unix.EINTR) {
-					if err = wait(unix.POLLIN); err != nil {
-						return out, err
-					}
-					continue
-				}
-				if e != nil {
-					return out, e
-				}
-				source, ok := from.(*unix.SockaddrNetlink)
-				if !ok || source.Family != unix.AF_NETLINK || source.Pid != 0 || source.Groups != 0 || flags != 0 || n <= 0 || n > len(buf) {
-					return out, errTUNKernelObservation
-				}
-				total += n
-				if total > 1<<20 {
-					return out, errTUNKernelObservation
-				}
-				records, done, e := parseKernelPolicyReply(buf[:n], kind, family, seq, port)
-				if e != nil || len(out.Records)+len(records) > 4096 {
-					return out, errors.Join(errTUNKernelObservation, e)
-				}
-				out.Records = append(out.Records, records...)
-				if done {
-					break
-				}
+				continue
+			}
+			if e != nil {
+				return out, e
+			}
+			source, ok := from.(*unix.SockaddrNetlink)
+			if !ok || source.Family != unix.AF_NETLINK || source.Pid != 0 || source.Groups != 0 || flags != 0 || n <= 0 || n > len(buf) {
+				return out, errTUNKernelObservation
+			}
+			total += n
+			if total > 1<<20 {
+				return out, errTUNKernelObservation
+			}
+			records, done, e := parseKernelPolicyReply(buf[:n], kind, family, seq, port)
+			if e != nil || len(out.Records)+len(records) > 4096 {
+				return out, errors.Join(errTUNKernelObservation, e)
+			}
+			out.Records = append(out.Records, records...)
+			if done {
+				break
 			}
 		}
 	}
@@ -181,6 +208,8 @@ func kernelPolicyRequest(kind uint16, family byte, seq, port uint32) []byte {
 	size := 12
 	if kind == unix.RTM_GETADDR {
 		size = 8
+	} else if kind == unix.RTM_GETLINK {
+		size = 16
 	}
 	b := make([]byte, 16+size)
 	binary.NativeEndian.PutUint32(b, uint32(len(b)))
@@ -198,8 +227,10 @@ func parseKernelPolicyReply(b []byte, request uint16, family byte, seq, port uin
 	size := 12
 	if request == unix.RTM_GETADDR {
 		size = 8
+	} else if request == unix.RTM_GETLINK {
+		size = 16
 	}
-	if request != unix.RTM_GETADDR && request != unix.RTM_GETROUTE && request != unix.RTM_GETRULE {
+	if request != unix.RTM_GETADDR && request != unix.RTM_GETROUTE && request != unix.RTM_GETRULE && request != unix.RTM_GETLINK {
 		return nil, false, errTUNKernelObservation
 	}
 	for len(b) > 0 {

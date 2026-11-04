@@ -488,3 +488,11 @@ and NetworkManager's
 [VPN route parser](https://github.com/NetworkManager/NetworkManager/blob/main/src/core/vpn/nm-vpn-connection.c).
 These source checks explain the explicit broadcast and preferred-source cases;
 they do not replace testing the exact deployed NM/kernel versions.
+
+## Resolver and dispatcher prerequisites
+
+The [resolver/dispatcher contract](RESOLVER-DISPATCHER.md) describes complete
+sampled kernel-link membership, a dedicated pinned read-only systemd-resolved
+observer, joined sticky change monitoring, and trusted complete empty-dispatcher
+filesystem observation. These are separately verified prerequisites, not a
+production `ServicePolicy`, queued-script absence proof or Ready transition.

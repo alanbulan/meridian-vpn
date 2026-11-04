@@ -68,6 +68,15 @@ def stage_bundle(binaries, root, arch):
     return app
 
 
+def sign_bundle(app):
+    # Signing the main executable can seal its enclosing bundle. Nested helpers
+    # must already be signed, especially on Intel where Go does not pre-sign.
+    for relative in sorted(BINARIES.values(), key=lambda p: p.startswith("MacOS/")):
+        invoke(["/usr/bin/codesign", "--force", "--sign", "-", str(app / "Contents" / relative)])
+    invoke(["/usr/bin/codesign", "--force", "--sign", "-", str(app)])
+    invoke(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)])
+
+
 def validate_abi(path, arch):
     if not stat.S_ISREG(path.lstat().st_mode) or path.stat().st_size > 65536:
         raise ValueError("只读 ABI 证据格式不正确")
@@ -101,10 +110,7 @@ def package(binaries, output, arch, commit, abi_evidence):
         stage = root / "image"
         stage.mkdir()
         app = stage_bundle(binaries, stage, arch)
-        for relative in BINARIES.values():
-            invoke(["/usr/bin/codesign", "--force", "--sign", "-", str(app / "Contents" / relative)])
-        invoke(["/usr/bin/codesign", "--force", "--sign", "-", str(app)])
-        invoke(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)])
+        sign_bundle(app)
         invoke(["/usr/bin/plutil", "-lint", str(app / "Contents/Info.plist")])
         for relative in ("MacOS/meridian", "Helpers/meridian-macos-inspect", "Helpers/meridianctl"):
             args = [str(app / "Contents" / relative)]

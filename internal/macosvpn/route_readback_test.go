@@ -1,6 +1,7 @@
 package macosvpn
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -244,5 +245,56 @@ func TestRouteReadbackNormalize(t *testing.T) {
 				t.Fatal("ambiguous route accepted")
 			}
 		})
+	}
+}
+
+func TestRouteRawMaskFamilyUsesDestination(t *testing.T) {
+	for _, af := range []byte{0, 2, 18, 30, 255} {
+		b := routeTestFrame(routeTestSockaddr("10.0.0.0"), routeTestSockaddr("192.0.2.1"), []byte{8, af, 0, 0, 255, 0, 0, 0}, 3)
+		if _, err := validateDarwinRouteFrames(b); err != nil {
+			t.Fatal(err)
+		}
+		normalized := canonicalRouteMasks(b)
+		if normalized[125] != 2 || b[125] != af || normalized[128] != 255 {
+			t.Fatal("掩码规范化改变原始位或输入")
+		}
+	}
+}
+
+func rawMaskRegressionFrames() [][]byte {
+	v4 := routeTestFrame(routeTestSockaddr("10.0.0.0"), routeTestSockaddr("192.0.2.1"), []byte{8, 255, 0, 0, 255, 0, 0, 0}, 3)
+	mask6 := routeTestSockaddr("ffff:ffff:ffff:ffff::")
+	mask6[1] = 18
+	v6 := routeTestFrame(routeTestSockaddr("2001:db8::"), routeTestSockaddr("2001:db8::1"), mask6, 3)
+	empty4 := routeTestFrame(routeTestSockaddr("0.0.0.0"), routeTestSockaddr("192.0.2.1"), []byte{0, 255, 0, 0}, 3)
+	empty6 := routeTestFrame(routeTestSockaddr("::"), routeTestSockaddr("2001:db8::1"), []byte{0, 255, 0, 0}, 3)
+	return [][]byte{v4, v6, empty4, empty6}
+}
+func TestRouteRawMaskMultipleFamiliesAndFrames(t *testing.T) {
+	var combined []byte
+	for _, frame := range rawMaskRegressionFrames() {
+		combined = append(combined, frame...)
+	}
+	original := append([]byte(nil), combined...)
+	count, err := validateDarwinRouteFrames(combined)
+	if err != nil || count != 4 {
+		t.Fatal("混合掩码帧验证失败")
+	}
+	normalized := canonicalRouteMasks(combined)
+	if _, err := validateDarwinRouteFrames(normalized); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(original, combined) {
+		t.Fatal("修改原始帧")
+	}
+	for _, frame := range rawMaskRegressionFrames() {
+		n := len(frame)
+		dstFamily := normalized[93]
+		maskOffset := 92 + ((int(normalized[92]) + 3) &^ 3)
+		maskOffset += ((int(normalized[maskOffset]) + 3) &^ 3)
+		if normalized[maskOffset+1] != dstFamily {
+			t.Fatal("掩码继承其他帧的地址族")
+		}
+		normalized = normalized[n:]
 	}
 }

@@ -151,12 +151,16 @@ func validateDarwinRouteFrames(data []byte) (int, error) {
 				} else if af != family || !validRouteInetSockaddr(af, l) {
 					return 0, routeReadbackError("rib-15")
 				}
-			case 2, 3: // NETMASK/GENMASK can be short AF_UNSPEC sockaddrs.
+			case 2, 3: // NETMASK/GENMASK are raw masks, not typed addresses.
+				// XNU route.c rtm_scrub (RTAX_NETMASK) explicitly warns sa_family may not
+				// match the destination hint for masks returned by sysctl.
+				// https://github.com/apple-oss-distributions/xnu/blob/main/bsd/net/route.c
+				// Only destination determines family; byte 1 is not trusted.
 				max := 16
 				if family == 30 {
 					max = 28
 				}
-				if l > max || (l != 0 && af != 0 && af != family) {
+				if l > max {
 					return 0, routeReadbackError("rib-16")
 				}
 			default:
@@ -233,4 +237,36 @@ func normalizeKernelRoute(in kernelRouteInput) (KernelRouteRecord, error) {
 
 func routeReadbackError(code string) error {
 	return fmt.Errorf("只读路由阶段 %s: %w", code, ErrRouteReadback)
+}
+
+// canonicalRouteMasks is called only after strict frame validation. Preserve
+// raw mask bits and lengths but supply the destination family to x/net/route,
+// preventing a raw mask byte from selecting AF_LINK or another decoder.
+func canonicalRouteMasks(data []byte) []byte {
+	out := append([]byte(nil), data...)
+	for tail := out; len(tail) != 0; {
+		n := int(binary.LittleEndian.Uint16(tail[:2]))
+		attrs := binary.LittleEndian.Uint32(tail[12:16])
+		body := tail[92:n]
+		family := byte(0)
+		for i := 0; i < 8; i++ {
+			if attrs&(1<<i) == 0 {
+				continue
+			}
+			l := int(body[0])
+			space := (l + 3) &^ 3
+			if l == 0 {
+				space = 4
+			}
+			if i == 0 {
+				family = body[1]
+			}
+			if i == 2 || i == 3 {
+				body[1] = family
+			}
+			body = body[space:]
+		}
+		tail = tail[n:]
+	}
+	return out
 }

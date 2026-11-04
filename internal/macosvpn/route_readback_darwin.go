@@ -86,7 +86,7 @@ func decodeDarwinRouteRIB(data []byte) (records []KernelRouteRecord, err error) 
 	if err != nil {
 		return nil, err
 	}
-	messages, err := route.ParseRIB(route.RIBTypeRoute, data)
+	messages, err := route.ParseRIB(route.RIBTypeRoute, canonicalRouteMasks(data))
 	if err != nil || len(messages) != count {
 		return nil, routeReadbackError("native-05")
 	}

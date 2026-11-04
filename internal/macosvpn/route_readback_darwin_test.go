@@ -67,3 +67,37 @@ func TestRouteReadbackDarwinDecodeSynthetic(t *testing.T) {
 		})
 	}
 }
+
+func TestRouteRawMaskFamilyDecode(t *testing.T) {
+	for _, af := range []byte{0, 2, 18, 30, 255} {
+		b := routeTestFrame(routeTestSockaddr("10.0.0.0"), routeTestSockaddr("192.0.2.1"), []byte{8, af, 0, 0, 255, 0, 0, 0}, 3)
+		records, err := decodeDarwinRouteRIB(b)
+		if err != nil || len(records) != 1 || records[0].Prefix.String() != "10.0.0.0/8" {
+			t.Fatalf("原始掩码族解码失败：%v", err)
+		}
+	}
+}
+
+func TestRouteRawMasksMixedDecodeAndNoncontiguousRejection(t *testing.T) {
+	var combined []byte
+	for _, frame := range rawMaskRegressionFrames() {
+		combined = append(combined, frame...)
+	}
+	records, err := decodeDarwinRouteRIB(combined)
+	want := []string{"10.0.0.0/8", "2001:db8::/64", "0.0.0.0/0", "::/0"}
+	if err != nil || len(records) != len(want) {
+		t.Fatalf("混合帧解码失败：%v", err)
+	}
+	for i, r := range records {
+		if r.Prefix.String() != want[i] {
+			t.Fatal("掩码位解析错误")
+		}
+	}
+	for _, family := range []byte{18, 255} {
+		mask := []byte{8, family, 0, 0, 255, 0, 255, 0}
+		b := routeTestFrame(routeTestSockaddr("10.0.0.0"), routeTestSockaddr("192.0.2.1"), mask, 3)
+		if r, err := decodeDarwinRouteRIB(b); err == nil || r != nil {
+			t.Fatal("非连续掩码被接受")
+		}
+	}
+}

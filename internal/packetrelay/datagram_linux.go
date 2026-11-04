@@ -10,24 +10,41 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
-// DatagramPackets owns an inherited, connected, nonblocking, unnamed AF_UNIX
+// DatagramPackets owns a broker-side, connected, nonblocking, unnamed AF_UNIX
 // SOCK_SEQPACKET socket. It never creates, binds, listens on, connects, or changes
 // flags on a socket. This is the child's packet channel, never its host TUN.
+// Do not copy it or use it after transferring ownership to a TUNRelay.
 type DatagramPackets struct {
-	file     *os.File
-	raw      syscall.RawConn
-	recv     func(int, []byte) (int, int, error)
-	send     func(int, []byte) (int, error)
-	once     sync.Once
-	closeErr error
+	self       *DatagramPackets
+	file       *os.File
+	raw        syscall.RawConn
+	recv       func(int, []byte) (int, int, error)
+	send       func(int, []byte) (int, error)
+	once       sync.Once
+	closeErr   error
+	relayClaim tunRelayClaim // local retained relay ownership, never reset
 }
 
 // NewDatagramPackets verifies transport type and connection before ownership
-// transfer. Caller retains ownership on failure. Neither the caller nor another
-// descriptor owner may subsequently change the socket configuration or flags.
+// transfer. CLOEXEC is required on every broker-owned endpoint. Caller retains
+// ownership on failure. Neither the caller nor another descriptor owner may
+// subsequently change the socket configuration or flags.
 func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
+	raw, err := validateDatagramFile(f)
+	if err != nil {
+		return nil, err
+	}
+	d := &DatagramPackets{file: f, raw: raw, recv: receiveMessage, send: sendMessage}
+	d.self = d
+	return d, nil
+}
+
+// This read-only validator does not adopt the file. Pair acquisition also uses
+// it on the native end before transferring that file to the launch owner.
+func validateDatagramFile(f *os.File) (syscall.RawConn, error) {
 	if f == nil {
 		return nil, errors.New("nil packet socket")
 	}
@@ -63,19 +80,10 @@ func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
 			opErr = errors.New("packet channel requires protocol zero")
 			return
 		}
-		var a syscall.Sockaddr
-		a, opErr = syscall.Getsockname(int(fd))
-		if opErr != nil {
+		if opErr = unnamedUnixFD(int(fd), false); opErr != nil {
 			return
 		}
-		if opErr = unnamedUnix(a); opErr != nil {
-			return
-		}
-		a, opErr = syscall.Getpeername(int(fd))
-		if opErr != nil {
-			return
-		}
-		if opErr = unnamedUnix(a); opErr != nil {
+		if opErr = unnamedUnixFD(int(fd), true); opErr != nil {
 			return
 		}
 		flags, _, errno := syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFL, 0)
@@ -85,6 +93,15 @@ func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
 		}
 		if flags&syscall.O_NONBLOCK == 0 {
 			opErr = errors.New("packet channel must already be nonblocking")
+			return
+		}
+		flags, _, errno = syscall.Syscall(syscall.SYS_FCNTL, fd, syscall.F_GETFD, 0)
+		if errno != 0 {
+			opErr = errno
+			return
+		}
+		if flags&syscall.FD_CLOEXEC == 0 {
+			opErr = errors.New("packet channel must already be close-on-exec")
 		}
 	})
 	if err = errors.Join(err, opErr); err != nil {
@@ -96,7 +113,7 @@ func NewDatagramPackets(f *os.File) (*DatagramPackets, error) {
 	if err = f.SetWriteDeadline(time.Time{}); err != nil {
 		return nil, fmt.Errorf("unpollable packet socket: %w", err)
 	}
-	return &DatagramPackets{file: f, raw: raw, recv: receiveMessage, send: sendMessage}, nil
+	return raw, nil
 }
 
 // No ancillary buffer is supplied: SCM_RIGHTS are not accepted. Linux closes
@@ -169,9 +186,16 @@ func sendMessage(fd int, b []byte) (int, error) {
 	return syscall.SendmsgN(fd, b, nil, nil, syscall.MSG_DONTWAIT|syscall.MSG_NOSIGNAL)
 }
 
-func unnamedUnix(a syscall.Sockaddr) error {
-	u, ok := a.(*syscall.SockaddrUnix)
-	if !ok || u == nil || u.Name != "" {
+// Getsockname/Getpeername discard socklen and can represent both an unnamed
+// socketpair and the empty abstract name as "@". An unnamed Linux AF_UNIX
+// endpoint contains only sa_family, with no sun_path bytes at all.
+func unnamedUnixFD(fd int, peer bool) error {
+	var addr syscall.RawSockaddrUnix
+	size := uint32(unsafe.Sizeof(addr))
+	if err := rawUnixName(fd, peer, &addr, &size); err != 0 {
+		return err
+	}
+	if addr.Family != syscall.AF_UNIX || size != uint32(unsafe.Offsetof(addr.Path)) {
 		return errors.New("packet channel requires unnamed AF_UNIX endpoints")
 	}
 	return nil

@@ -1,9 +1,11 @@
 # Broker packet boundary
 
 This package is an executable, injected-I/O relay, **not** an activated VPN or a
-standalone privilege broker. It does not open a TUN device, change interfaces,
-routes, DNS, namespaces, privileges, or start/listen on a socket. Only local
-synthetic packet/mocked-I/O tests were run.
+standalone privilege broker. Its relay does not open a TUN device or configure
+networking. A separate, application-disabled Linux `AcquireTUN` resource
+constructor now implements new-device acquisition as described below. Invoking
+that constructor would create an interface, but no test or application path does
+so. Only synthetic packet/mocked-I/O tests have exercised that new code.
 
 ## Integration contract
 
@@ -22,14 +24,14 @@ synthetic packet/mocked-I/O tests were run.
    Inputs are copied. Empty/invalid policy and unspecified MTU fail closed.
 3. Pass the broker-owned host endpoint and the child's **packet channel** to
    `Run`. Child packet channel adapters must preserve message boundaries and
-   report truncation. `NewDatagramPackets` accepts only inherited connected nonblocking unnamed AF_UNIX
+   report truncation. `NewDatagramPackets` accepts only broker-side connected nonblocking unnamed AF_UNIX
    `SOCK_SEQPACKET` descriptors with protocol zero, verified with fstat, socket
-   type/protocol and local/peer address queries. Datagram, named and abstract
+   type/protocol, CLOEXEC and local/peer address queries. Datagram, named and abstract
    sockets are rejected. It uses recvmsg, detects MSG_TRUNC/MSG_CTRUNC,
    accepts no ancillary descriptors, and uses atomic message writes. It never
    creates/connects/binds/listens on a socket. Other transports require adapters; bare streams and pipe reads are not valid packet channels. Each
-   `WritePacket` must consume exactly one packet. This package does not create
-   that channel or launch a child.
+   `WritePacket` must consume exactly one packet. The separate `OpenPacketPair`
+   constructor below creates a private local channel; neither API launches a child.
 4. `Run` owns two distinct endpoints. `Close` must promptly unblock both reads
    and writes, including when the peer is stalled. `Run` closes each endpoint
    exactly once, waits for both pumps, and joins cleanup errors into its result.
@@ -82,6 +84,213 @@ From repository root with its pinned toolchain environment loaded:
     go vet ./internal/packetrelay
 
 Tests use in-memory packet endpoints, injected recvmsg/sendmsg/poller callbacks,
-and temporary regular files only. They do
-not create sockets, devices, namespaces, routes, or DNS configuration. Actual
-TUN descriptor compatibility and native-channel integration remain unverified.
+temporary regular files, and local AF_UNIX socketpairs. Address-rejection tests
+bind a pair endpoint to an abstract or temporary pathname to verify rejection;
+there is no listener or IP connection. Tests do not create devices, namespaces,
+routes or DNS configuration. Actual TUN descriptor compatibility and native-worker integration
+remain unverified.
+
+## Separate retained TUN acquisition precursor
+
+`AcquireTUN` is a concrete Linux device-acquisition implementation, not a live
+acceptance result. It is not called by the application or native NM bridge. Its
+production path would create an interface and therefore requires independent
+deployment authorization before use. All new tests replace device/syscall
+operations; they never open `/dev/net/tun` or run a real creation ioctl.
+
+The constructor walks only `/dev/net/tun`, without symlinks or caller-supplied
+paths. Root-owned ancestors must not be group/world writable. The node must be
+a root-owned single-link character device with Linux TUN major/minor 10:200.
+World-writable device-node permissions are allowed, as on ordinary Linux installs;
+creation remains subject to kernel capability checks. Descriptors are opened
+CLOEXEC/nonblocking. Only a trusted explicit ASCII interface name is accepted,
+without percent templates, truncation, name lookup or automatic fallback.
+
+The exact `TUNSETIFF` request is `IFF_TUN | IFF_NO_PI | IFF_TUN_EXCL`. A collision
+is an error and never triggers adoption or retry. EXCL is an acquisition check,
+not a persistent lock. The returned name must match, and later `TUNGETIFF` must
+report exactly TUN/no-PI without persistence, multiqueue or virtual headers.
+Poller deadline support and descriptor CLOEXEC/nonblocking state are checked.
+Only the original handle is retained; no raw file, FD, PacketIO, duplication or
+replacement endpoint is exposed. Acquisition alone does not start a relay.
+
+Ownership is recorded before the mutating ioctl. Even an ioctl error can follow
+a successful kernel mutation, so the constructor does not replay it. Every
+acquired TUN handle is closed at most once on error/cancellation. A non-nil
+resource is returned alongside an acquisition error to retain its cleanup
+result. Close errors remain sticky as `ErrCleanup`; numeric close is not retried.
+Observed name/mode drift permanently closes the resource. Historical observation
+metadata survives local close, without turning metadata into fresh authority.
+
+This is only local TUN acquisition. It does not establish the intended host
+namespace, correlate an NM receipt or native generation, acquire an exclusive
+host lease, attest offload/kernel policy, publish NM
+configuration, expose Ready, or prove link/routes/DNS absence. Privileged actors
+can change network state; equal sequential observations cannot prevent that.
+Context checks cannot interrupt a kernel syscall. Complete namespace binding,
+applied/global/dispatcher policy, native/NM relay integration, independent cleanup
+readback and authorized real-kernel/real-NM acceptance remain deployment gates.
+
+Primary sources: [Linux TUN documentation](https://docs.kernel.org/networking/tuntap.html),
+[Linux TUN implementation](https://github.com/torvalds/linux/blob/master/drivers/net/tun.c),
+[Linux TUN UAPI](https://github.com/torvalds/linux/blob/master/include/uapi/linux/if_tun.h),
+and [x/sys ifreq](https://github.com/golang/sys/blob/v0.48.0/unix/ifreq_linux.go).
+
+## Retained local TUN/relay binding precursor
+
+`BindTUNRelay` now binds a successfully acquired `TUNResource` to the concrete
+`DatagramPackets` child endpoint. Binding claims both original objects once,
+without I/O or forwarding. Ownership transfers **only on successful binding**;
+a rejected duplicate leaves the supplied objects with their existing owner and
+cannot close an active alias. Claims never reset after stop or failure. There is
+no generic endpoint injection in this public API, raw TUN exposure, duplication,
+reopen-by-name, replacement or restart. Only package-private tests inject I/O.
+
+`Start` consumes one attempt before checking context, separately authorized
+packet policy, and a fresh original-descriptor observation. Failure closes both
+owned handles and preserves their cleanup evidence. Success launches the existing
+two-pump policy-filtered `Run`; it is not a readiness signal. The private TUN
+adapter reads/writes only the original file and closes through its original
+close-once owner. It never holds the TUN lifecycle mutex across blocking I/O.
+
+`Stop` before start permanently prevents forwarding. During a run it cancels and
+joins that original run without holding the lifecycle lock. `Wait` observes the
+same completion without canceling it. A wait timeout is not a successful join;
+the owner remains available to join later, and actual close errors remain sticky
+as `ErrCleanup`. The operational error (including ordinary cancellation) is
+available separately from `Stop`'s local-cleanup result. Closing or detecting drift
+on the original TUN wakes the run, which closes the child and joins both pumps;
+TUN `Close` itself does not prove that join, so the relay owner must Stop/Wait.
+
+The opaque `TUNRelayBinding` checks only the exact retained process-local owner.
+It survives failed start, stop, observation drift and cleanup uncertainty without
+performing live I/O. It cannot authenticate an NM receipt or native generation,
+survive process restart, authorize resource lookup or cleanup by name, or prove
+host network absence. It is intentionally not `UniVPNNMHostBinding`.
+
+All new execution tests use in-memory devices/endpoints, including bidirectional
+filter failures, partial startup, duplicate ownership, concurrent start/stop,
+blocked I/O, sticky close errors and late completion after a timeout. No real TUN,
+socket, network namespace, NM activation or native worker is used by these tests.
+Application/NM wiring, host namespace and applied policy, independent absence
+readback and authorized real-kernel/real-gateway acceptance remain open.
+
+## Concrete anonymous packet-pair acquisition
+
+`OpenPacketPair` creates exactly one local anonymous `AF_UNIX` `SOCK_SEQPACKET`
+pair with `SOCK_NONBLOCK | SOCK_CLOEXEC` in the original syscall. It accepts no
+existing descriptor, pathname or IP destination and uses no bind/connect, flag-
+setting fallback or retry. Both ends are inspected through retained `RawConn`
+handles, including type, protocol, anonymous local/peer addresses, flags and
+poller support. The native file and concrete `DatagramPackets` peer come from
+that same successful syscall. Matching address strings alone would not prove
+pairing for caller-supplied files.
+
+Every successful raw descriptor becomes an owned `os.File` before validation or
+cancellation checks. Post-acquisition failure closes both original endpoints
+once and returns no partial endpoints. Successful wrapper ownership is respected
+on cleanup. Close errors are returned as `ErrCleanup`; a numerical close is not
+retried. A syscall failure's zero-valued Go result is not an acquired descriptor
+and is never closed. Context covers acquisition only: after successful transfer,
+the caller owns both endpoints even if that context later expires.
+
+`core.NewUniVPNPacketPairProvider` is a resource-free, one-shot provider factory.
+Its first call consumes the attempt before validating the 32-character lowercase
+hex launch label and context. It calls the concrete acquisition above, preserves
+the peer's concrete dynamic type, and maps uncertain cleanup to `core.CleanupError`.
+Repeated, concurrent, zero-value and copied-provider calls cannot acquire another
+pair; prior cleanup failures remain visible. The session label is not an
+identity receipt, reconnect key or permission to adopt another endpoint.
+
+The normal application still does not select this provider. Arbitrary trusted
+`UniVPNPacketProvider` implementations do not gain its pairing guarantee. Later
+production composition must explicitly choose the concrete provider and bind its
+returned endpoint to the authenticated original native generation and TUN/NM
+transaction. This local IPC pair establishes no host lease, readiness, applied
+network policy, or independent host cleanup proof.
+
+Tests exercise real unprivileged anonymous socketpairs, both message directions,
+packet boundaries, truncation, peer EOF and close-unblocks-read/write behavior.
+Private per-call seams test syscall/validation/wrapping/cancellation failures and
+uncertain closes. Launcher integration uses the actual pair and native duplicate,
+checks descriptor flags after command wiring, and exchanges local packets. No
+command or VPN worker is started. These are local IPC tests, not TUN or gateway
+acceptance. The address validator reuses the raw sockaddr-length fix from PR #3
+(commit `8f651ec`): Go's converted `SockaddrUnix` name cannot distinguish an unnamed
+endpoint from an empty abstract name. The exact kernel-reported family-only
+length is required for both local and peer endpoints; empty abstract, other
+abstract, pathname and unconnected sockets remain rejected. Linux 386 and s390x
+use the reviewed socketcall ABI branch. CI cross-compiles 386, arm64 and s390x.
+
+Sources: [socketpair semantics](https://man7.org/linux/man-pages/man2/socketpair.2.html),
+[atomic socket flags](https://man7.org/linux/man-pages/man2/socket.2.html),
+[Go Socketpair wrapper](https://go.dev/src/syscall/syscall_unix.go), and
+[Go preexisting-nonblocking NewFile behavior](https://go.dev/src/os/file_unix.go).
+
+
+## Non-owning retained packet identity
+
+`TUNRelay.ObservePacketBinding` accepts only the exact concrete child endpoint
+already claimed by that relay and reads the original retained TUN. It neither
+starts forwarding nor consumes Start, changes ownership, consumes packets or
+closes resources on rejection. It does not call the close-on-error `TUNResource.Observe`
+path. The relay's existing owner still must Stop/Wait after a failed observation.
+`CheckPacketBinding` checks historical exact child/relay identity and survives
+stopped pumps, drift and uncertain closes. No same-name TUN, same-session string,
+foreign pair or copied owner can replace the retained objects.
+
+Core uses these methods only for an additional historical local-generation
+association behind its still-mandatory independent HostBinding gate. A matching
+name is not actual NM device ownership, host-namespace proof, a lease, readiness,
+applied-policy verification or host absence. Observations remain sequential and
+can become stale immediately; no new automatic application path is enabled.
+
+## Descriptor namespace and link observations
+
+`TUNResource.ObserveKernelLink` pins the original TUN's current network namespace
+using read-only `TUNGETDEVNETNS`. It validates nsfs type, regular inode identity,
+CLOEXEC and `NS_GET_NSTYPE`; no namespace pathname supplied by a caller is accepted.
+The ioctl requires CAP_NET_ADMIN in the device namespace's owning user namespace.
+Unsupported or denied access fails without fallback, adoption or privilege change.
+The original resource retains the namespace FD, including when validation fails,
+and closes it exactly once along with its own TUN cleanup. Temporary namespace
+handles and sockets close once; cleanup uncertainty remains sticky through Close.
+
+The read-only rtnetlink observer locks its OS thread and checks that the thread's
+namespace matches the descriptor-derived pin before and after opening the socket,
+and after replies. It never calls setns, changes a link, dumps all devices, or
+uses a different namespace as fallback. Bounded nonblocking GETLINK requests use
+only the retained name. Kernel-source, sequence/port, lengths, flags, nesting and
+required TUN fields are checked; duplicate singleton fields, unexpected modes,
+explicit owner/group or multiqueue counts fail. Unknown nested lists are validated
+structurally without treating repeated list items as duplicate singleton fields.
+Only the small exported projection is compared; omitted policy is not verified.
+
+Fresh descriptor name/mode and namespace reads bracket repeated link observations.
+The first observed ifindex must remain the same on subsequent calls. This is
+sequential consistency only: names and ifindexes can be reused, and rename-away-
+and-back races remain. The namespace pin does not prevent moving the TUN. It does
+not identify the initial host namespace, establish device-generation identity,
+prove NM owns the device, or provide host exclusivity, applied policy, readiness
+or network absence. Historical initial metadata remains available after failure
+or close. A begun failed observation permanently invalidates this observer but
+does not close the TUN or transfer cleanup ownership. An invalid initial context
+or invalid object is rejected before acquiring a pin.
+
+The relay and core wrappers retain these same limits. They do not start forwarding,
+refresh native/NM liveness, implement HostAuthority/HostBinding, or enable a normal
+application path. The existing independent HostBinding is still needed before
+preparing the local-generation binding. Kernel errors and uncertain cleanup remain
+observable, and existing owners must perform their usual Stop/Wait cleanup.
+
+All namespace/TUN/netlink operations in tests are injected. Parser fixtures are
+hand-built from reviewed Linux ABI source; they are not captured live-kernel
+responses. This executor denied a read-only NETLINK_ROUTE socket with EPERM. That
+operation was not retried, and no alternative route or elevated privilege was
+used. No real TUN/kernel acceptance is claimed. CI checks offline behavior, race
+safety, formatting and cross-compilation only. Authorized real-kernel, host policy
+and gateway acceptance remain deployment gates.
+
+Sources: Linux v6.18 [TUN driver and TUNGETDEVNETNS](https://github.com/torvalds/linux/blob/v6.18/drivers/net/tun.c),
+[namespace FD implementation](https://github.com/torvalds/linux/blob/v6.18/fs/nsfs.c),
+and [rtnetlink ABI](https://github.com/torvalds/linux/blob/v6.18/include/uapi/linux/if_link.h).

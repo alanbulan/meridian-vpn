@@ -1,0 +1,132 @@
+name: NetworkManager offline contract tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nmvpn-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Linux / NM offline contract and journal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Capture formatting evidence
+        run: |
+          mkdir -p reports/nmvpn
+          status=0
+          gofmt -d internal/core/univpn_nm_ipv4_observation_linux.go internal/core/univpn_nm_ipv4_observation_linux_test.go internal/core/univpn_nm_service_linux.go internal/core/univpn_nm_service_linux_test.go internal/packetrelay/kernel_link_readback_linux.go internal/packetrelay/kernel_link_readback_linux_test.go internal/packetrelay/tun_kernel_observation_linux.go internal/packetrelay/tun_kernel_observation_linux_test.go internal/core/univpn_nm_kernel_observation_linux.go internal/core/univpn_nm_kernel_observation_linux_test.go internal/packetrelay/tun_resource_linux.go internal/packetrelay/tun_resource_linux_test.go internal/packetrelay/tun_relay_linux.go internal/packetrelay/tun_relay_linux_test.go internal/packetrelay/tun_relay_binding_linux.go internal/packetrelay/tun_relay_binding_linux_test.go internal/packetrelay/datagram_linux.go internal/packetrelay/datagram_linux_test.go internal/packetrelay/sockname_linux.go internal/packetrelay/sockname_socketcall_linux.go internal/packetrelay/relay_test.go internal/packetrelay/pair_linux.go internal/packetrelay/pair_linux_test.go internal/core/univpn_packet_pair_linux.go internal/core/univpn_packet_pair_linux_test.go internal/core/univpn_packet_launcher_linux.go internal/core/univpn_packet_provenance_linux.go internal/core/univpn_nm_local_binding_linux.go internal/core/univpn_nm_local_binding_linux_test.go internal/nmvpn internal/core/univpn_nmvpn_linux.go internal/core/univpn_nmvpn_linux_test.go internal/core/univpn_process_observation_linux.go internal/core/univpn_process_observation_linux_test.go internal/core/univpn_broker_exec_linux.go > reports/nmvpn/format.patch || status=$?
+          echo NMVPN_FORMAT_PATCH_BEGIN
+          cat reports/nmvpn/format.patch
+          echo NMVPN_FORMAT_PATCH_END
+          exit "$status"
+      - name: Race-test private local resources only
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          go test -race -count=1 -json ./internal/nmvpn | tee reports/nmvpn/tests.jsonl
+          go test -race -count=1 -run '^(TestUniVPNNMBroker|TestUniVPNNMService|TestUniVPNNMLocal|TestUniVPNNMKernel|TestUniVPNNMIPv4|TestUniVPNPacketProvenance|TestUniVPNProcess|TestUniVPNPacketPair|TestPacketLauncher)' -json ./internal/core | tee reports/nmvpn/native-binding-tests.jsonl
+          go test -race -count=1 -run '^(TestTUN(Resource|Relay)|TestKernel|TestOpenTUNNamespace)' -json ./internal/packetrelay | tee reports/nmvpn/tun-resource-tests.jsonl
+          go test -race -count=1 -run '^(TestPacketPair|TestDatagram|TestUnnamedUnix)' -json ./internal/packetrelay | tee reports/nmvpn/packet-pair-tests.jsonl
+          go vet ./internal/nmvpn ./internal/core ./internal/packetrelay
+      - name: Cross-compile Linux packet resource syscalls
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          for arch in 386 arm64 s390x; do
+            GOOS=linux GOARCH="$arch" go test -c -o "$RUNNER_TEMP/packetrelay-$arch.test" ./internal/packetrelay
+          done
+      - name: Require canonical formatting
+        run: test ! -s reports/nmvpn/format.patch
+      - name: Upload offline evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nmvpn-offline-evidence
+          path: reports/nmvpn/
+          if-no-files-found: error
+          retention-days: 7
+
+  private-wire:
+    name: Linux / isolated NM D-Bus protocol fixtures
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: Install official disposable fixture dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates git dbus-daemon python3 python3-gi gir1.2-nm-1.0 procps build-essential
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Run private-bus fixtures as a dedicated unprivileged user
+        run: |
+          useradd --create-home --shell /bin/bash meridian-nmvpn-ci
+          chown -R meridian-nmvpn-ci:meridian-nmvpn-ci "$GITHUB_WORKSPACE"
+          runuser -u meridian-nmvpn-ci -- env PATH="$PATH" GOTOOLCHAIN=local \
+            GOPATH=/home/meridian-nmvpn-ci/go GOCACHE=/home/meridian-nmvpn-ci/.cache/go-build \
+            MERIDIAN_NMVPN_WIRE_TESTS=1 CGO_ENABLED=1 \
+            bash integration/nmvpn/run-wire-tests.sh
+      - name: Verify every private-bus case passed without skips
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rows = [json.loads(s) for s in Path('reports/nmvpn-wire/tests.jsonl').read_text().splitlines()]
+          expected = {'TestNMVPNWireHelloNameTracking', 'TestNMVPNWireDirectedLifecycle', 'TestNMVPNWirePinRejections', 'TestNMVPNWireBindingAndProfile', 'TestNMVPNWirePayloadAndOrder', 'TestNMVPNWireOwnerLossAndCancellation', 'TestNMVPNWireAbsenceRequiresBothProofs', 'TestNMVPNWireBlockedAuthCancellation', 'TestNMVPNWireOwnerLossStopsOnlyLocalGeneration', 'TestNMVPNWireUncertainLocalStopForbidsPublication'}
+          expected |= {'TestNMVPNWirePluginDisconnectDuringCredentialHandoff', 'TestNMVPNWirePluginHandshakeAndOneShotSecrets', 'TestNMVPNWirePluginDisconnectObserverRejectsMalformed', 'TestNMVPNWirePluginPendingDisconnectAndOwnerLoss', 'TestNMVPNWirePluginRequiresLivePublicationVerifier', 'TestNMVPNWirePluginImmutableSanitizedSnapshot', 'TestNMVPNWirePluginDirectedLifecycle', 'TestNMVPNWirePluginDisconnectReceiveOrder', 'TestNMVPNWirePluginConcurrentSecretUseAndFailure', 'TestNMVPNWirePluginProfileEnvelopeRejections', 'TestNMVPNWirePluginRejectsUnauthenticatedAndMalformedCalls'}
+          expected |= {'TestNMVPNWireManagerActivationUncertainNeverReplays', 'TestNMVPNWireManagerActivationWireReceipt', 'TestNMVPNWireManagerRecoveryNeverMutates', 'TestNMVPNWireManagerMalformedRepliesAndPinLoss', 'TestNMVPNWireManagerReceiptRejectsBootAndNonceMismatch', 'TestNMVPNWireManagerLostReplyCancellation', 'TestNMVPNWireManagerPreservesUnexpectedJournal'}
+          expected |= {'TestNMVPNWireManagerLibnmNormalization', 'TestNMVPNWireManagerNormalizationTampering'}
+          expected |= {'TestNMVPNWireHostObservationInitialReadOnlySnapshot', 'TestNMVPNWireHostObservationRejectsMissingAndUnsupportedFields', 'TestNMVPNWireHostObservationRejectsMembership', 'TestNMVPNWireHostObservationRejectsChangedReadback', 'TestNMVPNWireHostObservationRejectsUncorrelatedAndStaleInputs', 'TestNMVPNWireHostObservationCancellationJoinsRead'}
+          expected |= {'TestNMVPNWireRetainedCorrelationUsesOnlyOriginalSuccessfulReceipt', 'TestNMVPNWireRetainedCorrelationDoesNotPoisonForeignTransaction'}
+          expected |= {'TestNMVPNWireIPv4ObservationBoundProjection', 'TestNMVPNWireIPv4ObservationRejectsProjection', 'TestNMVPNWireIPv4ObservationRejectsUnboundAndStaleInputs', 'TestNMVPNWireIPv4ObservationRejectsDrift', 'TestNMVPNWireIPv4ObservationCancellationJoinsRead'}
+          expected |= {'TestNMVPNWireServiceActualCompositionLifecycle', 'TestNMVPNWireServiceFailureBeforeAndDuringPublication', 'TestNMVPNWireServicePreflightAndRestartBarriers', 'TestNMVPNWireServicePolicyRevokedBetweenSignals', 'TestNMVPNWireServiceMissingConnectIsBounded'}
+          passed = {r.get('Test') for r in rows if r.get('Action') == 'pass'}
+          assert expected <= passed, 'a required wire case did not pass'
+          assert not any(r.get('Action') in ('skip', 'fail') for r in rows), 'wire case skipped or failed'
+          PY
+      - name: Clean only this disposable fixture UID
+        if: always()
+        run: |
+          if id meridian-nmvpn-ci >/dev/null 2>&1; then
+            uid="$(id -u meridian-nmvpn-ci)"
+            test "$uid" -ne 0
+            pkill -KILL -u "$uid" || test "$?" -eq 1
+          fi
+          # Each test owns/kills its exact daemon; whole-container disposal is
+          # the final cleanup boundary. No host buses or user homes are mounted.
+      - name: Upload synthetic protocol evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nmvpn-private-wire-evidence
+          path: reports/nmvpn-wire/
+          if-no-files-found: warn
+          retention-days: 7
+

@@ -20,6 +20,7 @@ type fakePackets struct {
 	short              bool
 	writeErr, closeErr error
 	blockWrite         bool
+	writeStarted       chan struct{}
 }
 
 func fake() *fakePackets {
@@ -37,6 +38,12 @@ func (f *fakePackets) ReadPacket(b []byte) (int, error) {
 	}
 }
 func (f *fakePackets) WritePacket(b []byte) (int, error) {
+	if f.writeStarted != nil {
+		select {
+		case f.writeStarted <- struct{}{}:
+		default:
+		}
+	}
 	if f.blockWrite {
 		<-f.closed
 		return 0, io.ErrClosedPipe

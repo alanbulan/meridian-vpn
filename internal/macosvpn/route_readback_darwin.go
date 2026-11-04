@@ -43,11 +43,11 @@ func loadRouteSysctl() error {
 func readKernelRoutesNative(ctx context.Context) (out KernelRouteReadback, err error) {
 	defer func() {
 		if recover() != nil {
-			out, err = KernelRouteReadback{}, ErrRouteReadback
+			out, err = KernelRouteReadback{}, routeReadbackError("native-01")
 		}
 	}()
 	if loadRouteSysctl() != nil || routeSysctl == nil {
-		return out, ErrRouteReadback
+		return out, routeReadbackError("native-02")
 	}
 	data, err := boundedRouteRIB(ctx, func(old []byte, length *uintptr) error {
 		mib := [6]int32{syscall.CTL_NET, syscall.AF_ROUTE, 0, syscall.AF_UNSPEC, syscall.NET_RT_DUMP, 0}
@@ -59,7 +59,7 @@ func readKernelRoutesNative(ctx context.Context) (out KernelRouteReadback, err e
 		runtime.KeepAlive(mib)
 		runtime.KeepAlive(old)
 		if result != 0 {
-			return ErrRouteReadback // Discard partial output; errno never needed for retries.
+			return routeReadbackError("native-03") // Discard partial output; errno never needed for retries.
 		}
 		return nil
 	})
@@ -79,7 +79,7 @@ func readKernelRoutesNative(ctx context.Context) (out KernelRouteReadback, err e
 func decodeDarwinRouteRIB(data []byte) (records []KernelRouteRecord, err error) {
 	defer func() {
 		if recover() != nil {
-			records, err = nil, ErrRouteReadback
+			records, err = nil, routeReadbackError("native-04")
 		}
 	}()
 	count, err := validateDarwinRouteFrames(data)
@@ -88,7 +88,7 @@ func decodeDarwinRouteRIB(data []byte) (records []KernelRouteRecord, err error) 
 	}
 	messages, err := route.ParseRIB(route.RIBTypeRoute, data)
 	if err != nil || len(messages) != count {
-		return nil, ErrRouteReadback
+		return nil, routeReadbackError("native-05")
 	}
 	records = make([]KernelRouteRecord, 0, count)
 	for _, message := range messages {
@@ -96,18 +96,18 @@ func decodeDarwinRouteRIB(data []byte) (records []KernelRouteRecord, err error) 
 		// v0.59.0's route_classic.go populates Err from offset 28 (Darwin
 		// rtm_use). The strict preflight checks the actual rtm_errno at 24.
 		if !ok || m.Version != syscall.RTM_VERSION || m.Type != syscall.RTM_GET || len(m.Addrs) < syscall.RTAX_MAX {
-			return nil, ErrRouteReadback
+			return nil, routeReadbackError("native-06")
 		}
 		in := kernelRouteInput{index: m.Index, flags: uint32(m.Flags)}
 		in.destination, in.destinationZone, ok = kernelRouteIP(m.Addrs[syscall.RTAX_DST])
 		if !ok {
-			return nil, ErrRouteReadback
+			return nil, routeReadbackError("native-07")
 		}
 		if mask := m.Addrs[syscall.RTAX_NETMASK]; mask != nil {
 			var zone uint32
 			in.mask, zone, ok = kernelRouteIP(mask)
 			if !ok || zone != 0 {
-				return nil, ErrRouteReadback
+				return nil, routeReadbackError("native-08")
 			}
 		}
 		if gateway, ok := m.Addrs[syscall.RTAX_GATEWAY].(*route.LinkAddr); ok {
@@ -115,7 +115,7 @@ func decodeDarwinRouteRIB(data []byte) (records []KernelRouteRecord, err error) 
 		} else {
 			in.gateway, in.gatewayZone, ok = kernelRouteIP(m.Addrs[syscall.RTAX_GATEWAY])
 			if !ok {
-				return nil, ErrRouteReadback
+				return nil, routeReadbackError("native-09")
 			}
 		}
 		r, err := normalizeKernelRoute(in)

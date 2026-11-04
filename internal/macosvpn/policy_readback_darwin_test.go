@@ -18,7 +18,7 @@ func TestMacOSReadOnlyPolicyReaders(t *testing.T) {
 	defer cancel()
 	routes, err := ReadKernelRoutes(ctx)
 	if err != nil {
-		t.Fatal("内核路由只读验证未通过")
+		t.Fatalf("内核路由只读验证未通过：%v", err)
 	}
 	dns, err := ReadDNSConfiguration(ctx)
 	if err != nil {

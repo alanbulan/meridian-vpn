@@ -1,0 +1,72 @@
+name: macOS 开发预览安装包与原生只读验证
+on:
+  push:
+    branches: [candidate/macos-preview-20261104]
+  pull_request:
+    paths: [internal/macosvpn/**, cmd/meridian-macos-inspect/**, integration/macos-preflight/**, packaging/macos/**, scripts/package-macos.py, scripts/test_macos_package.py, .github/workflows/macos-preview.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      CGO_ENABLED: '0'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: 验证原生架构、依赖与离线用例
+        run: |
+          test "$(go env GOOS)" = darwin
+          test "$(go env GOARCH)" = '${{ matrix.arch }}'
+          go mod download
+          go mod verify
+          python3 -m unittest discover -s scripts -p test_macos_package.py -v
+          python3 -m unittest discover -s integration/macos-preflight -v
+          go test -count=1 ./...
+          go vet ./...
+      - name: 执行真实系统框架只读 ABI 验证
+        run: |
+          mkdir -p build/reports
+          python3 integration/macos-preflight/run.py abi --reports build/reports/macos-readonly-abi
+      - name: 构建应用和只读诊断工具
+        run: |
+          mkdir -p build/macos-binaries
+          go build -buildvcs=false -trimpath -tags mygo_noinspector -ldflags "-s -w -X github.com/egoist/mygo.production=1 -X mygo-vpn/internal/buildinfo.Version=0.1.0-macos-preview -X mygo-vpn/internal/buildinfo.Commit=$GITHUB_SHA" -o build/macos-binaries/meridian ./cmd/meridian
+          go build -buildvcs=false -trimpath -ldflags "-s -w -X mygo-vpn/internal/buildinfo.Version=0.1.0-macos-preview -X mygo-vpn/internal/buildinfo.Commit=$GITHUB_SHA" -o build/macos-binaries/meridianctl ./cmd/meridianctl
+          go build -buildvcs=false -trimpath -ldflags "-s -w -X mygo-vpn/internal/buildinfo.Version=0.1.0-macos-preview -X mygo-vpn/internal/buildinfo.Commit=$GITHUB_SHA" -o build/macos-binaries/meridian-macos-inspect ./cmd/meridian-macos-inspect
+      - name: 创建并校验 DMG 与 PKG（不安装、不连接 VPN）
+        run: python3 scripts/package-macos.py --binaries build/macos-binaries --output build/macos-preview --arch '${{ matrix.arch }}' --commit "$GITHUB_SHA" --abi-evidence build/reports/macos-readonly-abi/evidence.json
+      - name: 上传开发预览安装包（未公证、VPN 未完成）
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: meridian-macos-${{ matrix.arch }}-development-preview
+          path: build/macos-preview/
+          if-no-files-found: error
+          retention-days: 14
+      - name: 保留只读验证证据
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: macos-readonly-evidence-${{ matrix.arch }}
+          path: build/reports/
+          if-no-files-found: warn
+          retention-days: 14

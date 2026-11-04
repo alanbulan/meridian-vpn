@@ -8,6 +8,9 @@ export DEBIAN_FRONTEND=noninteractive
 # Prevent dependency packages starting services in this disposable environment.
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
+# Slim base images exclude documentation. Retain this package's own files so
+# installation integrity/source checks exercise the complete desktop package.
+printf 'path-include=/usr/share/doc/meridian\npath-include=/usr/share/doc/meridian/*\n' > /etc/dpkg/dpkg.cfg.d/zz-meridian-test-docs
 apt-get update
 apt-get install -y --no-install-recommends /input/meridian_0.1.0~alpha.1-1_amd64.deb xvfb xauth xdotool dbus-x11 desktop-file-utils fonts-dejavu-core
 dpkg-query -W -f='${Package} ${Version}\n' libc6 libopenconnect5 libgtk-3-0t64 2>/dev/null || true

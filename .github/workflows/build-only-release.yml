@@ -1,4 +1,4 @@
-name: 发布已有 Linux 与 Windows 未验证预览产物
+name: 恢复已核对的 Linux 与 Windows 预览草稿
 on:
   push:
     branches: [release/build-only-20261104]
@@ -31,4 +31,4 @@ jobs:
       - name: 仅发布已有两平台产物，不构建、不测试、不执行安装器
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/publish-linux-windows-preview.py --artifacts build/release-inputs --version 0.1.0-alpha.2 --source c867b7a2200bc02eccf39a66bd73216a8e6f15bc
+        run: python3 scripts/resume-linux-windows-preview.py --artifacts build/release-inputs --version 0.1.0-alpha.2 --source c867b7a2200bc02eccf39a66bd73216a8e6f15bc

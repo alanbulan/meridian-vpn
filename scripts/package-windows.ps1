@@ -12,9 +12,10 @@ $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 if (!(Test-Path $iscc)) { throw 'Official runner Inno Setup compiler missing; no automatic download' }
 $compiler = Get-Item $iscc
 $signature = Get-AuthenticodeSignature $iscc
-Write-Output "Compiler metadata: FileVersion=$($compiler.VersionInfo.FileVersion); ProductVersion=$($compiler.VersionInfo.ProductVersion); Signature=$($signature.Status); SHA256=$((Get-FileHash $iscc -Algorithm SHA256).Hash)"
+Write-Output "Compiler metadata: FileVersion=$($compiler.VersionInfo.FileVersion); ProductVersion=$($compiler.VersionInfo.ProductVersion); Signature=$($signature.Status); Signer=$($signature.SignerCertificate.Subject); Thumbprint=$($signature.SignerCertificate.Thumbprint); SHA256=$((Get-FileHash $iscc -Algorithm SHA256).Hash)"
 if ($signature.Status -ne 'Valid') { throw "Installer compiler signature is not valid: $($signature.Status)" }
-if ($signature.SignerCertificate.Subject -notmatch 'Jordan Russell|JRSoftware|jrsoftware') { throw 'Unexpected installer compiler signer' }
+# Vendor's current publisher is documented at https://jrsoftware.org/isdl-verify.php
+if ($signature.SignerCertificate.Subject -notmatch '(^|,\s*)CN=Pyrsys B\.V\.(,|$)') { throw 'Unexpected installer compiler signer' }
 # Inno's signed ISCC launcher leaves both PE version-resource fields unset.
 # Pin the exact signed official-runner bytes, then verify its own version banner.
 $compilerHash=(Get-FileHash $iscc -Algorithm SHA256).Hash.ToLowerInvariant()

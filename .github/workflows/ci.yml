@@ -2,7 +2,7 @@ name: Native build and tests
 
 on:
   push:
-    branches: [main, safe-recovery-boundaries, feat/cli-terminal-mfa, candidate/linux-minimal-20261104]
+    branches: [main, safe-recovery-boundaries, feat/cli-terminal-mfa, candidate/linux-minimal-20261104, dev/platform-vpn-primitives-20261103]
   pull_request:
   workflow_dispatch:
 

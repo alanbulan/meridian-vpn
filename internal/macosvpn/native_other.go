@@ -1,0 +1,9 @@
+//go:build !darwin
+
+package macosvpn
+
+import "errors"
+
+func openNative(string) (connection, error) {
+ return nil, errors.New("SystemConfiguration L2TP control requires macOS")
+}

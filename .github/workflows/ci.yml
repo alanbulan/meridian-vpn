@@ -58,6 +58,13 @@ jobs:
           mkdir -p reports
           set -o pipefail
           go test -count=1 -json ./... | tee reports/tests.jsonl
+      - name: Verify read-only RAS layout against Windows SDK (no VPN calls)
+        if: matrix.target == 'windows-amd64'
+        run: |
+          python3 integration/windows-ras-abi/verify.py
+          GOOS=windows GOARCH=386 go test -c -o reports/windowsvpn-386.test.exe ./internal/windowsvpn
+          ./reports/windowsvpn-386.test.exe -test.v
+          GOOS=windows GOARCH=arm64 go test -c -o reports/windowsvpn-arm64.test.exe ./internal/windowsvpn
       - name: Static analysis
         run: go vet ./...
       - name: Native GUI and CLI build

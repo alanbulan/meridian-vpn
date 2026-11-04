@@ -2,7 +2,7 @@ name: Linux 安装包构建与安装验收
 on:
   push:
     branches: [candidate/linux-minimal-20261104]
-    paths: [.github/workflows/linux-deb.yml, scripts/package-linux-deb.py, scripts/test_linux_deb.py, scripts/test-deb-installed.sh, packaging/linux/**]
+    paths: [.github/workflows/linux-deb.yml, scripts/package-linux-deb.py, scripts/test_linux_deb.py, scripts/test-deb-installed.sh, scripts/check-linux-fonts.py, packaging/linux/**]
 permissions:
   contents: read
 jobs:
@@ -21,11 +21,11 @@ jobs:
       - name: 构建与校验 Debian 安装包
         run: |
           python3 -m unittest discover -s scripts -p test_linux_deb.py -v
-          python3 scripts/package-linux-deb.py --archive build/original.tar.gz --packaging-commit "$GITHUB_SHA" --output 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb'
+          python3 scripts/package-linux-deb.py --archive build/original.tar.gz --packaging-commit "$GITHUB_SHA" --output 'build/deb/meridian_0.1.0~alpha.1-2_amd64.deb'
           python3 scripts/package-linux-deb.py --archive build/original.tar.gz --packaging-commit "$GITHUB_SHA" --output build/repeat.deb
-          cmp 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb' build/repeat.deb
-          dpkg-deb --info 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb'
-          dpkg-deb --contents 'build/deb/meridian_0.1.0~alpha.1-1_amd64.deb'
+          cmp 'build/deb/meridian_0.1.0~alpha.1-2_amd64.deb' build/repeat.deb
+          dpkg-deb --info 'build/deb/meridian_0.1.0~alpha.1-2_amd64.deb'
+          dpkg-deb --contents 'build/deb/meridian_0.1.0~alpha.1-2_amd64.deb'
           cp packaging/linux/安装说明.md build/deb/安装说明.md
           cd build/deb
           sha256sum *.deb > SHA256SUMS-deb
@@ -57,4 +57,5 @@ jobs:
         run: |
           docker run --rm -e MERIDIAN_DISPOSABLE_INSTALL_TEST=1 \
             -v "$PWD/build/deb:/input:ro" -v "$PWD/scripts/test-deb-installed.sh:/test.sh:ro" \
+            -v "$PWD/scripts/check-linux-fonts.py:/font-check.py:ro" \
             "$IMAGE" sh /test.sh

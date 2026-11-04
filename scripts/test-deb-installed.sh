@@ -13,9 +13,9 @@ chmod 755 /usr/sbin/policy-rc.d
 # installation integrity/source checks exercise the complete desktop package.
 printf 'path-include=/usr/share/doc/meridian\npath-include=/usr/share/doc/meridian/*\n' > /etc/dpkg/dpkg.cfg.d/zz-meridian-test-docs
 apt-get update
-apt-get install -y --no-install-recommends /input/meridian_0.1.0~alpha.1-1_amd64.deb xvfb xauth xdotool openbox x11-utils dbus-x11 desktop-file-utils fonts-dejavu-core
+apt-get install -y --no-install-recommends /input/meridian_0.1.0~alpha.1-2_amd64.deb xvfb xauth xdotool openbox x11-utils dbus-x11 desktop-file-utils python3
 dpkg-query -W -f='${Package} ${Version}\n' libc6 libopenconnect5 libgtk-3-0t64 2>/dev/null || true
-[ "$(dpkg-query -W -f='${Version}' meridian)" = '0.1.0~alpha.1-1' ]
+[ "$(dpkg-query -W -f='${Version}' meridian)" = '0.1.0~alpha.1-2' ]
 [ "$(readlink -f /usr/bin/meridian)" = /usr/lib/meridian/meridian ]
 [ "$(stat -c '%U:%G:%a' /usr/lib/meridian/meridian-auth-helper)" = 'root:root:755' ]
 [ -z "$(find /usr/lib/meridian -perm /6000 -print)" ]
@@ -25,6 +25,8 @@ for script in preinst postinst prerm postrm; do [ ! -e "/var/lib/dpkg/info/merid
 sha256sum -c /usr/share/doc/meridian/SHA256SUMS-installed
 desktop-file-validate /usr/share/applications/meridian.desktop
 useradd --create-home --shell /bin/sh meridian-test
+# Check real Pango fallback, not merely that the window has nonzero geometry.
+runuser -u meridian-test -- python3 /font-check.py
 runuser -u meridian-test -- meridian --version | grep -Fx 'Meridian 0.1.0-alpha.1 (8e0aaa94034e44150345733dc482126a03469d9a)'
 runuser -u meridian-test -- meridianctl version | grep -Fx 'Meridian CLI 0.1.0-alpha.1'
 runuser -u meridian-test -- /usr/lib/meridian/meridian-auth-helper --protocol-version | grep -Fx 'meridian-auth-helper/1'

@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"reflect"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -194,6 +195,14 @@ func checkTerminalRestored(t *testing.T, before syscall.Termios) {
 
 func TestTerminalPTY(t *testing.T) {
 	if scenario := os.Getenv("MERIDIAN_TERMINAL_TEST_CHILD"); scenario != "" {
+		if scenario == "job_control_supervisor" {
+			testJobControlSupervisor(t)
+			return
+		}
+		if scenario == "job_control_worker" {
+			testJobControlWorker(t)
+			return
+		}
 		if scenario == "background_keeper" {
 			time.Sleep(30 * time.Second)
 			return
@@ -246,7 +255,7 @@ func TestTerminalPTY(t *testing.T) {
 		checkTerminalRestored(t, before)
 		return
 	}
-	for _, scenario := range []string{"concurrent", "closed_fd", "two_rounds", "background"} {
+	for _, scenario := range []string{"concurrent", "closed_fd", "two_rounds", "background", "job_control_supervisor"} {
 		t.Run(scenario, func(t *testing.T) {
 			s := startTerminalPTY(t, "TestTerminalPTY", scenario)
 			switch scenario {
@@ -431,6 +440,160 @@ func testBackgroundTerminalChild(t *testing.T) {
 			terminal.Close()
 		}
 		t.Fatal("background process opened an authentication terminal")
+	}
+	checkTerminalRestored(t, before)
+}
+
+// Unlike a session leader alone on a PTY, this worker has a parent in another
+// process group in the same session. Its process group is not orphaned, so
+// background terminal writes exercise real SIGTTOU job-control behavior.
+func testJobControlSupervisor(t *testing.T) {
+	t.Helper()
+	originalState := terminalState(t)
+	before := originalState
+	before.Lflag |= syscall.TOSTOP
+	if err := terminalIoctl(0, syscall.TCSETS, unsafe.Pointer(&before)); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := terminalIoctl(0, syscall.TCSETS, unsafe.Pointer(&originalState)); err != nil {
+			t.Error("test terminal cleanup failed:", err)
+		}
+	}()
+	gateRead, gateWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gateRead.Close()
+	defer gateWrite.Close()
+	readyRead, readyWrite, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readyRead.Close()
+	defer readyWrite.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	worker := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestTerminalPTY$", "-test.timeout=9s")
+	worker.Env = append(os.Environ(), "MERIDIAN_TERMINAL_TEST_CHILD=job_control_worker")
+	worker.Stdin, worker.Stdout, worker.Stderr = os.Stdin, os.Stdout, os.Stderr
+	worker.ExtraFiles = []*os.File{gateRead, readyWrite}
+	worker.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := worker.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- worker.Wait() }()
+	defer worker.Process.Kill()
+	gateRead.Close()
+	readyWrite.Close()
+	// Set the supervisor-only disposition after exec so the worker does not
+	// inherit ignored SIGTTOU. The worker uses the production signal context.
+	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
+	original := int32(syscall.Getpgrp())
+	foreground := int32(worker.Process.Pid)
+	defer func() {
+		if err := terminalIoctl(0, syscall.TIOCSPGRP, unsafe.Pointer(&original)); err != nil {
+			t.Error("test foreground cleanup failed:", err)
+		}
+	}()
+	if err := terminalIoctl(0, syscall.TIOCSPGRP, unsafe.Pointer(&foreground)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gateWrite.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	ready := make(chan error, 1)
+	go func() {
+		var value [1]byte
+		_, err := readyRead.Read(value[:])
+		ready <- err
+	}()
+	select {
+	case err := <-ready:
+		if err != nil {
+			t.Fatal("job-control worker did not reach hidden prompt:", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("job-control worker did not become ready")
+	}
+	if err := terminalIoctl(0, syscall.TIOCSPGRP, unsafe.Pointer(&original)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal("background prompt worker failed:", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("background prompt failed to terminate promptly")
+	}
+	checkTerminalRestored(t, before)
+}
+
+func terminalTestSignalMask(t *testing.T) uint64 {
+	t.Helper()
+	var mask uint64
+	// Linux rt_sigprocmask with a nil new mask only reads this thread's mask.
+	_, _, errno := syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 2, 0, uintptr(unsafe.Pointer(&mask)), unsafe.Sizeof(mask), 0, 0)
+	if errno != 0 {
+		t.Fatal("cannot read test thread signal mask:", errno)
+	}
+	return mask
+}
+
+func testJobControlWorker(t *testing.T) {
+	t.Helper()
+	gate := os.NewFile(3, "job-control-gate")
+	ready := os.NewFile(4, "job-control-ready")
+	defer gate.Close()
+	defer ready.Close()
+	var value [1]byte
+	if n, err := gate.Read(value[:]); err != nil || n != 1 {
+		t.Fatal("job-control gate failed")
+	}
+	before := terminalState(t)
+	terminal, err := openAuthTerminal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	ctx, stop := commandSignalContext(context.Background())
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, 7*time.Second)
+	defer cancel()
+	// Keep mask observations on the exact OS thread used for Prompt and Close.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	mask := terminalTestSignalMask(t)
+	go func() {
+		for ctx.Err() == nil {
+			var state syscall.Termios
+			if terminalIoctl(0, syscall.TCGETS, unsafe.Pointer(&state)) == nil && state.Lflag&syscall.ECHO == 0 {
+				_, _ = ready.Write([]byte{1})
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	challenge := core.AuthChallenge{SessionID: strings.Repeat("c", 32), Round: 1, Fields: []core.AuthField{{ID: "otp", Kind: "password", Label: "Code"}}}
+	answer, err := terminal.Prompt(ctx, challenge)
+	if err == nil || len(answer.Values) != 0 {
+		t.Fatal("background prompt returned an answer")
+	}
+	if ctx.Err() != nil {
+		t.Fatal("background prompt needed signal cancellation or timeout to stop")
+	}
+	if terminalTestSignalMask(t) != mask {
+		t.Fatal("Prompt changed the original thread signal mask")
+	}
+	checkTerminalRestored(t, before)
+	if err := terminal.Close(); err != nil {
+		t.Fatal("background terminal close failed:", err)
+	}
+	if terminalTestSignalMask(t) != mask {
+		t.Fatal("Close changed the original thread signal mask")
 	}
 	checkTerminalRestored(t, before)
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"mygo-vpn/internal/core"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -51,6 +52,32 @@ func (t *linuxAuthTerminal) foreground() bool {
 	return terminalIoctl(t.fd, syscall.TIOCGPGRP, unsafe.Pointer(&group)) == nil && int(group) == syscall.Getpgrp()
 }
 
+// Job-control signals must not restart a tty syscall forever after the process
+// loses its foreground group. Keep the process-wide NotifyContext handlers;
+// only the OS thread doing terminal IO temporarily blocks SIGTTIN/SIGTTOU.
+func blockTerminalJobControl() (func() error, error) {
+	runtime.LockOSThread()
+	mask := uint64(1) << (uint(syscall.SIGTTIN) - 1)
+	mask |= uint64(1) << (uint(syscall.SIGTTOU) - 1)
+	var previous uint64
+	_, _, errno := syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 0, uintptr(unsafe.Pointer(&mask)), uintptr(unsafe.Pointer(&previous)), 8, 0, 0)
+	if errno != 0 {
+		runtime.UnlockOSThread()
+		return nil, errTerminalAuth
+	}
+	return func() error {
+		_, _, errno := syscall.RawSyscall6(syscall.SYS_RT_SIGPROCMASK, 2, uintptr(unsafe.Pointer(&previous)), 0, 8, 0, 0)
+		if errno != 0 {
+			// Do not return a thread with an unexpected mask to the scheduler.
+			// The failing foreground operation ends this goroutine/process; Go
+			// retires a locked thread when its goroutine exits.
+			return errTerminalAuth
+		}
+		runtime.UnlockOSThread()
+		return nil
+	}, nil
+}
+
 func (t *linuxAuthTerminal) restore() error {
 	if t.saved == nil {
 		return nil
@@ -66,7 +93,7 @@ func (t *linuxAuthTerminal) restore() error {
 	return errTerminalAuth
 }
 
-func (t *linuxAuthTerminal) Close() error {
+func (t *linuxAuthTerminal) Close() (err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.fd < 0 {
@@ -75,7 +102,17 @@ func (t *linuxAuthTerminal) Close() error {
 		}
 		return nil
 	}
-	err := t.restore()
+	restoreMask, err := blockTerminalJobControl()
+	if err != nil {
+		return errTerminalAuth
+	}
+	defer func() {
+		if restoreMask() != nil {
+			t.restoreFailed = true
+			err = errTerminalAuth
+		}
+	}()
+	err = t.restore()
 	closeErr := syscall.Close(t.fd)
 	t.fd = -1
 	if err != nil || closeErr != nil || t.restoreFailed {
@@ -94,6 +131,20 @@ func (t *linuxAuthTerminal) Prompt(ctx context.Context, ch core.AuthChallenge) (
 	if t.fd < 0 || t.restoreFailed || ctx.Err() != nil || !validTerminalChallenge(ch) || !t.foreground() {
 		return answer, errTerminalAuth
 	}
+	restoreMask, err := blockTerminalJobControl()
+	if err != nil {
+		return answer, errTerminalAuth
+	}
+	defer func() {
+		if restoreMask() != nil {
+			t.restoreFailed = true
+			for _, value := range answer.Values {
+				clear(value)
+			}
+			answer = core.AuthAnswer{}
+			err = errTerminalAuth
+		}
+	}()
 	var state syscall.Termios
 	if terminalIoctl(t.fd, syscall.TCGETS, unsafe.Pointer(&state)) != nil {
 		return answer, errTerminalAuth

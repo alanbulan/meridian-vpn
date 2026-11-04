@@ -401,3 +401,20 @@ See [SERVICE.md](SERVICE.md) for ownership, callback lock order, startup timeout
 private-bus verification and the still-missing executable/registration/deployment
 and real-host acceptance gates. Synthetic NM and fake host authority are tests,
 not interchangeable production providers.
+
+## Correlated local/NM IPv4 observation
+
+`UniVPNNMLocalBinding.ObserveIPv4` connects the post-publication NM projection to
+its retained original receipt, concrete authenticated activation and historical
+local worker/relay association. No caller supplies substitute identities, paths,
+offers or expectations. It checks the local association before and after the NM
+read, requires the complete native binding and address to agree, and returns
+independent copies. The original receipt's one-attempt/quarantine semantics still
+apply; the wrapper does not retry or recover a failed observation.
+
+This is a read-only orchestration boundary, not a host policy implementation.
+It does not read kernel routes, RPDB or resolver state, refresh historical local
+liveness, supply the independent HostBinding, authorize Ready or cleanup, or
+change application enablement. Core tests inject only the cross-package read;
+existing private-bus tests cover the NM observer separately. No combined live
+NM/TUN/gateway acceptance is implied.

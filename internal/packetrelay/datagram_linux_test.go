@@ -4,6 +4,7 @@ package packetrelay
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"syscall"
@@ -117,14 +118,91 @@ func TestDatagramRejectsRegularFile(t *testing.T) {
 	}
 }
 
+// These tests create only local socketpairs; no listener, IP socket, TUN,
+// route, DNS, credentials or live VPN configuration is used.
 func TestUnnamedUnixOnly(t *testing.T) {
-	if e := unnamedUnix(&syscall.SockaddrUnix{}); e != nil {
-		t.Fatal(e)
+	pair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_SEQPACKET|syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	var nilUnix *syscall.SockaddrUnix
-	for _, a := range []syscall.Sockaddr{nil, nilUnix, &syscall.SockaddrUnix{Name: "/tmp/denied"}, &syscall.SockaddrUnix{Name: "@abstract"}, &syscall.SockaddrInet4{}} {
-		if unnamedUnix(a) == nil {
-			t.Fatal("non-private endpoint accepted")
+	files := [2]*os.File{
+		os.NewFile(uintptr(pair[0]), "unnamed-packet"),
+		os.NewFile(uintptr(pair[1]), "unnamed-peer"),
+	}
+	defer files[0].Close()
+	defer files[1].Close()
+	for i, fd := range pair {
+		for _, peer := range []bool{false, true} {
+			if err := unnamedUnixFD(fd, peer); err != nil {
+				t.Fatalf("unnamed endpoint (peer=%v): %v", peer, err)
+			}
+		}
+		p, err := NewDatagramPackets(files[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer p.Close()
+	}
+}
+
+func TestDatagramRejectsNamedLocalAndPeer(t *testing.T) {
+	for _, tc := range []struct {
+		label string
+		name  string
+	}{
+		{"empty-abstract", "@"},
+		{"abstract", fmt.Sprintf("@meridian-unnamed-%d", os.Getpid())},
+		{"pathname", t.TempDir() + "/named"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			pair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_SEQPACKET|syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			files := [2]*os.File{
+				os.NewFile(uintptr(pair[0]), "named-packet"),
+				os.NewFile(uintptr(pair[1]), "peer-packet"),
+			}
+			defer files[0].Close()
+			defer files[1].Close()
+			// A connected socketpair endpoint can be bound without creating a
+			// listener. The other endpoint then has a named peer.
+			if err := syscall.Bind(pair[0], &syscall.SockaddrUnix{Name: tc.name}); err != nil {
+				t.Fatal(err)
+			}
+			if unnamedUnixFD(pair[0], false) == nil || unnamedUnixFD(pair[1], true) == nil {
+				t.Fatal("named local or peer endpoint accepted")
+			}
+			for _, f := range files {
+				if p, err := NewDatagramPackets(f); err == nil {
+					p.Close()
+					t.Fatal("named packet channel accepted")
+				}
+				if _, err := f.Stat(); err != nil {
+					t.Fatal("ownership lost on rejection", err)
+				}
+			}
+		})
+	}
+}
+
+func TestDatagramRejectsUnconnectedSocket(t *testing.T) {
+	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_SEQPACKET|syscall.SOCK_NONBLOCK|syscall.SOCK_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := os.NewFile(uintptr(fd), "unconnected-packet")
+	defer f.Close()
+	if p, err := NewDatagramPackets(f); err == nil {
+		p.Close()
+		t.Fatal("unconnected endpoint accepted")
+	}
+	if _, err := f.Stat(); err != nil {
+		t.Fatal("ownership lost on rejection", err)
+	}
+	for _, peer := range []bool{false, true} {
+		if err := unnamedUnixFD(-1, peer); !errors.Is(err, syscall.EBADF) {
+			t.Fatalf("invalid descriptor (peer=%v): %v", peer, err)
 		}
 	}
 }

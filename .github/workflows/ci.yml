@@ -111,6 +111,14 @@ jobs:
         env:
           CGO_ENABLED: '1'
         run: go test -race -count=1 ./...
+      - name: Check packet endpoint formatting and Linux syscall portability
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          test -z "$(gofmt -l internal/packetrelay/datagram_linux.go internal/packetrelay/datagram_linux_test.go internal/packetrelay/sockname_linux.go internal/packetrelay/sockname_socketcall_linux.go)"
+          for arch in 386 arm64 s390x; do
+            GOOS=linux GOARCH="$arch" go test -c -o "$RUNNER_TEMP/packetrelay-$arch.test" ./internal/packetrelay
+          done
       - name: Bootstrap static build and injected tests only
         run: make -C integration/worker-bootstrap all test
       - name: Offline provisioning tests (no install or activation)

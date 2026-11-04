@@ -40,17 +40,27 @@ func realCLIMFATerminal(t *testing.T, cancelPrompt bool) {
 	}
 	if os.Getenv("MERIDIAN_TERMINAL_TEST_CHILD") == "" {
 		s := startTerminalPTY(t, t.Name(), "real-helper")
-		s.await(t, "Hidden answer: ")
 		if cancelPrompt {
+			s.awaitAny(t, "Hidden answer: ", "Choice number (hidden): ")
 			s.write(t, "\x03")
 		} else {
-			s.write(t, "000000\n")
-			s.await(t, "Choice number (hidden): ")
-			s.write(t, "1\n")
-			s.await(t, "Hidden answer: ")
-			s.write(t, "123456\n")
-			s.await(t, "Choice number (hidden): ")
-			s.write(t, "1\n")
+			// libopenconnect may present select fields before password fields.
+			// Respond to each field kind once per round without assuming order.
+			for _, code := range []string{"000000\n", "123456\n"} {
+				var seen [2]bool
+				for field := 0; field < len(seen); field++ {
+					kind := s.awaitAny(t, "Hidden answer: ", "Choice number (hidden): ")
+					if seen[kind] {
+						t.Fatal("duplicate field kind before completing a fixture MFA round")
+					}
+					seen[kind] = true
+					if kind == 0 {
+						s.write(t, code)
+					} else {
+						s.write(t, "1\n")
+					}
+				}
+			}
 		}
 		s.finish(t, "000000", "123456", cliFixturePassword, cliFixtureCookie)
 		return

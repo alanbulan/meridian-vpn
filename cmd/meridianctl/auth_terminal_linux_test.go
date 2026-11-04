@@ -83,11 +83,27 @@ func startTerminalPTY(t *testing.T, test, scenario string) *terminalPTYSession {
 
 func (s *terminalPTYSession) await(t *testing.T, text string) {
 	t.Helper()
+	s.awaitAny(t, text)
+}
+
+// Return the earliest complete local prompt marker, independent of gateway
+// field order. Never print terminal contents in timeout diagnostics.
+func (s *terminalPTYSession) awaitAny(t *testing.T, markers ...string) int {
+	t.Helper()
+	if len(markers) == 0 {
+		t.Fatal("no terminal prompt markers supplied")
+	}
 	timer := time.NewTimer(15 * time.Second)
 	defer timer.Stop()
 	for {
-		if i := strings.Index(s.transcript[s.cursor:], text); i >= 0 {
-			s.cursor += i + len(text)
+		found, offset := -1, -1
+		for index, marker := range markers {
+			if i := strings.Index(s.transcript[s.cursor:], marker); i >= 0 && (offset < 0 || i < offset) {
+				found, offset = index, i
+			}
+		}
+		if found >= 0 {
+			s.cursor += offset + len(markers[found])
 			var state syscall.Termios
 			if err := terminalIoctl(int(s.master.Fd()), syscall.TCGETS, unsafe.Pointer(&state)); err != nil {
 				t.Fatal(err)
@@ -95,7 +111,7 @@ func (s *terminalPTYSession) await(t *testing.T, text string) {
 			if state.Lflag&(syscall.ECHO|syscall.ECHONL|syscall.ICANON) != 0 {
 				t.Fatal("terminal prompt is echoing or canonical")
 			}
-			return
+			return found
 		}
 		select {
 		case b, ok := <-s.chunks:
@@ -111,7 +127,10 @@ func (s *terminalPTYSession) await(t *testing.T, text string) {
 			}
 			s.transcript += string(b)
 		case <-timer.C:
-			t.Fatal("timed out waiting for terminal prompt")
+			t.Fatalf("timed out waiting for terminal prompt; local marker counts: authentication=%d hidden=%d choice=%d; unread_output=%t",
+				strings.Count(s.transcript, "Gateway authentication. All answers are hidden. Ctrl+C cancels."),
+				strings.Count(s.transcript, "Hidden answer: "),
+				strings.Count(s.transcript, "Choice number (hidden): "), s.cursor < len(s.transcript))
 		}
 	}
 }

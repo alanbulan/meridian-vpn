@@ -71,6 +71,12 @@ jobs:
           mkdir -p build
           go build -buildvcs=false -trimpath -tags mygo_noinspector -ldflags '-s -w -X github.com/egoist/mygo.production=1' -o build/meridian${{ matrix.ext }} ./cmd/meridian
           go build -buildvcs=false -trimpath -ldflags '-s -w' -o build/meridianctl${{ matrix.ext }} ./cmd/meridianctl
+      - name: Compile Linux arm64 terminal MFA and PTY tests
+        if: runner.os == 'Linux'
+        env:
+          GOOS: linux
+          GOARCH: arm64
+        run: go test -c -o "$RUNNER_TEMP/meridianctl-arm64.test" ./cmd/meridianctl
       - name: Run native CLI without configuration or network changes
         run: |
           ./build/meridianctl${{ matrix.ext }} version

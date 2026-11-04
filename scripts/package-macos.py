@@ -123,7 +123,16 @@ def package(binaries, output, arch, commit, abi_evidence):
         dmg, pkg = output / (stem + ".dmg"), output / (stem + ".pkg")
         invoke(["/usr/bin/hdiutil", "create", "-volname", "Meridian Preview", "-srcfolder", str(stage), "-format", "UDZO", str(dmg)])
         invoke(["/usr/bin/hdiutil", "verify", str(dmg)])
-        invoke(["/usr/bin/pkgbuild", "--component", str(app), "--install-location", "/Applications", "--identifier", "site.meridian-vpn.preview", "--version", "0.1.0", str(pkg)])
+        # Never relocate an upgrade to a mounted/temporary copy discovered by
+        # Installer. Only this app belongs in the /Applications payload.
+        pkgroot = root / "pkgroot"
+        pkgroot.mkdir()
+        shutil.copytree(app, pkgroot / APP)
+        components = root / "components.plist"
+        components.write_bytes(plistlib.dumps([{"RootRelativeBundlePath": APP,
+            "BundleIsRelocatable": False, "BundleHasStrictIdentifier": True,
+            "BundleIsVersionChecked": True, "BundleOverwriteAction": "upgrade"}]))
+        invoke(["/usr/bin/pkgbuild", "--root", str(pkgroot), "--component-plist", str(components), "--install-location", "/Applications", "--identifier", "site.meridian-vpn.preview", "--version", "0.1.0", str(pkg)])
         expanded = root / "expanded"
         invoke(["/usr/sbin/pkgutil", "--expand-full", str(pkg), str(expanded)])
         copies = list(expanded.rglob("Info.plist"))

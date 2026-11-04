@@ -1,9 +1,9 @@
 name: macOS 开发预览安装包与原生只读验证
 on:
   push:
-    branches: [candidate/macos-preview-20261104]
+    branches: [candidate/macos-preview-20261104, candidate/macos-install-20261104]
   pull_request:
-    paths: [internal/core/**, internal/macosvpn/**, cmd/meridian-macos-inspect/**, cmd/meridian-macos-service/**, internal/desktop/**, integration/macos-preflight/**, packaging/macos/**, scripts/package-macos.py, scripts/test_macos_package.py, .github/workflows/macos-preview.yml]
+    paths: [internal/core/**, internal/macosvpn/**, cmd/meridian-macos-inspect/**, cmd/meridian-macos-service/**, internal/desktop/**, integration/macos-preflight/**, integration/macos-install/**, packaging/macos/**, scripts/package-macos.py, scripts/test_macos_package.py, .github/workflows/macos-preview.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -41,6 +41,7 @@ jobs:
           go mod verify
           python3 -m unittest discover -s scripts -p test_macos_package.py -v
           python3 -m unittest discover -s integration/macos-preflight -v
+          python3 -m unittest discover -s integration/macos-install -v
           go test -count=1 ./...
           go vet ./...
       - name: 执行真实系统框架只读 ABI 验证
@@ -58,6 +59,9 @@ jobs:
           go build -buildvcs=false -trimpath -o build/macos-binaries/meridian-macos-service ./cmd/meridian-macos-service
       - name: 创建并校验 DMG 与 PKG（不安装、不连接 VPN）
         run: python3 scripts/package-macos.py --binaries build/macos-binaries --output build/macos-preview --arch '${{ matrix.arch }}' --commit "$GITHUB_SHA" --abi-evidence build/reports/macos-readonly-abi/evidence.json
+      - name: 一次性 runner 实际安装、窗口启动、正常退出和卸载（不连接 VPN）
+        if: github.event_name != 'pull_request'
+        run: python3 integration/macos-install/run.py --packages build/macos-preview --reports build/reports/macos-install --arch '${{ matrix.arch }}' --commit "$GITHUB_SHA"
       - name: 上传开发预览安装包（未公证、VPN 未完成）
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -65,7 +69,7 @@ jobs:
           path: build/macos-preview/
           if-no-files-found: error
           retention-days: 14
-      - name: 保留只读验证证据
+      - name: 保留只读与安装验收证据
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:

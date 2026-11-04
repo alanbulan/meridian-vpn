@@ -102,6 +102,43 @@ func (a *App) macServiceSelectionEditable() bool {
 	return !a.LoadBlocked && !a.FileBusy && !a.busy() && !a.ShuttingDown && !a.Checking && a.Engine.Snapshot().State != core.CleanupFailed && a.macService.result == nil
 }
 
+// Restoring input never restores the inspection handle or per-attempt authority.
+func (a *App) useSavedMacServiceSelection() {
+	if !a.macServiceSelectionEditable() || a.Config.MacServiceSelection == nil {
+		return
+	}
+	a.restoreMacServiceSelection()
+	a.Notice = "已恢复保存的选择；连接前请重新检查并授权。"
+}
+
+func (a *App) macServiceSelectionChanged() bool {
+	s := a.Config.MacServiceSelection
+	if s == nil {
+		return false
+	}
+	p, _, err := macServiceProfile(a.macService.input)
+	return err != nil || p.SystemService.ServiceID != s.ServiceID || p.Gateway != s.Gateway || !reflect.DeepEqual(p.SystemService.Targets, s.Targets)
+}
+
+// Operate only on the retained macOS attempt, never on another mode's session.
+func (a *App) disconnectMacService() {
+	s := a.Engine.Snapshot()
+	if a.ShuttingDown || a.CleanupRetrying || !a.macServiceOwnsAttempt(s) || (s.State != core.Connecting && s.State != core.Connected) {
+		return
+	}
+	if err := a.Engine.Disconnect(); err != nil {
+		a.Notice = "断开请求未完成；请保留应用并查看当前连接状态。"
+	}
+}
+
+func (a *App) retryMacServiceCleanup() {
+	s := a.Engine.Snapshot()
+	if a.ShuttingDown || a.CleanupRetrying || !a.macServiceOwnsAttempt(s) || s.State != core.CleanupFailed {
+		return
+	}
+	a.retryScopedCleanup()
+}
+
 func (a *App) saveMacServiceSelection() {
 	if !a.macServiceSelectionEditable() {
 		return
@@ -229,6 +266,12 @@ func (a *App) macSystemServiceForm(c *ui.Context) {
 		m.reset()
 	}
 	ui.Text(c, "保存的选择只用于填入表单；服务已删除或配置改变时需更新选择并重新检查。").FillWidth()
+	if a.macServiceSelectionChanged() {
+		ui.Text(c, "当前输入与保存的选择不同；关闭应用后仍会恢复上次保存的内容。").FillWidth()
+		if ui.Button(c.Key("mac-restore-selection"), "恢复保存的选择（清除本次授权）").Disabled(disabled).Clicked() {
+			a.useSavedMacServiceSelection()
+		}
+	}
 	if ui.Button(c.Key("mac-save-selection"), "保存选择（不保存授权）").Disabled(disabled).Clicked() {
 		a.saveMacServiceSelection()
 	}
@@ -253,7 +296,25 @@ func (a *App) macSystemServiceForm(c *ui.Context) {
 			a.connectMacService()
 		}
 	}
-	ui.Text(c, a.Engine.Snapshot().Message).FillWidth()
+	snapshot := a.Engine.Snapshot()
+	if a.macServiceOwnsAttempt(snapshot) && m.activeProfile.SystemService != nil {
+		ui.Text(c, "本次/最近一次 Meridian 尝试使用的系统服务").Bold()
+		ui.Text(c, m.activeProfile.SystemService.ServiceID).FillWidth()
+		ui.Text(c, "期望网关："+m.activeProfile.Gateway).FillWidth()
+		ui.Text(c, "验证目标："+strings.Join(m.activeProfile.SystemService.Targets, " ")).FillWidth()
+		switch snapshot.State {
+		case core.Connecting, core.Connected, core.Disconnecting:
+			if ui.Button(c.Key("mac-disconnect"), "断开本次连接").Disabled(a.ShuttingDown || a.CleanupRetrying || snapshot.State == core.Disconnecting).Clicked() {
+				a.disconnectMacService()
+			}
+		case core.CleanupFailed:
+			ui.Text(c, "本次清理尚未确认。请保留应用；重试只处理本次持有的连接，不强制断开其他应用。").FillWidth()
+			if ui.Button(c.Key("mac-retry-cleanup"), "重试本次清理确认").Disabled(a.ShuttingDown || a.CleanupRetrying).Clicked() {
+				a.retryMacServiceCleanup()
+			}
+		}
+	}
+	ui.Text(c, snapshot.Message).FillWidth()
 }
 
 func (a *App) macServiceSettingsEntry(c *ui.Context) {

@@ -17,7 +17,7 @@
 
 Meridian 使用纯 Go 原生桌面界面，不依赖 WebView、HTML、JavaScript、Electron、Tauri 或 Wails。配置管理、认证交互与系统连接分层实现；界面明确区分缺少依赖、等待授权、正在连接、连接失败和清理失败。
 
-> **开发阶段说明**：Linux 已有 AnyConnect/OpenConnect 与 NetworkManager L2TP/IPsec 后端代码，尚未完成真实企业网关、内网访问和路由/DNS 恢复验收。Windows 与 macOS 当前提供界面及离线 CLI，**没有 VPN 后端**。实验性 UniVPN 默认禁用。本项目尚不是可替代任意企业 UniVPN 部署的生产客户端。
+> **开发阶段说明**：Linux 已有 AnyConnect/OpenConnect 与 NetworkManager L2TP/IPsec 后端代码，尚未完成真实企业网关、内网访问和路由/DNS 恢复验收。Windows 已提供显式启用、逐次授权的现有 RAS 连接受限模式；macOS 已提供现有系统 VPN 服务的选择、逐次授权与指定目标路由核验。两者都不是完整自有隧道后端，也没有真实企业网关验收。实验性 UniVPN 默认禁用。本项目尚不是可替代任意企业 UniVPN 部署的生产客户端。
 
 ## 界面预览
 
@@ -54,8 +54,8 @@ Meridian 使用纯 Go 原生桌面界面，不依赖 WebView、HTML、JavaScript
 | Linux AnyConnect | OpenConnect 认证 + NetworkManager 系统服务 | 本地合成身份认证夹具有记录；真实企业隧道未验收 |
 | Linux L2TP/IPsec | NetworkManager-l2tp 参数及生命周期适配 | 受控测试；真实 IKE/PPP 协商、授权及清理未验收 |
 | Linux 实验性 UniVPN | 原生传输、broker 与隔离组件的开发代码 | 默认禁用；仅受控/回环夹具与离线准备，非生产连接入口 |
-| Windows amd64 | 原生界面与离线 CLI | 无 VPN 后端，无签名安装包；以对应 Actions 结果判断原生编译/测试 |
-| macOS arm64 | 原生界面与离线 CLI | 无 VPN 后端，无 Developer ID 签名/公证；以对应 Actions 结果判断原生编译/测试 |
+| Windows amd64 | 原生界面、离线 CLI、显式已有 RAS 连接受限模式、当前用户 Setup.exe 构建 | 未签名；共享引用不等于独占会话，无完整路由/DNS 防泄漏保证，真实网关未验收 |
+| macOS arm64 / amd64 | 原生界面、离线 CLI、已有系统 VPN 服务受限模式、应用安装包构建 | 无 Developer ID 签名/公证；有限目标路由观察不等于全应用保护，真实网关未验收 |
 
 PKCS#11 输入支持不等于硬件令牌兼容认证。结构化 MFA 不等于厂商 SSO、Host Checker、网页认证或终端合规支持。详见[证书认证](docs/CERTIFICATE-AUTHENTICATION.md)、[L2TP/IPsec](docs/L2TP-IPSEC.md)与[功能覆盖](docs/REFERENCE-COVERAGE.md)。
 
@@ -92,6 +92,17 @@ go build -buildvcs=false -trimpath -o build/meridianctl.exe ./cmd/meridianctl
 ### Linux 版本化候选包
 
 版本化 Linux amd64 GUI/CLI、可选认证 helper、精确源码与许可证通知打包见 [Linux 候选包说明](docs/LINUX-RELEASE.md)。候选工作流仅构建上传，不自动发布、不选择项目许可证，也不把构建通过当作真实 VPN 验收。
+
+### Windows / macOS 受限模式
+
+Windows 安装包的普通入口保持默认行为；单独标注的实验入口使用
+`--enable-windows-borrowed`。用户仍须选定已有电话簿/条目，提供预期网关和账号，
+并在每次连接前明确同意网络变化、系统凭据缓存及共享引用限制。入口本身不授予同意。
+macOS 通过界面选择已有系统服务，并检查用户给定的目标地址路由；保存服务选择不保存同意。
+平台说明见 [Windows 边界](docs/WINDOWS-BACKEND.md) 和 [macOS 说明](internal/macosvpn/README.md)。
+
+安装包构建成功不表示网关功能完成。当前候选版本未进行本次新增改动的测试；
+历史 CI 只证明对应提交，不自动覆盖后续代码。无签名时不要关闭系统安全功能绕过警告。
 
 ### Linux 连接前准备
 
@@ -175,7 +186,8 @@ python3 -m unittest discover -s scripts -v
 ## 安全边界
 
 - 凭据只用于当前认证会话；不把密码、Cookie、PIN 或私钥口令写入配置、日志、argv 或环境变量。
-- 系统连接只操作本次创建的配置身份，失败时保留清理不确定性的提示，并阻止不安全的重复连接。
+- Linux 系统连接按本次创建的配置身份清理；Windows/macOS 受限模式使用用户明确选择的已有系统条目或服务，不声称独占系统连接。失败时保留清理不确定性的提示，并阻止不安全的重复连接。
+- 连接表单凭据和同意绑定到当时选择的配置；切换或修改该配置会清空它们，即使新旧配置使用同一个网关。
 - 不提供 kill switch 或完整 IPv6 / DNS 泄漏保证。强制结束应用、系统崩溃时，系统服务中的连接不保证立即断开。
 - 实验性 UniVPN 仍缺可信部署、独占网络控制与真实内核隔离验收；不要安装为 setuid、手动运行 bootstrap 或启用生产连接。
 - 离线清单哈希证明字节一致，不证明代码安全、来源可信或完整依赖闭包。
@@ -186,7 +198,7 @@ python3 -m unittest discover -s scripts -v
 
 - [ ] 在授权隔离环境验收 Linux 真实隧道、内网访问、路由/DNS 回滚和异常退出。
 - [ ] 验证实验性 worker 的真实内核隔离、资源限制、失败回收和不可逃逸性。
-- [ ] 实现 Windows / macOS 平台后端及其权限、安全服务与签名流程。
+- [ ] 完善 Windows/macOS 现有系统 VPN 受限模式，完成部署所需平台权限、安全服务、签名/公证与真实网关互通。
 - [ ] 完成真实桌面窗口、托盘、输入法与登录启动的目标系统验收。
 - [ ] 按明确需求实现 SSO、硬件令牌、自动重连和系统密钥环，而非用界面选项替代能力。
 

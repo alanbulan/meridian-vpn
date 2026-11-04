@@ -8,6 +8,7 @@ import (
 	"mygo-vpn/internal/buildinfo"
 	"mygo-vpn/internal/core"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ type sessionTarget struct {
 }
 
 type App struct {
+	windowsInspection         windowsInspectionUI
 	windowsActiveProfile      *core.Profile
 	windowsActiveAttemptID    uint64
 	WindowsBorrowedEnabled    bool
@@ -112,6 +114,20 @@ func (a *App) commit(cfg core.Config) bool {
 		a.Notice = "Could not save configuration: " + err.Error()
 		return false
 	}
+	// Credentials and consent are bound to the selected profile as reviewed.
+	// Two profiles can share a gateway while naming different accounts or local
+	// system entries. A successful selection/edit must not reuse the old form.
+	var next *core.Profile
+	for i := range cfg.Profiles {
+		if cfg.Profiles[i].ID == cfg.SelectedID {
+			next = &cfg.Profiles[i]
+			break
+		}
+	}
+	if a.Config.SelectedID != cfg.SelectedID || !reflect.DeepEqual(a.selected(), next) {
+		a.clearCredentials()
+		a.clearReauthentication()
+	}
 	a.Config = cfg
 	a.Notice = ""
 	return true
@@ -135,6 +151,7 @@ func (a *App) navigate(page string) {
 	a.clearCredentials()
 }
 func (a *App) clearCredentials() {
+	a.windowsInspection.reset()
 	a.Password = ""
 	a.KeyPassword = ""
 	a.IPsecPSK = ""
@@ -157,7 +174,7 @@ func (a *App) BeginShutdown() {
 }
 func (a *App) canConnect(p *core.Profile) bool {
 	state := a.Engine.Snapshot().State
-	return p != nil && (!p.InteractiveAuth || a.AuthCapability.Available) && !a.LoadBlocked && !a.ShuttingDown && !a.Checking && a.Capability.Available && a.supportsProtocol(p.Protocol) && (state == core.Disconnected || state == core.Failed)
+	return p != nil && (!p.InteractiveAuth || a.AuthCapability.Available) && !a.LoadBlocked && !a.ShuttingDown && !a.Checking && !a.windowsInspection.running && a.Capability.Available && a.supportsProtocol(p.Protocol) && (state == core.Disconnected || state == core.Failed)
 }
 func (a *App) beginRecheck(factory func() core.Adapter) {
 	if a.Checking || a.ShuttingDown || a.busy() || a.Engine.Snapshot().State == core.CleanupFailed {
@@ -897,6 +914,9 @@ func (a *App) connectForm(c *ui.Context) {
 				gateway := a.GatewayChoice
 				ui.Select(c.Key("session-gateway"), &gateway, choices).FillWidth()
 				a.selectSessionGateway(gateway)
+			}
+			if selected.Protocol == core.WindowsBorrowedProtocol {
+				a.windowsInspectionForm(c)
 			}
 			if selected.Protocol == "l2tp" {
 				a.label(c, "IPsec pre-shared key (this session only)")

@@ -67,10 +67,10 @@ class MacOSPackageTests(unittest.TestCase):
         with mock.patch.object(m,"invoke") as invoke:
             m.sign_bundle(Path("Preview.app"))
             calls=[c.args[0] for c in invoke.call_args_list]
-            self.assertTrue(all("/Helpers/" in c[-1] for c in calls[:2]))
-            self.assertTrue(calls[2][-1].endswith("/MacOS/meridian"))
-            self.assertEqual(calls[3][-1],"Preview.app")
-            self.assertEqual(calls[4][1:4],["--verify","--deep","--strict"])
+            self.assertTrue(all("/Helpers/" in c[-1] for c in calls[:3]))
+            self.assertTrue(calls[3][-1].endswith("/MacOS/meridian"))
+            self.assertEqual(calls[4][-1],"Preview.app")
+            self.assertEqual(calls[5][1:4],["--verify","--deep","--strict"])
     def test_missing_input_does_not_create_bundle(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)

@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = "Meridian Preview.app"
-BINARIES = {"meridian": "MacOS/meridian", "meridianctl": "Helpers/meridianctl", "meridian-macos-inspect": "Helpers/meridian-macos-inspect"}
+BINARIES = {"meridian": "MacOS/meridian", "meridianctl": "Helpers/meridianctl", "meridian-macos-inspect": "Helpers/meridian-macos-inspect", "meridian-macos-service": "Helpers/meridian-macos-service"}
 
 
 def invoke(args):
@@ -112,9 +112,9 @@ def package(binaries, output, arch, commit, abi_evidence):
         app = stage_bundle(binaries, stage, arch)
         sign_bundle(app)
         invoke(["/usr/bin/plutil", "-lint", str(app / "Contents/Info.plist")])
-        for relative in ("MacOS/meridian", "Helpers/meridian-macos-inspect", "Helpers/meridianctl"):
+        for relative in ("MacOS/meridian", "Helpers/meridian-macos-inspect", "Helpers/meridian-macos-service", "Helpers/meridianctl"):
             args = [str(app / "Contents" / relative)]
-            args.append("--help" if relative.endswith("inspect") else "--version" if relative == "MacOS/meridian" else "version")
+            args.append("--help" if relative.endswith(("inspect", "service")) else "--version" if relative == "MacOS/meridian" else "version")
             result = invoke(args)  # Safe entry points only: never selects or starts a service.
             if relative == "MacOS/meridian" and commit.encode() not in result:
                 raise ValueError("命令行工具未绑定对应源码提交")

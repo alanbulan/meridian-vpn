@@ -18,7 +18,7 @@ func (a *App) clearReauthentication() {
 func (a *App) pollReauthentication(now time.Time) {
 	snapshot := a.Engine.Snapshot()
 	state := snapshot.State
-	if a.ShuttingDown || !a.Config.Settings.ReauthOnLoss || state == core.CleanupFailed || a.SwitchPending {
+	if a.macServiceOwnsAttempt(snapshot) || a.ShuttingDown || !a.Config.Settings.ReauthOnLoss || state == core.CleanupFailed || a.SwitchPending {
 		a.clearReauthentication()
 		return
 	}
@@ -60,7 +60,7 @@ func (a *App) reauthenticationNotice(c *ui.Context) {
 		return
 	}
 	snapshot := a.Engine.Snapshot()
-	if a.reauthProfileID != a.Config.SelectedID || a.reauthAttemptID != snapshot.AttemptID || snapshot.State != core.Failed {
+	if a.macServiceOwnsAttempt(snapshot) || a.reauthProfileID != a.Config.SelectedID || a.reauthAttemptID != snapshot.AttemptID || snapshot.State != core.Failed {
 		a.clearReauthentication()
 		return
 	}

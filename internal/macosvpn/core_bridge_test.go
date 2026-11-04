@@ -150,10 +150,10 @@ func TestCoreRestorationFailureIsCleanupFailed(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !errors.Is(awaitCoreResult(t, s.Ready()), &core.CleanupError{}) || !errors.Is(awaitCoreResult(t, s.Done()), &core.CleanupError{}) {
+	if !isCoreCleanupError(awaitCoreResult(t, s.Ready())) || !isCoreCleanupError(awaitCoreResult(t, s.Done())) {
 		t.Fatal("未映射清理失败")
 	}
-	if e = s.Stop(); !errors.Is(e, &core.CleanupError{}) || ops.session.stops.Load() != 1 {
+	if e = s.Stop(); !isCoreCleanupError(e) || ops.session.stops.Load() != 1 {
 		t.Fatal("未保留清理失败")
 	}
 }
@@ -194,10 +194,10 @@ func TestCoreBlockedCallRetainedAfterStopTimeout(t *testing.T) {
 		t.Fatal(e)
 	}
 	<-entered
-	if e = s.Stop(); !errors.Is(e, &core.CleanupError{}) {
+	if e = s.Stop(); !isCoreCleanupError(e) {
 		t.Fatal("未知原生退出被误认为已清理")
 	}
-	if !errors.Is(awaitCoreResult(t, s.Done()), &core.CleanupError{}) {
+	if !isCoreCleanupError(awaitCoreResult(t, s.Done())) {
 		t.Fatal("Stop返回前未发布终态")
 	}
 	close(release)
@@ -298,4 +298,9 @@ func TestCoreCleanupRetryRemainsBoundedAndOwned(t *testing.T) {
 	if attempts.Load() != 3 {
 		t.Fatal("清理重试次数错误")
 	}
+}
+
+func isCoreCleanupError(err error) bool {
+	var cleanup *core.CleanupError
+	return errors.As(err, &cleanup)
 }

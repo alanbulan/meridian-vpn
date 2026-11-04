@@ -104,6 +104,7 @@ type ExistingCoreAdapter struct {
 	consent           ExistingServiceConsent
 	policy            ExistingNetworkPolicy
 	verifier          policyVerifier
+	limited           *limitedServiceVerification
 	profile           core.Profile
 	used              bool
 	session           *existingCoreSession
@@ -125,12 +126,15 @@ func newExistingCoreAdapter(control existingControl, selection *ExistingServiceS
 	return &ExistingCoreAdapter{control: control, selection: selection, consent: consent, policy: clonePolicy(policy), verifier: verifier, profile: core.Profile{ID: c.ServiceID, Name: "现有 macOS 系统服务", Protocol: "macos-system-l2tp", Gateway: c.Gateway}, poll: time.Second, stopTimeout: 30 * time.Second}
 }
 func (a *ExistingCoreAdapter) available() bool {
-	if a == nil || a.control == nil || a.selection == nil || a.selection.state == nil || a.verifier == nil || !a.policy.valid() {
+	if a == nil || a.control == nil || a.selection == nil || a.selection.state == nil || (a.limited == nil && (a.verifier == nil || !a.policy.valid())) {
 		return false
 	}
 	c := a.consent
 	if !c.NetworkChanges || !c.SavedSystemCredentials || !c.SharedSystemService || !c.LimitedVerification {
 		return false
+	}
+	if a.limited != nil {
+		return a.limited.available()
 	}
 	available := false
 	if existingGuard(func() error { available = a.verifier.available(); return nil }) != nil {
@@ -138,7 +142,16 @@ func (a *ExistingCoreAdapter) available() bool {
 	}
 	return available
 }
+func (a *ExistingCoreAdapter) VerificationScope() string {
+	if a != nil && a.limited != nil {
+		return core.SystemServiceTargetRoutes
+	}
+	return ""
+}
 func (a *ExistingCoreAdapter) Capability() core.Capability {
+	if a != nil && a.limited != nil {
+		return core.Capability{Available: a.available(), Message: "有限系统服务模式：验证系统连接与指定目标路由，不提供全应用 DNS/IPv6 防泄漏保证"}
+	}
 	return core.Capability{Available: a.available(), Message: "现有系统服务模式需要独立路由、有效 DNS、IPv6 与清理证明；当前原生验证未完成"}
 }
 func (a *ExistingCoreAdapter) Start(ctx context.Context, p core.Profile, password []byte) (core.Session, error) {
@@ -174,21 +187,26 @@ type existingCoreSession struct {
 	generation                                            *GenerationEvidence
 }
 
-func (s *existingCoreSession) Ready() <-chan error    { return s.ready }
-func (s *existingCoreSession) Done() <-chan error     { return s.done }
-func (s *existingCoreSession) publishReady(err error) { s.readyOnce.Do(func() { s.ready <- err }) }
-func (s *existingCoreSession) publishDone(err error)  { s.doneOnce.Do(func() { s.done <- err }) }
+func (s *existingCoreSession) VerificationScope() string { return s.adapter.VerificationScope() }
+func (s *existingCoreSession) Ready() <-chan error       { return s.ready }
+func (s *existingCoreSession) Done() <-chan error        { return s.done }
+func (s *existingCoreSession) publishReady(err error)    { s.readyOnce.Do(func() { s.ready <- err }) }
+func (s *existingCoreSession) publishDone(err error)     { s.doneOnce.Do(func() { s.done <- err }) }
 func (s *existingCoreSession) run() {
 	defer close(s.workerDone)
 	a := s.adapter
-	baseline, err := policyBaseline{}, error(nil)
-	err = existingGuard(func() error { var e error; baseline, e = a.verifier.capture(s.ctx, clonePolicy(a.policy)); return e })
-	if err != nil || s.ctx.Err() != nil || baseline.token == 0 {
-		s.publishReady(core.NewConnectionError(core.FailureReadiness))
-		s.publishDone(core.NewConnectionError(core.FailureReadiness))
-		return
+
+	var err error
+	if a.limited == nil {
+		baseline := policyBaseline{}
+		err = existingGuard(func() error { var e error; baseline, e = a.verifier.capture(s.ctx, clonePolicy(a.policy)); return e })
+		if err != nil || s.ctx.Err() != nil || baseline.token == 0 {
+			s.publishReady(core.NewConnectionError(core.FailureReadiness))
+			s.publishDone(core.NewConnectionError(core.FailureReadiness))
+			return
+		}
+		s.baseline, s.captured = baseline, true
 	}
-	s.baseline, s.captured = baseline, true
 	if s.ctx.Err() != nil {
 		s.publishReady(core.NewConnectionError(core.FailureReadiness))
 		s.publishDone(nil)
@@ -235,14 +253,29 @@ func (s *existingCoreSession) verifyActive() error {
 		return ErrExistingVerification
 	}
 	a := s.adapter
+	if a.limited != nil {
+		if s.verifyGeneration() != nil {
+			return ErrExistingVerification
+		}
+		if existingGuard(func() error { return a.limited.active(s.ctx, cloneGeneration(*s.generation)) }) != nil {
+			return ErrExistingVerification
+		}
+		return s.verifyGeneration()
+	}
 	err := existingGuard(func() error {
 		return a.verifier.active(s.ctx, s.baseline, cloneGeneration(*s.generation), clonePolicy(a.policy))
 	})
 	if err != nil {
 		return ErrExistingVerification
 	}
+	return s.verifyGeneration()
+}
+func (s *existingCoreSession) verifyGeneration() error {
+	if s.generation == nil || s.ctx.Err() != nil {
+		return ErrExistingVerification
+	}
 	var current ExistingServiceObservation
-	err = existingGuard(func() error { var e error; current, e = a.control.Check(s.ctx); return e })
+	err := existingGuard(func() error { var e error; current, e = s.adapter.control.Check(s.ctx); return e })
 	if err == errExistingPanic {
 		s.poisoned = true
 	}
@@ -266,6 +299,12 @@ func (s *existingCoreSession) cleanup() error {
 	}
 	if err != nil || ctx.Err() != nil {
 		return &core.CleanupError{}
+	}
+	if s.adapter.limited != nil {
+		if existingGuard(func() error { return s.adapter.limited.restored(ctx, s.generation) }) != nil || ctx.Err() != nil {
+			return &core.CleanupError{}
+		}
+		return nil
 	}
 	if !s.captured {
 		return &core.CleanupError{}

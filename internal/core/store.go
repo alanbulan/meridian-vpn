@@ -26,24 +26,25 @@ const MaxProfiles = 128
 var Protocols = []string{"anyconnect", "nc", "pulse", "gp", "f5", "fortinet", "array", "l2tp", "univpn"}
 
 type Profile struct {
-	L2TP                 *L2TPOptions `json:"l2tp,omitempty"`
-	CertificateFormat    string       `json:"certificate_format,omitempty"`
-	InteractiveAuth      bool         `json:"interactive_auth,omitempty"`
-	ClientCertificate    string       `json:"client_certificate,omitempty"`
-	ClientKey            string       `json:"client_key,omitempty"`
-	AdditionalGateways   []string     `json:"additional_gateways,omitempty"`
-	AllowProxySystemAuth bool         `json:"-"`
-	Description          string       `json:"description,omitempty"`
-	AuthGroup            string       `json:"auth_group,omitempty"`
-	CAFile               string       `json:"ca_file,omitempty"`
-	ProxyURL             string       `json:"proxy_url,omitempty"`
-	DisableUDP           bool         `json:"disable_udp,omitempty"`
-	MTU                  int          `json:"mtu,omitempty"`
-	ID                   string       `json:"id"`
-	Name                 string       `json:"name"`
-	Gateway              string       `json:"gateway"`
-	Protocol             string       `json:"protocol"`
-	Username             string       `json:"username,omitempty"`
+	SystemService        *SystemServiceOptions `json:"system_service,omitempty"`
+	L2TP                 *L2TPOptions          `json:"l2tp,omitempty"`
+	CertificateFormat    string                `json:"certificate_format,omitempty"`
+	InteractiveAuth      bool                  `json:"interactive_auth,omitempty"`
+	ClientCertificate    string                `json:"client_certificate,omitempty"`
+	ClientKey            string                `json:"client_key,omitempty"`
+	AdditionalGateways   []string              `json:"additional_gateways,omitempty"`
+	AllowProxySystemAuth bool                  `json:"-"`
+	Description          string                `json:"description,omitempty"`
+	AuthGroup            string                `json:"auth_group,omitempty"`
+	CAFile               string                `json:"ca_file,omitempty"`
+	ProxyURL             string                `json:"proxy_url,omitempty"`
+	DisableUDP           bool                  `json:"disable_udp,omitempty"`
+	MTU                  int                   `json:"mtu,omitempty"`
+	ID                   string                `json:"id"`
+	Name                 string                `json:"name"`
+	Gateway              string                `json:"gateway"`
+	Protocol             string                `json:"protocol"`
+	Username             string                `json:"username,omitempty"`
 }
 type Settings struct {
 	ReauthOnLoss   bool   `json:"reauth_on_loss,omitempty"`
@@ -67,6 +68,9 @@ func NewID() string {
 	return hex.EncodeToString(b)
 }
 func ValidateProfile(p Profile) error {
+	if p.SystemService != nil && p.Protocol != ProtocolMacOSSystemL2TP {
+		return errors.New("system-service options require the macOS system-service protocol")
+	}
 	if err := validateCertificateReferences(p); err != nil {
 		return err
 	}
@@ -108,6 +112,9 @@ func ValidateProfile(p Profile) error {
 	}
 	if !supportedProtocol(p.Protocol) {
 		return errors.New("unsupported protocol; select an OpenConnect protocol")
+	}
+	if p.Protocol == ProtocolMacOSSystemL2TP {
+		return validateSystemServiceProfile(p)
 	}
 	if p.Protocol == "l2tp" {
 		return validateL2TPProfile(p)
@@ -242,6 +249,7 @@ func (s Store) Save(c Config) error {
 	return os.Rename(f.Name(), s.Path)
 }
 func (c *Config) Upsert(p Profile) error {
+	p.SystemService = cloneSystemServiceOptions(p.SystemService)
 	if p.L2TP != nil {
 		options := *p.L2TP
 		p.L2TP = &options
@@ -280,7 +288,7 @@ func (c *Config) Delete(id string) {
 func hasControl(s string) bool { return strings.ContainsFunc(s, unicode.IsControl) }
 func supportedProtocol(s string) bool {
 	switch s {
-	case "anyconnect", "nc", "pulse", "gp", "f5", "fortinet", "array", "l2tp", "univpn":
+	case "anyconnect", "nc", "pulse", "gp", "f5", "fortinet", "array", "l2tp", "univpn", ProtocolMacOSSystemL2TP:
 		return true
 	}
 	return false

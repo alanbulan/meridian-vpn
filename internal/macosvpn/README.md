@@ -254,3 +254,13 @@ Apple 的 [VPN 路由说明](https://developer.apple.com/documentation/networkex
 [Network 连接解析报告](https://developer.apple.com/documentation/network/nwconnection/establishmentreport/resolution) 只覆盖对应连接，可能使用缓存，其目标端点不等于 DNS 服务器身份；[加密 DNS](https://developer.apple.com/videos/play/wwdc2020/10047/) 可按应用/连接配置。系统解析器快照不足以证明全部查询去向。指定 DNS 服务器被绕过与加密 DNS 的传输绕过隧道是不同问题，不能混为同一保证。
 
 [SCNetworkConnection 官方头文件](https://github.com/apple-oss-distributions/configd/blob/main/SystemConfiguration.fproj/SCNetworkConnection.h) 明确 Start/Stop 是共享兴趣仲裁，`linger=false` 不是独占租约，Stop(false) 成功不保证其他应用已释放兴趣。当前阶段不承诺全局独占或完整整机恢复。需进一步约定有限的产品保证、独立策略强制方案及获授权的真实网络验收，不能仅凭读回给生产 Ready 放行。
+
+## 显式有限现有服务模式
+
+新增 `NewLimitedExistingCoreAdapter` 是独立入口，不启用前述完整策略验证构造器。`macos-system-l2tp` 与普通密码/PSK `l2tp` 分开；四项同意、选中服务、期望网关和1–16个数值目标必须明确，拒绝空目标。系统服务已连接、选择被使用、配置漂移或范围不匹配均拒绝。本模式不接收密码、PSK、证书或代理参数，不修改系统服务配置。
+
+Ready 只表示系统报告所选服务已连接、可信 PPP 接口/地址证据存在，且全部指定目的地址的内核路由匹配该接口。每轮目标查询前后重新核对同一保留连接引用的代际，连接期间持续检查。Engine 的 `VerificationScope=system-service-target-routes` 与界面文案始终明确有限保证；严格构造器及其他协议的既有契约不变，有限后端/会话不能替代普通协议。
+
+清理只撤销自身兴趣，确认所选服务断开，并确认已观察的 PPP 接口名/索引及指向该索引的路由不残留。接口身份复用、共享连接仍存在、读取失败或未返回原生调用均保留清理失败，不覆盖整机基线，不强制断开其他使用者。未观察到有效接口代际的失败尝试，只确认自身兴趣与所选服务状态，不声称完成整个系统恢复。同步原生调用无法被硬中断，Stop 的等待期限不等于杀死原生执行者。
+
+GUI 在 macOS 设置页提供专用入口：先只读检查，再逐次同意并连接。目标/网关/服务变化、离开页面、取消或提交一次尝试后清除授权；此入口不自动保存配置或凭据。专用 `meridian-macos-service` 前台工具也要求明确参数及四项许可，帮助/默认调用完全不启动连接。真实网关互通、企业部署与签名公证仍未验收；测试只使用注入连接，原生 CI 只执行只读检查。

@@ -27,6 +27,7 @@ type sessionTarget struct {
 }
 
 type App struct {
+	macService             macServiceUI
 	Startup                *autostart.Manager
 	StartupStatus          autostart.Status
 	StartupError           string
@@ -112,6 +113,7 @@ func (a *App) setTray(enabled bool) {
 	a.commit(cfg)
 }
 func (a *App) navigate(page string) {
+	a.macService.reset()
 	if a.authCurrent != nil {
 		a.authCurrent = nil
 		a.authValues = nil
@@ -133,6 +135,7 @@ func (a *App) clearCredentials() {
 	a.ConnectPanel = false
 }
 func (a *App) BeginShutdown() {
+	a.macService.reset()
 	a.clearReauthentication()
 	a.ShuttingDown = true
 	a.authCurrent = nil
@@ -359,6 +362,7 @@ func (a *App) View(c *ui.Context) {
 	_, viewportHeight := c.Size()
 	bodyHeight := max(float32(0), viewportHeight-70)
 	paneHeight := max(float32(0), bodyHeight-20)
+	a.pollMacService()
 	a.pollRecheck()
 	a.pollSwitch()
 	a.pollAuth()
@@ -406,6 +410,8 @@ func (a *App) View(c *ui.Context) {
 							a.editor(c)
 						} else {
 							switch a.Page {
+							case "MacSystemService":
+								a.macSystemServiceForm(c)
 							case "Settings":
 								a.settings(c)
 							case "Activity":
@@ -440,6 +446,9 @@ func (a *App) connectionStatus(c *ui.Context) {
 	p := a.selected()
 	snapshot := a.Engine.Snapshot()
 	state := snapshot.State
+	if a.macServiceOwnsAttempt(snapshot) {
+		p = a.macService.activeProfile
+	}
 	ui.Column(c).Width(294).Height(paneHeight).MinHeight(0).MaxHeight(paneHeight).Shrink(0).Padding(20, 22).Gap(12).Background(a.sidebar()).Border(1, t.Border).Radius(16, 0, 0, 16).Children(func() {
 		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Padding(2, 2, 10).Children(func() {
 			ui.Column(c).Gap(7).AlignItems(ui.Center).Children(func() {
@@ -493,6 +502,9 @@ func (a *App) connectionStatus(c *ui.Context) {
 		}
 		a.stat(c, "Authentication", auth)
 		ui.Spacer(c)
+		if a.macServiceOwnsAttempt(snapshot) {
+			ui.Text(c, "有限验证：系统服务与指定目标路由；不保证全应用 DNS/IPv6 防泄漏。").FontSize(11).FillWidth()
+		}
 		if !a.Capability.Available || p != nil && p.InteractiveAuth && !a.AuthCapability.Available || p != nil && !a.supportsProtocol(p.Protocol) || state == core.CleanupFailed || state == core.Failed {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, icons["info"]).Size(13, 13).TextColor(t.TextMuted)
@@ -506,6 +518,10 @@ func (a *App) connectionStatus(c *ui.Context) {
 		if a.busy() {
 			if ui.Button(c.Key("disconnect"), a.tr("Disconnect")).FillWidth().Height(42).Disabled(state == core.Disconnecting).Clicked() {
 				_ = a.Engine.Disconnect()
+			}
+		} else if a.macServiceOwnsAttempt(snapshot) {
+			if ui.PrimaryButton(c.Key("mac-recheck-connect"), "重新检查系统服务").FillWidth().Height(42).Disabled(a.ShuttingDown || state == core.CleanupFailed).Clicked() {
+				a.navigate("MacSystemService")
 			}
 		} else {
 			disabled := !a.canConnect(p)
@@ -570,7 +586,7 @@ func (a *App) connectionList(c *ui.Context) {
 					cfg.SelectedID = q.ID
 					a.commit(cfg)
 				}
-				if a.Engine.Snapshot().State == core.Connected && !selected {
+				if a.Engine.Snapshot().State == core.Connected && !selected && !a.macServiceOwnsAttempt(a.Engine.Snapshot()) {
 					if iconButton(c, "switch", a.tr("Switch connection"), icons["refresh"]).Disabled(a.SwitchPending).Clicked() {
 						a.SwitchID = q.ID
 					}
@@ -725,6 +741,7 @@ func (a *App) activity(c *ui.Context) {
 	})
 }
 func (a *App) settings(c *ui.Context) {
+	a.macServiceSettingsEntry(c)
 	a.startupSettings(c)
 	t := c.Theme()
 	ui.Column(c).FillWidth().Padding(22).Gap(20).Background(t.Surface).Border(1, t.Border).Radius(14).Children(func() {

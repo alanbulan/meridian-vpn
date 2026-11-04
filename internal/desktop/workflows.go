@@ -80,6 +80,10 @@ func (a *App) submitConnection() {
 // blank form, never retries or transfers authorization. If that target is no
 // longer configured, the ordinary manual connection flow remains available.
 func (a *App) openRecoveryForm() {
+	if a.macServiceOwnsAttempt(a.Engine.Snapshot()) {
+		a.clearReauthentication()
+		return
+	}
 	target := a.sessionTarget
 	snapshot := a.Engine.Snapshot()
 	p := a.selected()

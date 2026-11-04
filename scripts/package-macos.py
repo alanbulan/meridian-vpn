@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import struct
+import sys
 import subprocess
 import tempfile
 
@@ -19,7 +20,14 @@ BINARIES = {"meridian": "MacOS/meridian", "meridianctl": "Helpers/meridianctl", 
 
 
 def invoke(args):
-    return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, timeout=180).stdout
+    try:
+        return subprocess.run(args, cwd=ROOT, check=True, capture_output=True, timeout=180).stdout
+    except subprocess.CalledProcessError as error:
+        # These fixed packaging/version tools never receive credentials. Retain
+        # bounded diagnostic stderr; do not hide a failed signing operation.
+        print("打包命令失败：" + Path(args[0]).name, file=sys.stderr)
+        print((error.stderr or b"")[:8192].decode("utf-8", errors="replace"), file=sys.stderr)
+        raise
 
 
 def executable_bytes(path, arch):
